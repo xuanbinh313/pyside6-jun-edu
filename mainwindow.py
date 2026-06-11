@@ -1,5 +1,8 @@
 import sys
-from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
+from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QSystemTrayIcon, QMenu
+from PySide6.QtGui import QAction
+from PySide6.QtCore import Qt
+import qtawesome as qta
 
 # Add current directory to path if needed, but normally running from jun-edu is fine.
 import os
@@ -11,6 +14,7 @@ from views.exam_add_external_view import ExamAddExternalView
 from viewmodels.exam_list_viewmodel import ExamListViewModel
 from viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
+from viewmodels.reminder_viewmodel import ReminderViewModel
 from models.database import init_db
 
 class MainWindow(QMainWindow):
@@ -19,6 +23,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Jun Edu - Exam Management")
         self.resize(1000, 700)
         
+        self.reminder_viewmodel = ReminderViewModel()
+        
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
         
@@ -26,6 +32,9 @@ class MainWindow(QMainWindow):
         self.list_view = ExamListView(self.list_viewmodel, self.navigate_to_details)
         
         self.stacked_widget.addWidget(self.list_view)
+        
+        self.setup_system_tray()
+        self.setup_mvvm_connections()
         
     def navigate_to_details(self, exam_id):
         if exam_id == "EXTERNAL":
@@ -49,6 +58,68 @@ class MainWindow(QMainWindow):
         if widget:
             self.stacked_widget.removeWidget(widget)
             widget.deleteLater()
+
+    def setup_mvvm_connections(self):
+        """Bind ViewModel signals to View slots."""
+        self.reminder_viewmodel.show_study_window.connect(self.wakeup_and_focus_app)
+
+    def setup_system_tray(self):
+        """Configure background execution via System Tray."""
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setIcon(qta.icon('fa5s.graduation-cap', color='#1a73e8'))
+        
+        # Context Menu for Tray
+        tray_menu = QMenu()
+        open_action = QAction("Mở ứng dụng", self)
+        open_action.triggered.connect(self.showNormal)
+        
+        exit_action = QAction("Thoát hoàn toàn", self)
+        exit_action.triggered.connect(QApplication.quit)
+        
+        tray_menu.addAction(open_action)
+        tray_menu.addSeparator()
+        tray_menu.addAction(exit_action)
+        
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.show()
+        
+        # Double click tray icon to restore
+        self.tray_icon.activated.connect(self._on_tray_icon_activated)
+
+    def _on_tray_icon_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.showNormal()
+
+    def closeEvent(self, event):
+        """Intercept X button click to hide app instead of exiting."""
+        if self.tray_icon.isVisible():
+            self.hide()
+            self.tray_icon.showMessage(
+                "Jun Edu",
+                "Ứng dụng đang chạy ngầm để hẹn giờ học bài!",
+                QSystemTrayIcon.MessageIcon.Information,
+                3000
+            )
+            event.ignore()
+
+    def wakeup_and_focus_app(self):
+        """Force window into user focus and display study contents."""
+        # 1. Trigger OS Notification
+        self.tray_icon.showMessage(
+            "ĐẾN GIỜ HỌC RỒI!",
+            "Hãy vào làm bài tập ngay để không bị quên kiến thức nhé.",
+            QSystemTrayIcon.MessageIcon.Warning,
+            5000
+        )
+        
+        # 2. Force Window Focus (Qt Native Window Management)
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
+        self.showNormal()      
+        self.raise_()           
+        self.activateWindow()   
+        
+        # 3. Load Exam Content
+        self.stacked_widget.setCurrentWidget(self.list_view)
 
 if __name__ == "__main__":
     init_db()

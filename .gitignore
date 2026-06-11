@@ -83,6 +83,6 @@ CMakeLists.txt.user*
 /build*/
 /.qtcreator/
 
-venv/
+.venv/
 .env
 exams.db
