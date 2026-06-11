@@ -62,6 +62,7 @@ class ExamTranscriptWidget(QWidget):
         self.player.setAudioOutput(self.audio_output)
         
         self.player.positionChanged.connect(self._on_position_changed)
+        self.player.durationChanged.connect(self._on_duration_changed)
         # Lắng nghe trạng thái media để cập nhật icon Play/Pause tự động
         self.player.playbackStateChanged.connect(self._update_play_pause_icon)
         
@@ -106,6 +107,24 @@ class ExamTranscriptWidget(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.itemChanged.connect(self._on_item_changed)
+
+        # Seek bar
+        self.seek_slider = self.ui.seek_slider
+        self.seek_slider.setTracking(False)  # only emit on release
+        self.seek_slider.sliderMoved.connect(self._on_slider_moved)
+        self.seek_slider.sliderPressed.connect(self._on_slider_pressed)
+        self.seek_slider.sliderReleased.connect(self._on_slider_released)
+        self._slider_dragging = False
+
+        self.time_current_label = self.ui.time_current_label
+        self.time_total_label = self.ui.time_total_label
+
+        self.seek_slider.setStyleSheet(
+            "QSlider::groove:horizontal { height: 6px; background: #dadce0; border-radius: 3px; }"
+            "QSlider::sub-page:horizontal { background: #1a73e8; border-radius: 3px; }"
+            "QSlider::handle:horizontal { width: 14px; height: 14px; margin: -4px 0;"
+            " background: #1a73e8; border-radius: 7px; }"
+        )
         
     def _toggle_play(self):
         if self.player.playbackState() == QMediaPlayer.PlayingState:
@@ -123,6 +142,26 @@ class ExamTranscriptWidget(QWidget):
             self.play_pause_btn.setText(" Phát nhạc")
         self.play_pause_btn.setIconSize(QSize(16, 16))
             
+    @staticmethod
+    def _fmt_time(ms):
+        s = int(ms / 1000)
+        m, s = divmod(s, 60)
+        return f"{m}:{s:02d}"
+
+    def _on_duration_changed(self, duration_ms):
+        self.seek_slider.setMaximum(max(duration_ms, 1))
+        self.time_total_label.setText(self._fmt_time(duration_ms))
+
+    def _on_slider_pressed(self):
+        self._slider_dragging = True
+
+    def _on_slider_moved(self, value):
+        self.time_current_label.setText(self._fmt_time(value))
+
+    def _on_slider_released(self):
+        self._slider_dragging = False
+        self.player.setPosition(self.seek_slider.value())
+
     def _on_position_changed(self, pos_ms):
         if self.play_until and pos_ms >= self.play_until:
             self.player.pause()
@@ -133,6 +172,13 @@ class ExamTranscriptWidget(QWidget):
             if loop_idx is not None:
                 delay_ms = self.delay_spin.value() * 1000
                 QTimer.singleShot(delay_ms, lambda: self._play_loop(loop_idx))
+
+        # Update seek slider & time label (skip if user is dragging)
+        if not self._slider_dragging:
+            self.seek_slider.blockSignals(True)
+            self.seek_slider.setValue(pos_ms)
+            self.seek_slider.blockSignals(False)
+            self.time_current_label.setText(self._fmt_time(pos_ms))
 
         pos_sec = pos_ms / 1000.0
         for row, chunk in enumerate(self.viewmodel.srt_chunks):

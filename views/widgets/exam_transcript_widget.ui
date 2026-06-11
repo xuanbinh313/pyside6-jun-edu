@@ -66,6 +66,46 @@
     </layout>
    </item>
    <item>
+    <layout class="QHBoxLayout" name="seek_layout">
+     <item>
+      <widget class="QLabel" name="time_current_label">
+       <property name="text">
+        <string>0:00</string>
+       </property>
+       <property name="minimumWidth">
+        <number>40</number>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignRight|Qt::AlignVCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSlider" name="seek_slider">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="minimum">
+        <number>0</number>
+       </property>
+       <property name="maximum">
+        <number>1000</number>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="time_total_label">
+       <property name="text">
+        <string>0:00</string>
+       </property>
+       <property name="minimumWidth">
+        <number>40</number>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
     <widget class="QLabel" name="title_label">
      <property name="text">
       <string>Transcript Chunks</string>
