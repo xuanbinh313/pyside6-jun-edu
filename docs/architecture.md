@@ -1,0 +1,91 @@
+# Jun Edu — Architecture Overview
+
+> **Stack:** Python · PySide6 · SQLAlchemy · SQLite · QtAwesome
+
+Jun Edu is a desktop Anki-style exam management application built with **PySide6** following the **MVVM (Model–View–ViewModel)** pattern. The app manages audio-synced SRT transcript exams, provides an audio player with per-chunk looping, and integrates with an external TTS/alignment API service.
+
+---
+
+## Project Structure
+
+```
+jun-edu/
+├── mainwindow.py                        # App entry point & navigation controller
+├── pyproject.toml                       # Project metadata
+├── requirements.txt                     # Python dependencies
+├── exams.db                             # SQLite database (auto-created)
+├── .env                                 # Environment variables (TTS_AGENT_URL)
+│
+├── models/                              # Data Layer
+│   ├── database.py                      # SQLAlchemy engine, session, Base
+│   └── exam.py                          # ORM models: Exam, ExamSrtChunk
+│
+├── viewmodels/                          # ViewModel Layer (Business Logic)
+│   ├── exam_list_viewmodel.py           # List, search, delete exams
+│   ├── exam_details_viewmodel.py        # Load/save exam + SRT chunk editing
+│   ├── exam_add_external_viewmodel.py   # External API import flow (async)
+│   ├── exam_transcript_viewmodel.py     # SRT chunk operations (used by widget)
+│   └── reminder_viewmodel.py           # Countdown timer + wake-up signal
+│
+└── views/                               # View Layer (UI only)
+    ├── exam_list_view.py                # Exam list screen
+    ├── exam_details_view.py             # Exam detail screen (tabbed)
+    ├── exam_add_external_view.py        # Add exam from external audio/API
+    ├── ui/
+    │   └── exam_transcript_widget.ui   # Qt Designer UI for transcript panel
+    └── components/
+        ├── exam_form_widget.py          # Exam metadata form widget
+        ├── exam_groups_widget.py        # Groups & Questions placeholder
+        └── exam_transcript_widget.py   # Audio player + SRT chunk table
+```
+
+---
+
+## MVVM Data Flow
+
+```
+┌──────────┐   Signal/Slot   ┌───────────────┐   SQLAlchemy   ┌─────────┐
+│   View   │ ◄─────────────► │  ViewModel    │ ◄────────────► │  Model  │
+│ (PySide6)│  (no direct DB) │ (QObject)     │                │(SQLite) │
+└──────────┘                 └───────────────┘                └─────────┘
+```
+
+- **View** never touches the database directly — it only calls ViewModel methods and reacts to Signals.
+- **ViewModel** holds state, performs DB operations via `get_session()`, and emits Signals on changes.
+- **Model** is pure SQLAlchemy ORM — no business logic.
+
+---
+
+## Navigation
+
+Navigation is centralized in `MainWindow` using a `QStackedWidget`.
+
+```
+MainWindow
+└── QStackedWidget
+    ├── [slot 0] ExamListView          (always present)
+    └── [slot 1] ExamDetailsView       (dynamically added/removed)
+              or ExamAddExternalView
+```
+
+`navigate_to_details(exam_id)` handles two cases:
+- `exam_id == "EXTERNAL"` → loads `ExamAddExternalView`
+- `exam_id` is a UUID string → loads `ExamDetailsView` for that exam
+
+`navigate_to_list()` tears down slot 1, refreshes the list, and switches back.
+
+---
+
+## System Tray & Reminder
+
+The app hides to the system tray on close instead of quitting:
+
+```
+closeEvent()
+  └── ReminderViewModel.start_countdown(minutes)
+        └── QTimer (1 s ticks)
+              └── on timeout → show_study_window.emit()
+                    └── MainWindow.wakeup_and_focus_app()
+```
+
+This enables scheduled study reminders without the app being visible.
