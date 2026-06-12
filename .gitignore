@@ -85,4 +85,6 @@ CMakeLists.txt.user*
 
 .venv/
 .env
-exams.db
+*.db
+build/
+dist/
