@@ -70,3 +70,29 @@ class ExamDetailsViewModel(QObject):
         finally:
             session.close()
 
+    def duplicate_chunk(self, chunk):
+        list_idx = self.srt_chunks.index(chunk)
+        max_idx = max((c.index for c in self.srt_chunks), default=0)
+        
+        new_chunk = ExamSrtChunk(
+            exam_id=chunk.exam_id,
+            index=max_idx + 1,
+            start_time=chunk.start_time,
+            end_time=chunk.end_time,
+            text=chunk.text
+        )
+        self.srt_chunks.insert(list_idx + 1, new_chunk)
+        return list_idx + 1, new_chunk
+
+    def merge_chunk(self, chunk):
+        list_idx = self.srt_chunks.index(chunk)
+        if list_idx >= len(self.srt_chunks) - 1:
+            return None, None
+            
+        next_chunk = self.srt_chunks[list_idx + 1]
+        
+        chunk.text = f"{chunk.text} {next_chunk.text}"
+        chunk.end_time = next_chunk.end_time
+        
+        self.srt_chunks.pop(list_idx + 1)
+        return list_idx, next_chunk

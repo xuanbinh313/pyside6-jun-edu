@@ -1,5 +1,5 @@
 import sys
-from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QSystemTrayIcon, QMenu
+from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QSystemTrayIcon, QMenu, QInputDialog
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt
 import qtawesome as qta
@@ -33,6 +33,9 @@ class MainWindow(QMainWindow):
         
         self.stacked_widget.addWidget(self.list_view)
         
+        self.close_event_minutes = 1
+        self.setup_menu_bar()
+        
         self.setup_system_tray()
         self.setup_mvvm_connections()
         
@@ -58,6 +61,18 @@ class MainWindow(QMainWindow):
         if widget:
             self.stacked_widget.removeWidget(widget)
             widget.deleteLater()
+
+    def setup_menu_bar(self):
+        menubar = self.menuBar()
+        settings_menu = menubar.addMenu("Menu")
+        settings_action = QAction("Settings", self)
+        settings_action.triggered.connect(self.show_settings_modal)
+        settings_menu.addAction(settings_action)
+
+    def show_settings_modal(self):
+        minutes, ok = QInputDialog.getInt(self, "Settings", "Set time closeEvent (minutes):", self.close_event_minutes, 1, 1440, 1)
+        if ok:
+            self.close_event_minutes = minutes
 
     def setup_mvvm_connections(self):
         """Bind ViewModel signals to View slots."""
@@ -91,15 +106,25 @@ class MainWindow(QMainWindow):
             self.showNormal()
 
     def closeEvent(self, event):
-        """Intercept X button click to hide app instead of exiting."""
+        """Kích hoạt bộ đếm giờ ngay khi user bấm nút X thoát app"""
         if self.tray_icon.isVisible():
+            minutes = self.close_event_minutes
+            
+            # 2. Ra lệnh cho bộ não bắt đầu đếm ngược ngầm với số phút tìm được
+            self.reminder_viewmodel.start_countdown(minutes)
+            
+            # 3. Ẩn cửa sổ chính đi
             self.hide()
+            
+            # 4. Bắn thông báo hệ thống
             self.tray_icon.showMessage(
                 "Jun Edu",
-                "Ứng dụng đang chạy ngầm để hẹn giờ học bài!",
+                f"Đã tự động hẹn giờ {minutes} phút và chạy ngầm dưới khay hệ thống!",
                 QSystemTrayIcon.MessageIcon.Information,
                 3000
             )
+            
+            # 5. Ngăn không cho ứng dụng bị tắt hoàn toàn
             event.ignore()
 
     def wakeup_and_focus_app(self):
@@ -119,7 +144,7 @@ class MainWindow(QMainWindow):
         self.activateWindow()   
         
         # 3. Load Exam Content
-        self.stacked_widget.setCurrentWidget(self.list_view)
+        # self.stacked_widget.setCurrentWidget(self.list_view)
 
 if __name__ == "__main__":
     init_db()

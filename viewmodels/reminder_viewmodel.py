@@ -13,6 +13,8 @@ class ReminderViewModel(QObject):
 
     def start_countdown(self, minutes: int):
         """Triggered by the View when user sets the timer."""
+        if self.timer.isActive():
+            return
         self.time_left_seconds = minutes * 60
         self.timer.start(1000)  # Ticks every 1 second (1000ms)
 

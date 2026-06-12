@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
-                               QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, 
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+                                QTableWidgetItem, QHeaderView,
                                QLineEdit, QAbstractItemView)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import QUrl, Qt, QTimer, QFile, QSize
@@ -101,6 +101,7 @@ class ExamTranscriptWidget(QWidget):
             "QPushButton:hover { background-color: #1558b0; }"
         )
         self.save_btn.clicked.connect(self._on_save_clicked)
+        self.save_btn.setVisible(False)
         
         self.table = self.ui.table
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
@@ -144,9 +145,9 @@ class ExamTranscriptWidget(QWidget):
             
     @staticmethod
     def _fmt_time(ms):
-        s = int(ms / 1000)
-        m, s = divmod(s, 60)
-        return f"{m}:{s:02d}"
+        # s = int(ms / 1000)
+        # m, s = divmod(s, 60)
+        return f"{ms / 1000.0:.3f}"
 
     def _on_duration_changed(self, duration_ms):
         self.seek_slider.setMaximum(max(duration_ms, 1))
@@ -206,6 +207,8 @@ class ExamTranscriptWidget(QWidget):
     def populate(self):
         self.table.blockSignals(True)
         self.table.setRowCount(0)
+        self._has_changes = False
+        self.save_btn.setVisible(False)
         
         if self.viewmodel.exam and self.viewmodel.exam.full_audio_url:
             path = self.viewmodel.exam.full_audio_url
