@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTabWidget
-from views.widgets.exam_form_widget import ExamFormWidget
-from views.widgets.exam_groups_widget import ExamGroupsWidget
-from views.widgets.exam_transcript_widget import ExamTranscriptWidget
+from views.components.exam_form_widget import ExamFormWidget
+from views.components.exam_groups_widget import ExamGroupsWidget
+from views.components.exam_transcript_widget import ExamTranscriptWidget
 
 class ExamDetailsView(QWidget):
     def __init__(self, viewmodel, go_back_callback):
@@ -49,4 +49,5 @@ class ExamDetailsView(QWidget):
         
     def on_data_loaded(self):
         self.form_tab.populate()
+        self.groups_tab.populate()
         self.transcript_tab.populate()

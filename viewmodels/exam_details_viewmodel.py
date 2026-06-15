@@ -11,6 +11,7 @@ class ExamDetailsViewModel(QObject):
         self.exam_id = exam_id
         self.exam = None
         self.srt_chunks = []
+        self.questions = []
 
     def load_exam(self):
         session = get_session()
@@ -18,9 +19,11 @@ class ExamDetailsViewModel(QObject):
             self.exam = session.query(Exam).filter(Exam.id == self.exam_id).first()
             if self.exam:
                 self.srt_chunks = self.exam.srt_chunks
+                self.questions = self.exam.questions
         else:
             self.exam = Exam(title="")
             self.srt_chunks = []
+            self.questions = []
         # Detach or map to simple DTO if needed, but for local desktop, we can use the object properties directly
         session.expunge_all()
         session.close()
