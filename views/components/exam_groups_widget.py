@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QListWidget, QListWidgetItem, QTextBrowser, QScrollArea,
     QMessageBox, QDialog, QFrame, QButtonGroup, QRadioButton,
-    QSizePolicy, QMenu
+    QSizePolicy, QMenu, QCheckBox, QLineEdit, QAbstractItemView
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import QUrl, Qt, QTimer, QPoint
@@ -31,6 +31,255 @@ def _get_audio_meta(question):
 # ─────────────────────────────────────────────────────────────────────────────
 # OptionWidget — shuffled ABCD radio buttons for a single question
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# TagMenuPopup — floating menu to manage question tags
+# ─────────────────────────────────────────────────────────────────────────────
+class TagMenuPopup(QDialog):
+    def __init__(self, question, parent=None):
+        super().__init__(parent, Qt.Popup | Qt.FramelessWindowHint)
+        self.question = question
+        self.user_id = "local_user"
+        self.setStyleSheet("""
+            QDialog {
+                border: 1px solid #dadce0;
+                background-color: white;
+                border-radius: 6px;
+            }
+        """)
+        self.setFixedWidth(200)
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        title = QLabel("Manage Tags")
+        title.setStyleSheet("font-weight: bold; color: #1a73e8; font-size: 12px;")
+        layout.addWidget(title)
+
+        # List of tags checkable
+        self.tags_layout = QVBoxLayout()
+        self.tags_layout.setSpacing(4)
+        layout.addLayout(self.tags_layout)
+
+        # Add input field
+        self.new_tag_input = QLineEdit()
+        self.new_tag_input.setPlaceholderText("Add new tag...")
+        self.new_tag_input.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                padding: 4px;
+                font-size: 11px;
+            }
+        """)
+        self.new_tag_input.returnPressed.connect(self._on_add_tag)
+        layout.addWidget(self.new_tag_input)
+
+        # Load existing tags and question's tags
+        self._load_tags()
+
+    def _load_tags(self):
+        # Clear tags layout
+        while self.tags_layout.count():
+            item = self.tags_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        session = get_session()
+        try:
+            # All unique tags for this user
+            all_tags_rows = session.query(exam_model.UserQuestionTag.tag_name).filter(
+                exam_model.UserQuestionTag.user_id == self.user_id
+            ).distinct().all()
+            all_tags = [r[0] for r in all_tags_rows]
+
+            # Tags currently applied to this question
+            current_tags_rows = session.query(exam_model.UserQuestionTag.tag_name).filter(
+                exam_model.UserQuestionTag.user_id == self.user_id,
+                exam_model.UserQuestionTag.question_id == self.question.id
+            ).all()
+            current_tags = set(r[0] for r in current_tags_rows)
+
+            for tag_name in all_tags:
+                cb = QCheckBox(tag_name)
+                cb.setChecked(tag_name in current_tags)
+                cb.setStyleSheet("font-size: 11px; color: #3c4043;")
+                cb.stateChanged.connect(lambda state, t=tag_name: self._on_tag_state_changed(t, state))
+                self.tags_layout.addWidget(cb)
+        finally:
+            session.close()
+
+    def _on_tag_state_changed(self, tag_name, state):
+        session = get_session()
+        try:
+            if state == Qt.Checked.value:
+                # Add tag
+                exists = session.query(exam_model.UserQuestionTag).filter(
+                    exam_model.UserQuestionTag.user_id == self.user_id,
+                    exam_model.UserQuestionTag.question_id == self.question.id,
+                    exam_model.UserQuestionTag.tag_name == tag_name
+                ).first()
+                if not exists:
+                    new_tag = exam_model.UserQuestionTag(
+                        user_id=self.user_id,
+                        question_id=self.question.id,
+                        tag_name=tag_name,
+                        dirty=1
+                    )
+                    session.add(new_tag)
+                    session.commit()
+            else:
+                # Delete tag
+                session.query(exam_model.UserQuestionTag).filter(
+                    exam_model.UserQuestionTag.user_id == self.user_id,
+                    exam_model.UserQuestionTag.question_id == self.question.id,
+                    exam_model.UserQuestionTag.tag_name == tag_name
+                ).delete()
+                session.commit()
+        finally:
+            session.close()
+
+        # Notify parent widget to refresh filter if necessary
+        parent_widget = self.parent()
+        while parent_widget:
+            if hasattr(parent_widget, "on_question_tag_changed"):
+                parent_widget.on_question_tag_changed()
+                break
+            parent_widget = parent_widget.parent()
+
+    def _on_add_tag(self):
+        tag_name = self.new_tag_input.text().strip()
+        if not tag_name:
+            return
+        
+        session = get_session()
+        try:
+            exists = session.query(exam_model.UserQuestionTag).filter(
+                exam_model.UserQuestionTag.user_id == self.user_id,
+                exam_model.UserQuestionTag.question_id == self.question.id,
+                exam_model.UserQuestionTag.tag_name == tag_name
+            ).first()
+            if not exists:
+                new_tag = exam_model.UserQuestionTag(
+                    user_id=self.user_id,
+                    question_id=self.question.id,
+                    tag_name=tag_name,
+                    dirty=1
+                )
+                session.add(new_tag)
+                session.commit()
+        finally:
+            session.close()
+
+        self.new_tag_input.clear()
+        self._load_tags()
+
+        # Notify parent widget to refresh filter if necessary
+        parent_widget = self.parent()
+        while parent_widget:
+            if hasattr(parent_widget, "on_question_tag_changed"):
+                parent_widget.on_question_tag_changed()
+                break
+            parent_widget = parent_widget.parent()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SelectTranscriptDialog — dialog to select transcript chunks for a question
+# ─────────────────────────────────────────────────────────────────────────────
+class SelectTranscriptDialog(QDialog):
+    def __init__(self, exam_id, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Transcript Segment")
+        self.resize(600, 400)
+        self.exam_id = exam_id
+        self.selected_chunks = []
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        
+        desc = QLabel("Select one or more transcript lines to set the audio segment:")
+        desc.setStyleSheet("font-size: 13px; color: #5f6368;")
+        layout.addWidget(desc)
+        
+        self.list_widget = QListWidget()
+        self.list_widget.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.list_widget.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #dadce0;
+                border-radius: 6px;
+                background-color: white;
+                padding: 5px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #f1f3f4;
+            }
+            QListWidget::item:selected {
+                background-color: #e8f0fe;
+                color: #1a73e8;
+            }
+        """)
+        layout.addWidget(self.list_widget)
+        
+        # Load chunks from DB
+        session = get_session()
+        try:
+            self.chunks = session.query(exam_model.ExamSrtChunk).filter(
+                exam_model.ExamSrtChunk.exam_id == self.exam_id
+            ).order_by(exam_model.ExamSrtChunk.index.asc()).all()
+            for chunk in self.chunks:
+                item = QListWidgetItem(f"[{chunk.start_time:.2f}s – {chunk.end_time:.2f}s]  {chunk.text}")
+                item.setData(Qt.UserRole, chunk)
+                self.list_widget.addItem(item)
+        finally:
+            session.close()
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.clicked.connect(self.reject)
+        self.cancel_btn.setStyleSheet("""
+            QPushButton {
+                padding: 6px 12px;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QPushButton:hover { background-color: #f1f3f4; }
+        """)
+        btn_layout.addWidget(self.cancel_btn)
+        
+        self.ok_btn = QPushButton("Save Segment")
+        self.ok_btn.clicked.connect(self._on_ok)
+        self.ok_btn.setStyleSheet("""
+            QPushButton {
+                padding: 6px 16px;
+                background-color: #1a73e8;
+                color: white;
+                font-weight: bold;
+                border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #1558b0; }
+        """)
+        btn_layout.addWidget(self.ok_btn)
+        layout.addLayout(btn_layout)
+
+    def _on_ok(self):
+        selected_items = self.list_widget.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "No Selection", "Please select at least one transcript item.")
+            return
+            
+        self.selected_chunks = sorted(
+            [item.data(Qt.UserRole) for item in selected_items],
+            key=lambda c: c.index
+        )
+        self.accept()
+
 class OptionWidget(QWidget):
     """
     Renders shuffled multiple-choice options for one ExamQuestion.
@@ -50,11 +299,55 @@ class OptionWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 4)
         layout.setSpacing(4)
 
+        # Header layout for question stem and tag button
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+
         # Question stem
         stem = QLabel(f"<b>Q{q.question_number}.</b> {q.content}")
         stem.setWordWrap(True)
         stem.setStyleSheet("font-size: 13px; color: #202124; padding: 4px 0;")
-        layout.addWidget(stem)
+        header_layout.addWidget(stem, stretch=1)
+
+        # Bookmark/Tag button
+        self.tag_btn = QPushButton()
+        self.tag_btn.setIcon(qta.icon('fa5s.tags', color='#5f6368'))
+        self.tag_btn.setToolTip("Manage tags for this question")
+        self.tag_btn.setFixedSize(24, 24)
+        self.tag_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #f1f3f4;
+                border-radius: 12px;
+            }
+        """)
+        self.tag_btn.clicked.connect(self._show_tag_menu)
+        header_layout.addWidget(self.tag_btn)
+
+        # Select audio segment button
+        self.select_audio_btn = QPushButton()
+        self.select_audio_btn.setIcon(qta.icon('fa5s.music', color='#5f6368'))
+        self.select_audio_btn.setToolTip("Select audio segment from transcript")
+        self.select_audio_btn.setFixedSize(24, 24)
+        self.select_audio_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #f1f3f4;
+                border-radius: 12px;
+            }
+        """)
+        self.select_audio_btn.clicked.connect(self._on_select_audio_segment)
+        header_layout.addWidget(self.select_audio_btn)
+
+
+        layout.addLayout(header_layout)
+
 
         # Prepare options
         try:
@@ -122,6 +415,47 @@ class OptionWidget(QWidget):
             self._result_label.setText(f"❌ Wrong. Correct answer: {self.correct_answer}")
             self._result_label.setStyleSheet("color: #ea4335; font-weight: bold; font-size: 12px;")
 
+    def _show_tag_menu(self):
+        popup = TagMenuPopup(self.question, self)
+        pos = self.tag_btn.mapToGlobal(QPoint(0, self.tag_btn.height()))
+        popup.move(pos)
+        popup.exec()
+
+    def _on_select_audio_segment(self):
+        dialog = SelectTranscriptDialog(self.question.exam_id, self)
+        if dialog.exec() == QDialog.Accepted and dialog.selected_chunks:
+            first = dialog.selected_chunks[0]
+            last = dialog.selected_chunks[-1]
+            
+            session = get_session()
+            try:
+                db_q = session.query(exam_model.ExamQuestion).filter(
+                    exam_model.ExamQuestion.id == self.question.id
+                ).first()
+                if db_q:
+                    meta = dict(db_q.additional_meta or {})
+                    meta["audio_start"] = first.start_time
+                    meta["audio_end"] = last.end_time
+                    db_q.additional_meta = meta
+                    session.commit()
+                    
+                    self.question.additional_meta = meta
+            except Exception as e:
+                session.rollback()
+                QMessageBox.critical(self, "Error Saving", f"Could not save segment to database:\n{e}")
+            finally:
+                session.close()
+
+            # Trigger a reload of details so the UI updates
+            parent_widget = self.parent()
+            while parent_widget:
+                if hasattr(parent_widget, "on_question_audio_changed"):
+                    parent_widget.on_question_audio_changed(self.question)
+                    break
+                parent_widget = parent_widget.parent()
+
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ExamGroupsWidget — main Groups & Questions tab
@@ -171,6 +505,27 @@ class ExamGroupsWidget(QWidget):
         q_label_layout.addWidget(self.import_q_btn)
 
         left_layout.addLayout(q_label_layout)
+
+        # Tag Filter block
+        filter_label = QLabel("Filter by Tags:")
+        filter_label.setStyleSheet("font-size: 12px; font-weight: bold; color: #5f6368; margin-top: 4px;")
+        left_layout.addWidget(filter_label)
+
+        self.tag_filter_list = QListWidget()
+        self.tag_filter_list.setMaximumHeight(80)
+        self.tag_filter_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #dadce0;
+                border-radius: 6px;
+                background-color: #f8f9fa;
+                padding: 2px;
+            }
+            QListWidget::item {
+                padding: 4px;
+            }
+        """)
+        self.tag_filter_list.itemChanged.connect(self._on_filter_changed)
+        left_layout.addWidget(self.tag_filter_list)
 
         self.q_list = QListWidget()
         self.q_list.setStyleSheet("""
@@ -287,6 +642,7 @@ class ExamGroupsWidget(QWidget):
     # ─────────────────────────────────────────────────────────────────────────
     def populate(self):
         self.player.stop()
+        self.populate_tags()
         self.q_list.clear()
         self._question_widgets.clear()
         self._clear_options()
@@ -531,6 +887,90 @@ class ExamGroupsWidget(QWidget):
             if item.widget():
                 item.widget().deleteLater()
         self._question_widgets.clear()
+
+    def populate_tags(self):
+        self.tag_filter_list.blockSignals(True)
+        checked_tags = set()
+        for i in range(self.tag_filter_list.count()):
+            item = self.tag_filter_list.item(i)
+            if item.checkState() == Qt.Checked:
+                checked_tags.add(item.text())
+
+        self.tag_filter_list.clear()
+        
+        session = get_session()
+        try:
+            all_tags_rows = session.query(exam_model.UserQuestionTag.tag_name).filter(
+                exam_model.UserQuestionTag.user_id == "local_user"
+            ).distinct().all()
+            all_tags = sorted([r[0] for r in all_tags_rows])
+            
+            for tag_name in all_tags:
+                item = QListWidgetItem(tag_name)
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                if tag_name in checked_tags:
+                    item.setCheckState(Qt.Checked)
+                else:
+                    item.setCheckState(Qt.Unchecked)
+                self.tag_filter_list.addItem(item)
+        finally:
+            session.close()
+            
+        self.tag_filter_list.blockSignals(False)
+
+    def _on_filter_changed(self):
+        selected_tags = []
+        for i in range(self.tag_filter_list.count()):
+            item = self.tag_filter_list.item(i)
+            if item.checkState() == Qt.Checked:
+                selected_tags.append(item.text())
+
+        self.q_list.blockSignals(True)
+        self.q_list.clear()
+        self._clear_options()
+
+        session = get_session()
+        try:
+            if not selected_tags:
+                questions = session.query(exam_model.ExamQuestion).filter(
+                    exam_model.ExamQuestion.exam_id == self.viewmodel.exam_id
+                ).order_by(exam_model.ExamQuestion.question_number.asc()).all()
+            else:
+                questions = session.query(exam_model.ExamQuestion).join(
+                    exam_model.UserQuestionTag,
+                    exam_model.ExamQuestion.id == exam_model.UserQuestionTag.question_id
+                ).filter(
+                    exam_model.ExamQuestion.exam_id == self.viewmodel.exam_id,
+                    exam_model.UserQuestionTag.user_id == "local_user",
+                    exam_model.UserQuestionTag.tag_name.in_(selected_tags)
+                ).distinct().order_by(exam_model.ExamQuestion.question_number.asc()).all()
+
+            for q in questions:
+                label = f"Q{q.question_number}  [Part {q.part}]  {q.content[:60]}…" \
+                        if len(q.content) > 60 else f"Q{q.question_number}  [Part {q.part}]  {q.content}"
+                item = QListWidgetItem(label)
+                session.expunge(q)
+                item.setData(Qt.UserRole, q)
+                self.q_list.addItem(item)
+        finally:
+            session.close()
+
+        self.q_list.blockSignals(False)
+        self.title_label.setText("Select a question to view details")
+
+    def on_question_tag_changed(self):
+        self.populate_tags()
+        self._on_filter_changed()
+
+    def on_question_audio_changed(self, question):
+        current_item = self.q_list.currentItem()
+        if current_item:
+            q = current_item.data(Qt.UserRole)
+            if q.id == question.id:
+                q.additional_meta = question.additional_meta
+                current_item.setData(Qt.UserRole, q)
+                self._on_question_selected(current_item, None)
+
 
     def closeEvent(self, event):
         self.player.stop()

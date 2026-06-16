@@ -86,3 +86,13 @@ class ExamQuestion(Base):
 
     exam = relationship("Exam", back_populates="questions")
     context = relationship("ExamContext", back_populates="questions")
+
+class UserQuestionTag(Base):
+    __tablename__ = "user_question_tags"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    question_id = Column(String, ForeignKey("exam_questions.id"), nullable=False)
+    tag_name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    dirty = Column(Integer, nullable=False, default=1) # 0: False, 1: True
