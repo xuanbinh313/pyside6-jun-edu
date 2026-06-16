@@ -10,8 +10,9 @@ from PySide6.QtWidgets import (
     QSizePolicy, QMenu, QCheckBox, QLineEdit, QAbstractItemView
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PySide6.QtCore import QUrl, Qt, QTimer, QPoint
+from PySide6.QtCore import QUrl, Qt, QTimer, QPoint, QFile
 from PySide6.QtGui import QColor, QPalette, QCursor
+from PySide6.QtUiTools import QUiLoader
 
 import qtawesome as qta
 from models.database import get_session
@@ -291,7 +292,15 @@ class OptionWidget(QWidget):
     def __init__(self, question, parent=None):
         super().__init__(parent)
         self.question = question
-        self.correct_answer = question.correct_answer   # e.g. "A"
+        self.correct_answer = question.correct_answer   # e.g. "D"
+        
+        # Lấy index gốc của câu trả lời đúng (Ví dụ: "A" -> 0, "D" -> 3)
+        try:
+            self.orig_correct_idx = self.LETTER_MAP.index(self.correct_answer)
+        except ValueError:
+            self.orig_correct_idx = -1
+            
+        self.display_correct_letter = "" # Sẽ lưu chữ cái hiển thị thực tế của đáp án đúng
         self._build(question)
 
     def _build(self, q):
@@ -345,9 +354,7 @@ class OptionWidget(QWidget):
         self.select_audio_btn.clicked.connect(self._on_select_audio_segment)
         header_layout.addWidget(self.select_audio_btn)
 
-
         layout.addLayout(header_layout)
-
 
         # Prepare options
         try:
@@ -364,6 +371,11 @@ class OptionWidget(QWidget):
 
         for display_pos, (orig_idx, opt_text) in enumerate(indexed):
             display_letter = self.LETTER_MAP[display_pos] if display_pos < 4 else str(display_pos)
+            
+            # NẾU index gốc trùng với index của đáp án đúng -> Lưu lại chữ cái hiển thị mới này
+            if orig_idx == self.orig_correct_idx:
+                self.display_correct_letter = display_letter
+
             radio = QRadioButton(f"{display_letter}.  {opt_text}")
             radio.setStyleSheet("""
                 QRadioButton {
@@ -405,14 +417,14 @@ class OptionWidget(QWidget):
             return
 
         orig_idx = selected.property("orig_idx")
-        # Convert original index → letter (0→A, 1→B …)
-        selected_letter = self.LETTER_MAP[orig_idx] if orig_idx < 4 else str(orig_idx)
 
-        if selected_letter == self.correct_answer:
+        # So sánh trực tiếp index gốc để chấm điểm chính xác tuyệt đối
+        if orig_idx == self.orig_correct_idx:
             self._result_label.setText("✅ Correct!")
             self._result_label.setStyleSheet("color: #34a853; font-weight: bold; font-size: 12px;")
         else:
-            self._result_label.setText(f"❌ Wrong. Correct answer: {self.correct_answer}")
+            # Khi sai, hiển thị chữ cái ĐANG XUẤT HIỆN trên màn hình (ví dụ: A) thay vì chữ cái trong DB (D)
+            self._result_label.setText(f"❌ Wrong. Correct answer: {self.display_correct_letter}")
             self._result_label.setStyleSheet("color: #ea4335; font-weight: bold; font-size: 12px;")
 
     def _show_tag_menu(self):
@@ -481,161 +493,43 @@ class ExamGroupsWidget(QWidget):
     # UI construction
     # ─────────────────────────────────────────────────────────────────────────
     def setup_ui(self):
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(15)
+        loader = QUiLoader()
+        ui_file_path = os.path.join(os.path.dirname(__file__), "../ui/exam_groups_widget.ui")
+        ui_file = QFile(ui_file_path)
+        ui_file.open(QFile.ReadOnly)
+        self.ui = loader.load(ui_file, self)
+        ui_file.close()
 
-        # ── Left panel: question list ──────────────────────────────────────
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(6)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.ui)
 
-        q_label_layout = QHBoxLayout()
-        q_label = QLabel("Exam Questions")
-        q_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #1a73e8;")
-        q_label_layout.addWidget(q_label)
-        q_label_layout.addStretch()
+        # Wire up references to widgets inside the loaded UI
+        self.import_q_btn = self.ui.import_q_btn
+        self.tag_filter_list = self.ui.tag_filter_list
+        self.q_list = self.ui.q_list
+        self.title_label = self.ui.title_label
+        self.listen_widget = self.ui.listen_widget
+        self.listen_btn = self.ui.listen_btn
+        self.status_label = self.ui.status_label
+        self.passage_label = self.ui.passage_label
+        self.passage_browser = self.ui.passage_browser
+        self.transcript_label = self.ui.transcript_label
+        self.transcript_browser = self.ui.transcript_browser
+        self.options_scroll = self.ui.options_scroll
+        self.options_container = self.ui.options_container
+        self.options_layout = self.ui.options_layout
 
-        self.import_q_btn = QPushButton()
+        # Setup icons
         self.import_q_btn.setIcon(qta.icon('fa5s.file-import', color='#34a853'))
-        self.import_q_btn.setToolTip("Import Questions from CSV")
-        self.import_q_btn.setFixedSize(28, 28)
-        self.import_q_btn.clicked.connect(self._on_import_questions_clicked)
-        q_label_layout.addWidget(self.import_q_btn)
-
-        left_layout.addLayout(q_label_layout)
-
-        # Tag Filter block
-        filter_label = QLabel("Filter by Tags:")
-        filter_label.setStyleSheet("font-size: 12px; font-weight: bold; color: #5f6368; margin-top: 4px;")
-        left_layout.addWidget(filter_label)
-
-        self.tag_filter_list = QListWidget()
-        self.tag_filter_list.setMaximumHeight(80)
-        self.tag_filter_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #dadce0;
-                border-radius: 6px;
-                background-color: #f8f9fa;
-                padding: 2px;
-            }
-            QListWidget::item {
-                padding: 4px;
-            }
-        """)
-        self.tag_filter_list.itemChanged.connect(self._on_filter_changed)
-        left_layout.addWidget(self.tag_filter_list)
-
-        self.q_list = QListWidget()
-        self.q_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #dadce0;
-                border-radius: 6px;
-                background-color: #ffffff;
-                padding: 5px;
-            }
-            QListWidget::item {
-                padding: 10px;
-                border-bottom: 1px solid #f1f3f4;
-            }
-            QListWidget::item:selected {
-                background-color: #e8f0fe;
-                color: #1a73e8;
-                font-weight: bold;
-                border-radius: 4px;
-            }
-        """)
-        self.q_list.currentItemChanged.connect(self._on_question_selected)
-        left_layout.addWidget(self.q_list)
-
-        main_layout.addWidget(left_panel, stretch=2)
-
-        # ── Right panel: context + options (scrollable) ────────────────────
-        right_outer = QWidget()
-        right_outer_layout = QVBoxLayout(right_outer)
-        right_outer_layout.setContentsMargins(0, 0, 0, 0)
-        right_outer_layout.setSpacing(8)
-
-        self.title_label = QLabel("Select a question to view details")
-        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #3c4043;")
-        self.title_label.setWordWrap(True)
-        right_outer_layout.addWidget(self.title_label)
-
-        # Listening panel
-        self.listen_widget = QWidget()
-        self.listen_widget.setVisible(False)
-        listen_sub = QHBoxLayout(self.listen_widget)
-        listen_sub.setContentsMargins(0, 5, 0, 5)
-
-        self.listen_btn = QPushButton("Listen to this segment")
         self.listen_btn.setIcon(qta.icon('fa5s.play', color='white'))
-        self.listen_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1a73e8; color: white;
-                font-weight: bold; padding: 8px 16px; border-radius: 6px;
-            }
-            QPushButton:hover { background-color: #1558b0; }
-        """)
+
+        # Setup connections
+        self.import_q_btn.clicked.connect(self._on_import_questions_clicked)
+        self.tag_filter_list.itemChanged.connect(self._on_filter_changed)
+        self.q_list.currentItemChanged.connect(self._on_question_selected)
         self.listen_btn.clicked.connect(self._on_listen_clicked)
-        listen_sub.addWidget(self.listen_btn)
-
-        self.status_label = QLabel("")
-        self.status_label.setStyleSheet("color: #5f6368; font-style: italic; font-size: 12px;")
-        listen_sub.addWidget(self.status_label)
-        listen_sub.addStretch()
-        right_outer_layout.addWidget(self.listen_widget)
-
-        # Reading passage context (READING_PASSAGE)
-        self.passage_label = QLabel("Reading Passage")
-        self.passage_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #1a73e8;")
-        self.passage_label.setVisible(False)
-        right_outer_layout.addWidget(self.passage_label)
-
-        self.passage_browser = QTextBrowser()
-        self.passage_browser.setOpenLinks(False)
-        self.passage_browser.setStyleSheet("""
-            QTextBrowser {
-                border: 1px solid #dadce0; border-radius: 6px;
-                background-color: #fffde7; padding: 10px;
-                font-size: 13px; line-height: 1.6;
-            }
-        """)
-        self.passage_browser.setVisible(False)
         self.passage_browser.anchorClicked.connect(self._on_passage_anchor_clicked)
-        right_outer_layout.addWidget(self.passage_browser)
-
-        # Transcript context (AUDIO_SRT)
-        self.transcript_label = QLabel("Transcript Context")
-        self.transcript_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #1a73e8;")
-        self.transcript_label.setVisible(False)
-        right_outer_layout.addWidget(self.transcript_label)
-
-        self.transcript_browser = QTextBrowser()
-        self.transcript_browser.setStyleSheet("""
-            QTextBrowser {
-                border: 1px solid #dadce0; border-radius: 6px;
-                background-color: #ffffff; padding: 10px;
-                font-size: 13px; line-height: 1.5;
-            }
-        """)
-        self.transcript_browser.setVisible(False)
-        right_outer_layout.addWidget(self.transcript_browser)
-
-        # Scrollable area for option widgets
-        self.options_scroll = QScrollArea()
-        self.options_scroll.setWidgetResizable(True)
-        self.options_scroll.setStyleSheet("QScrollArea { border: none; }")
-
-        self.options_container = QWidget()
-        self.options_layout = QVBoxLayout(self.options_container)
-        self.options_layout.setContentsMargins(4, 4, 4, 4)
-        self.options_layout.setSpacing(12)
-        self.options_layout.addStretch()
-        self.options_scroll.setWidget(self.options_container)
-        right_outer_layout.addWidget(self.options_scroll, stretch=1)
-
-        main_layout.addWidget(right_outer, stretch=3)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Public: populate from viewmodel

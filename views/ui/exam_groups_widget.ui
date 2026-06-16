@@ -1,0 +1,377 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ExamGroupsWidget</class>
+ <widget class="QWidget" name="ExamGroupsWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Groups &amp; Questions</string>
+  </property>
+  <layout class="QHBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>15</number>
+   </property>
+   <property name="leftMargin">
+    <number>10</number>
+   </property>
+   <property name="topMargin">
+    <number>10</number>
+   </property>
+   <property name="rightMargin">
+    <number>10</number>
+   </property>
+   <property name="bottomMargin">
+    <number>10</number>
+   </property>
+   <item>
+    <widget class="QWidget" name="left_panel" native="true">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+       <horstretch>2</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <layout class="QVBoxLayout" name="left_layout">
+      <property name="spacing">
+       <number>6</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
+      <item>
+       <layout class="QHBoxLayout" name="q_label_layout">
+        <item>
+         <widget class="QLabel" name="q_label">
+          <property name="styleSheet">
+           <string notr="true">font-size: 16px; font-weight: bold; color: #1a73e8;</string>
+          </property>
+          <property name="text">
+           <string>Exam Questions</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer_left">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="import_q_btn">
+          <property name="minimumSize">
+           <size>
+            <width>28</width>
+            <height>28</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>28</width>
+            <height>28</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Import Questions from CSV</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="filter_label">
+        <property name="styleSheet">
+         <string notr="true">font-size: 12px; font-weight: bold; color: #5f6368; margin-top: 4px;</string>
+        </property>
+        <property name="text">
+         <string>Filter by Tags:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QListWidget" name="tag_filter_list">
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>80</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">
+            QListWidget {
+                border: 1px solid #dadce0;
+                border-radius: 6px;
+                background-color: #f8f9fa;
+                padding: 2px;
+            }
+            QListWidget::item {
+                padding: 4px;
+            }
+        </string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QListWidget" name="q_list">
+        <property name="styleSheet">
+         <string notr="true">
+            QListWidget {
+                border: 1px solid #dadce0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                padding: 5px;
+            }
+            QListWidget::item {
+                padding: 10px;
+                border-bottom: 1px solid #f1f3f4;
+            }
+            QListWidget::item:selected {
+                background-color: #e8f0fe;
+                color: #1a73e8;
+                font-weight: bold;
+                border-radius: 4px;
+            }
+        </string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="right_outer" native="true">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+       <horstretch>3</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <layout class="QVBoxLayout" name="right_outer_layout">
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="title_label">
+        <property name="styleSheet">
+         <string notr="true">font-size: 16px; font-weight: bold; color: #3c4043;</string>
+        </property>
+        <property name="text">
+         <string>Select a question to view details</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QWidget" name="listen_widget" native="true">
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+        <layout class="QHBoxLayout" name="listen_sub">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>5</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>5</number>
+         </property>
+         <item>
+          <widget class="QPushButton" name="listen_btn">
+           <property name="styleSheet">
+            <string notr="true">
+            QPushButton {
+                background-color: #1a73e8; color: white;
+                font-weight: bold; padding: 8px 16px; border-radius: 6px;
+            }
+            QPushButton:hover { background-color: #1558b0; }
+        </string>
+           </property>
+           <property name="text">
+            <string>Listen to this segment</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="status_label">
+           <property name="styleSheet">
+            <string notr="true">color: #5f6368; font-style: italic; font-size: 12px;</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_listen">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="passage_label">
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 14px; font-weight: bold; color: #1a73e8;</string>
+        </property>
+        <property name="text">
+         <string>Reading Passage</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTextBrowser" name="passage_browser">
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">
+            QTextBrowser {
+                border: 1px solid #dadce0; border-radius: 6px;
+                background-color: #fffde7; padding: 10px;
+                font-size: 13px; line-height: 1.6;
+            }
+        </string>
+        </property>
+        <property name="openLinks">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="transcript_label">
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 14px; font-weight: bold; color: #1a73e8;</string>
+        </property>
+        <property name="text">
+         <string>Transcript Context</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTextBrowser" name="transcript_browser">
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">
+            QTextBrowser {
+                border: 1px solid #dadce0; border-radius: 6px;
+                background-color: #ffffff; padding: 10px;
+                font-size: 13px; line-height: 1.5;
+            }
+        </string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QScrollArea" name="options_scroll">
+        <property name="styleSheet">
+         <string notr="true">QScrollArea { border: none; }</string>
+        </property>
+        <property name="widgetResizable">
+         <bool>true</bool>
+        </property>
+        <widget class="QWidget" name="options_container">
+         <property name="geometry">
+          <rect>
+           <x>0</x>
+           <y>0</y>
+           <width>400</width>
+           <height>200</height>
+          </rect>
+         </property>
+         <layout class="QVBoxLayout" name="options_layout">
+          <property name="spacing">
+           <number>12</number>
+          </property>
+          <property name="leftMargin">
+           <number>4</number>
+          </property>
+          <property name="topMargin">
+           <number>4</number>
+          </property>
+          <property name="rightMargin">
+           <number>4</number>
+          </property>
+          <property name="bottomMargin">
+           <number>4</number>
+          </property>
+          <item>
+           <spacer name="verticalSpacer">
+            <property name="orientation">
+             <enum>Qt::Orientation::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
