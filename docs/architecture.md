@@ -10,33 +10,44 @@ Jun Edu is a desktop Anki-style exam management application built with **PySide6
 
 ```
 jun-edu/
-├── mainwindow.py                        # App entry point & navigation controller
+├── main.py                              # App entry point
 ├── pyproject.toml                       # Project metadata
 ├── requirements.txt                     # Python dependencies
 ├── exams.db                             # SQLite database (auto-created)
 ├── .env                                 # Environment variables (TTS_AGENT_URL)
 │
-├── models/                              # Data Layer
-│   ├── database.py                      # SQLAlchemy engine, session, Base
-│   └── exam.py                          # ORM models: Exam, ExamSrtChunk
+├── ui/                                  # Qt Designer UI files
+│   ├── exam_groups_widget.ui
+│   └── exam_transcript_widget.ui
 │
-├── viewmodels/                          # ViewModel Layer (Business Logic)
-│   ├── exam_list_viewmodel.py           # List, search, delete exams
-│   ├── exam_details_viewmodel.py        # Load/save exam + SRT chunk editing
-│   ├── exam_add_external_viewmodel.py   # External API import flow (async)
-│   ├── exam_transcript_viewmodel.py     # SRT chunk operations (used by widget)
-│   └── reminder_viewmodel.py           # Countdown timer + wake-up signal
+├── resources/                           # Application resources (icons, style, etc.)
+│   └── style.qss
 │
-└── views/                               # View Layer (UI only)
-    ├── exam_list_view.py                # Exam list screen
-    ├── exam_details_view.py             # Exam detail screen (tabbed)
-    ├── exam_add_external_view.py        # Add exam from external audio/API
-    ├── ui/
-    │   └── exam_transcript_widget.ui   # Qt Designer UI for transcript panel
-    └── components/
-        ├── exam_form_widget.py          # Exam metadata form widget
-        ├── exam_groups_widget.py        # Groups & Questions placeholder
-        └── exam_transcript_widget.py   # Audio player + SRT chunk table
+└── src/
+    ├── __init__.py
+    ├── models/                          # Data Layer
+    │   ├── __init__.py
+    │   ├── database.py                  # SQLAlchemy engine, session, Base
+    │   └── exam.py                      # ORM models: Exam, ExamSrtChunk
+    │
+    ├── viewmodels/                      # ViewModel Layer (Business Logic)
+    │   ├── __init__.py
+    │   ├── exam_list_viewmodel.py       # List, search, delete exams
+    │   ├── exam_details_viewmodel.py    # Load/save exam + SRT chunk editing
+    │   ├── exam_add_external_viewmodel.py # External API import flow (async)
+    │   ├── exam_transcript_viewmodel.py # SRT chunk operations (used by widget)
+    │   └── reminder_viewmodel.py       # Countdown timer + wake-up signal
+    │
+    └── views/                           # View Layer (UI only)
+        ├── __init__.py
+        ├── main_window.py               # Main app shell & navigation controller
+        ├── exam_list_view.py            # Exam list screen
+        ├── exam_details_view.py         # Exam detail screen (tabbed)
+        ├── exam_add_external_view.py    # Add exam from external audio/API
+        └── components/
+            ├── exam_form_widget.py      # Exam metadata form widget
+            ├── exam_groups_widget.py    # Groups & Questions list
+            └── exam_transcript_widget.py # Audio player + SRT chunk table
 ```
 
 ---

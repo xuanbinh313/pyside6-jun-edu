@@ -1,5 +1,33 @@
 [project]
-name = "PySide Widgets Project"
+name = "JunEdu"
+version = "0.1.0"
+requires-python = ">=3.8"
+description = "Study Tool for Learning Languages"
+authors = [
+    { name = "BinhCoDev", email = "[EMAIL_ADDRESS]" }
+]
 
 [tool.pyside6-project]
-files = ["mainwindow.py", "form.ui"]
+# Cập nhật để PySide6 định vị được toàn bộ file code và file .ui mới
+files = [
+    "main.py",
+    "src/**/*.py",
+    "ui/**/*.ui"
+]
+
+[tool.pyright]
+# Ép Pyright/Pyrefly nhận thư mục gốc làm Import Root thay vì tự đoán là `src`
+include = ["src", "main.py"]
+extraPaths = ["."]
+
+[project.optional-dependencies]
+dev = [
+    "pyside6-tools>=6.0.0",
+    "pyside6-essentials>=6.0.0",
+    "qtkeychain>=20.1.0",
+    "qtawesome>=1.2.0",
+    "qasync>=0.25.0",
+    "colorama>=0.4.6",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
+]

@@ -1,6 +1,6 @@
 from PySide6.QtCore import QObject, Signal
-from models.database import get_session
-from models.exam import Exam
+from src.models.database import get_session
+from src.models.exam import Exam
 
 class ExamListViewModel(QObject):
     data_changed = Signal()

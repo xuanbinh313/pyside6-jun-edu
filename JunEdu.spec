@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['mainwindow.py'],
+    ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets'), ('views', 'views'), ('*.ui', '.')],
+    datas=[('src', 'src'), ('ui', 'ui'), ('resources', 'resources')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

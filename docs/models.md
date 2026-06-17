@@ -1,11 +1,11 @@
 # Models Layer
 
-> **Location:** `models/`  
+> **Location:** `src/models/`  
 > **Tech:** SQLAlchemy ORM · SQLite
 
 ---
 
-## `models/database.py`
+## `src/models/database.py`
 
 Database bootstrap module. Called once at app startup.
 
@@ -20,7 +20,7 @@ Database bootstrap module. Called once at app startup.
 
 **Usage pattern:**
 ```python
-from models.database import get_session
+from src.models.database import get_session
 
 session = get_session()
 try:
@@ -32,7 +32,7 @@ finally:
 
 ---
 
-## `models/exam.py`
+## `src/models/exam.py`
 
 ORM model definitions.
 

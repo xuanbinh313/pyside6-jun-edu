@@ -1,6 +1,6 @@
 # `MainWindow` — Entry Point & Navigation Controller
 
-**File:** [`mainwindow.py`](../mainwindow.py)  
+**File:** [`src/views/main_window.py`](../src/views/main_window.py)  
 **Base class:** `QMainWindow`
 
 `MainWindow` is the application shell. It owns all top-level ViewModels, controls navigation between screens via a `QStackedWidget`, manages the system tray, and wires up the reminder/wake-up flow.
@@ -9,8 +9,10 @@
 
 ## Startup Sequence
 
+The startup sequence is executed from the root [`main.py`](../main.py):
+
 ```python
-# __main__ block
+# main.py entry block
 init_db()              # Create DB tables if missing
 app = QApplication()
 widget = MainWindow()

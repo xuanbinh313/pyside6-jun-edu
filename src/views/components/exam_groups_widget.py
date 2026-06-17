@@ -7,7 +7,9 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QListWidget, QListWidgetItem, QTextBrowser, QScrollArea,
     QMessageBox, QDialog, QFrame, QButtonGroup, QRadioButton,
-    QSizePolicy, QMenu, QCheckBox, QLineEdit, QAbstractItemView
+    QSizePolicy, QMenu, QCheckBox, QLineEdit, QAbstractItemView,
+    QComboBox, QFormLayout, QDialogButtonBox, QTextEdit, QSplitter,
+    QGroupBox
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import QUrl, Qt, QTimer, QPoint, QFile
@@ -15,9 +17,9 @@ from PySide6.QtGui import QColor, QPalette, QCursor
 from PySide6.QtUiTools import QUiLoader
 
 import qtawesome as qta
-from models.database import get_session
-from views.components.import_questions_dialog import ImportQuestionsDialog
-import models.exam as exam_model
+from src.models.database import get_session
+from src.views.components.import_questions_dialog import ImportQuestionsDialog
+import src.models.exam as exam_model
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -281,6 +283,208 @@ class SelectTranscriptDialog(QDialog):
         )
         self.accept()
 
+# ─────────────────────────────────────────────────────────────────────────────
+# EditQuestionDialog — inline editor for a single ExamQuestion
+# ─────────────────────────────────────────────────────────────────────────────
+class EditQuestionDialog(QDialog):
+    """Dialog that allows editing an ExamQuestion's core fields."""
+
+    LETTERS = ["A", "B", "C", "D"]
+
+    def __init__(self, question, parent=None):
+        super().__init__(parent)
+        self.question = question
+        self.setWindowTitle(f"Edit Question {question.question_number}")
+        self.resize(640, 520)
+        self._build_ui()
+        self._populate()
+
+    # ── UI ────────────────────────────────────────────────────────────────────
+    def _build_ui(self):
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f8f9fa;
+            }
+            QLabel {
+                font-size: 12px;
+                color: #3c4043;
+            }
+            QLineEdit, QTextEdit, QComboBox {
+                border: 1px solid #dadce0;
+                border-radius: 6px;
+                padding: 6px 8px;
+                font-size: 12px;
+                background-color: white;
+            }
+            QLineEdit:focus, QTextEdit:focus, QComboBox:focus {
+                border-color: #1a73e8;
+            }
+            QGroupBox {
+                font-weight: bold;
+                font-size: 12px;
+                color: #1a73e8;
+                border: 1px solid #dadce0;
+                border-radius: 8px;
+                margin-top: 8px;
+                padding-top: 8px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 4px;
+            }
+            QPushButton#save_btn {
+                background-color: #1a73e8;
+                color: white;
+                font-weight: bold;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 12px;
+            }
+            QPushButton#save_btn:hover { background-color: #1558b0; }
+            QPushButton#cancel_btn {
+                background-color: white;
+                color: #3c4043;
+                border: 1px solid #dadce0;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 12px;
+            }
+            QPushButton#cancel_btn:hover { background-color: #f1f3f4; }
+        """)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 20, 20, 20)
+        root.setSpacing(14)
+
+        # ── Header ────────────────────────────────────────────────────────────
+        header = QLabel(f"✏️  Editing  Q{self.question.question_number}")
+        header.setStyleSheet("font-size: 15px; font-weight: bold; color: #202124;")
+        root.addWidget(header)
+
+        # ── Meta row (Part + Correct Answer) ──────────────────────────────────
+        meta_group = QGroupBox("Meta")
+        meta_form = QFormLayout(meta_group)
+        meta_form.setSpacing(8)
+
+        self.part_combo = QComboBox()
+        for p in range(1, 8):
+            self.part_combo.addItem(f"Part {p}", p)
+        meta_form.addRow("Part:", self.part_combo)
+
+        self.answer_combo = QComboBox()
+        for letter in self.LETTERS:
+            self.answer_combo.addItem(letter)
+        meta_form.addRow("Correct Answer:", self.answer_combo)
+        root.addWidget(meta_group)
+
+        # ── Content ───────────────────────────────────────────────────────────
+        content_group = QGroupBox("Question Content")
+        cg_layout = QVBoxLayout(content_group)
+        self.content_edit = QTextEdit()
+        self.content_edit.setFixedHeight(80)
+        self.content_edit.setPlaceholderText("Enter question text here…")
+        cg_layout.addWidget(self.content_edit)
+        root.addWidget(content_group)
+
+        # ── Options A–D ───────────────────────────────────────────────────────
+        opts_group = QGroupBox("Options (A / B / C / D)")
+        opts_form = QFormLayout(opts_group)
+        opts_form.setSpacing(8)
+
+        self.option_edits = []
+        for letter in self.LETTERS:
+            edit = QLineEdit()
+            edit.setPlaceholderText(f"Option {letter}…")
+            opts_form.addRow(f"{letter}:", edit)
+            self.option_edits.append(edit)
+        root.addWidget(opts_group)
+
+        # ── Buttons ───────────────────────────────────────────────────────────
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("cancel_btn")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+
+        save_btn = QPushButton("💾  Save Changes")
+        save_btn.setObjectName("save_btn")
+        save_btn.clicked.connect(self._on_save)
+        btn_row.addWidget(save_btn)
+
+        root.addLayout(btn_row)
+
+    def _populate(self):
+        """Pre-fill form fields from the existing question."""
+        q = self.question
+
+        # Part
+        idx = self.part_combo.findData(q.part)
+        if idx >= 0:
+            self.part_combo.setCurrentIndex(idx)
+
+        # Correct answer
+        ans_idx = self.answer_combo.findText(q.correct_answer or "A")
+        if ans_idx >= 0:
+            self.answer_combo.setCurrentIndex(ans_idx)
+
+        # Content
+        self.content_edit.setPlainText(q.content or "")
+
+        # Options
+        try:
+            opts = json.loads(q.options) if isinstance(q.options, str) else (q.options or [])
+        except Exception:
+            opts = []
+        for i, edit in enumerate(self.option_edits):
+            edit.setText(opts[i] if i < len(opts) else "")
+
+    # ── Save ──────────────────────────────────────────────────────────────────
+    def _on_save(self):
+        content = self.content_edit.toPlainText().strip()
+        if not content:
+            QMessageBox.warning(self, "Validation", "Question content cannot be empty.")
+            return
+
+        options = [edit.text().strip() for edit in self.option_edits]
+        if any(o == "" for o in options):
+            QMessageBox.warning(self, "Validation", "All four options (A–D) must be filled in.")
+            return
+
+        session = get_session()
+        try:
+            db_q = session.query(exam_model.ExamQuestion).filter(
+                exam_model.ExamQuestion.id == self.question.id
+            ).first()
+            if not db_q:
+                QMessageBox.critical(self, "Error", "Question not found in database.")
+                return
+
+            db_q.part = self.part_combo.currentData()
+            db_q.correct_answer = self.answer_combo.currentText()
+            db_q.content = content
+            db_q.options = options
+            session.commit()
+
+            # Reflect changes back onto the in-memory object so the caller
+            # can refresh the list item without a full reload.
+            self.question.part = db_q.part
+            self.question.correct_answer = db_q.correct_answer
+            self.question.content = db_q.content
+            self.question.options = options
+
+        except Exception as exc:
+            session.rollback()
+            QMessageBox.critical(self, "Error Saving", f"Could not save changes:\n{exc}")
+            return
+        finally:
+            session.close()
+
+        self.accept()
+
+
 class OptionWidget(QWidget):
     """
     Renders shuffled multiple-choice options for one ExamQuestion.
@@ -494,7 +698,7 @@ class ExamGroupsWidget(QWidget):
     # ─────────────────────────────────────────────────────────────────────────
     def setup_ui(self):
         loader = QUiLoader()
-        ui_file_path = os.path.join(os.path.dirname(__file__), "../ui/exam_groups_widget.ui")
+        ui_file_path = os.path.join(os.path.dirname(__file__), "../../../ui/exam_groups_widget.ui")
         ui_file = QFile(ui_file_path)
         ui_file.open(QFile.ReadOnly)
         self.ui = loader.load(ui_file, self)
@@ -530,6 +734,13 @@ class ExamGroupsWidget(QWidget):
         self.q_list.currentItemChanged.connect(self._on_question_selected)
         self.listen_btn.clicked.connect(self._on_listen_clicked)
         self.passage_browser.anchorClicked.connect(self._on_passage_anchor_clicked)
+
+        # Allow Ctrl/Shift multi-select so users can bulk-delete
+        self.q_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        # Right-click context menu on the question list
+        self.q_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.q_list.customContextMenuRequested.connect(self._on_q_list_context_menu)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Public: populate from viewmodel
@@ -644,7 +855,12 @@ class ExamGroupsWidget(QWidget):
         # Scroll to the selected question
         if q.question_number in self._question_widgets:
             target = self._question_widgets[q.question_number]
-            QTimer.singleShot(50, lambda: self.options_scroll.ensureWidgetVisible(target))
+            def _safe_scroll(w=target):
+                try:
+                    self.options_scroll.ensureWidgetVisible(w)
+                except RuntimeError:
+                    pass  # C++ object already deleted – ignore
+            QTimer.singleShot(50, _safe_scroll)
 
     def _on_listen_clicked(self):
         item = self.q_list.currentItem()
@@ -683,39 +899,203 @@ class ExamGroupsWidget(QWidget):
             menu.addAction(f"Question {q_num} not in current view")
             menu.exec(QCursor.pos())
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Edit / Delete question
+    # ─────────────────────────────────────────────────────────────────────────
+    def _on_q_list_context_menu(self, pos: QPoint):
+        """Show Edit / Delete context menu for the right-clicked list item."""
+        clicked_item = self.q_list.itemAt(pos)
+        if not clicked_item:
+            return
+
+        # Make sure the clicked item is part of the selection; if the user
+        # right-clicked on an unselected item select only that one.
+        selected_items = self.q_list.selectedItems()
+        if clicked_item not in selected_items:
+            self.q_list.clearSelection()
+            clicked_item.setSelected(True)
+            selected_items = [clicked_item]
+
+        n = len(selected_items)
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #dadce0;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 8px 20px;
+                font-size: 12px;
+                color: #202124;
+            }
+            QMenu::item:selected {
+                background-color: #e8f0fe;
+                color: #1a73e8;
+                border-radius: 4px;
+            }
+            QMenu::separator { height: 1px; background: #dadce0; margin: 4px 8px; }
+        """)
+
+        # Edit is only available when exactly one question is selected
+        edit_action = None
+        if n == 1:
+            edit_action = menu.addAction(qta.icon('fa5s.edit', color='#1a73e8'), "Edit Question")
+            menu.addSeparator()
+
+        delete_label = f"Delete {n} Questions" if n > 1 else "Delete Question"
+        delete_action = menu.addAction(qta.icon('fa5s.trash-alt', color='#ea4335'), delete_label)
+
+        action = menu.exec(self.q_list.viewport().mapToGlobal(pos))
+
+        if edit_action and action == edit_action:
+            self._on_edit_question(clicked_item)
+        elif action == delete_action:
+            self._on_delete_questions(selected_items)
+
+    def _on_edit_question(self, item: QListWidgetItem):
+        """Open EditQuestionDialog for the given list item."""
+        q = item.data(Qt.UserRole)
+        dialog = EditQuestionDialog(q, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        # Update list item label to reflect new content
+        updated_q = dialog.question
+        label = (
+            f"Q{updated_q.question_number}  [Part {updated_q.part}]  "
+            f"{updated_q.content[:60]}…"
+            if len(updated_q.content) > 60
+            else f"Q{updated_q.question_number}  [Part {updated_q.part}]  {updated_q.content}"
+        )
+        item.setText(label)
+        item.setData(Qt.UserRole, updated_q)
+
+        # If this item is currently selected, refresh the detail panel
+        if self.q_list.currentItem() is item:
+            self._on_question_selected(item, None)
+
+        QMessageBox.information(self, "Saved", "Question updated successfully.")
+
+    def _on_delete_questions(self, items: list):
+        """Confirm and permanently delete one or more questions from the database."""
+        n = len(items)
+        if n == 1:
+            q = items[0].data(Qt.UserRole)
+            msg = (
+                f"Are you sure you want to permanently delete Q{q.question_number}?\n"
+                "This action cannot be undone."
+            )
+        else:
+            nums = ", ".join(
+                f"Q{it.data(Qt.UserRole).question_number}" for it in items
+            )
+            msg = (
+                f"Are you sure you want to permanently delete {n} questions?\n"
+                f"{nums}\n\nThis action cannot be undone."
+            )
+
+        reply = QMessageBox.question(
+            self,
+            "Delete Question" if n == 1 else f"Delete {n} Questions",
+            msg,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        ids_to_delete = [it.data(Qt.UserRole).id for it in items]
+
+        session = get_session()
+        try:
+            session.query(exam_model.ExamQuestion).filter(
+                exam_model.ExamQuestion.id.in_(ids_to_delete)
+            ).delete(synchronize_session="fetch")
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            QMessageBox.critical(self, "Error", f"Could not delete questions:\n{exc}")
+            return
+        finally:
+            session.close()
+
+        # Remove all deleted items from the list (iterate in reverse to keep indices stable)
+        self.q_list.blockSignals(True)
+        for item in items:
+            row = self.q_list.row(item)
+            self.q_list.takeItem(row)
+        self.q_list.blockSignals(False)
+
+        # Clear detail panel if nothing is selected anymore
+        if self.q_list.currentItem() is None:
+            self._clear_options()
+            self.title_label.setText("Select a question to view details")
+            self.listen_widget.setVisible(False)
+            self.passage_label.setVisible(False)
+            self.passage_browser.setVisible(False)
+            self.transcript_label.setVisible(False)
+            self.transcript_browser.setVisible(False)
+
     def _on_import_questions_clicked(self):
         dialog = ImportQuestionsDialog(self)
         if dialog.exec() != QDialog.Accepted:
             return
 
-        questions_data = dialog.result_questions
+        contexts_data = dialog.result_contexts   # list[dict] with 'llm_id' key
+        questions_data = dialog.result_questions  # list[dict] with 'llm_context_id' key
         if not questions_data:
             return
 
         session = get_session()
         try:
+            # ── Step 1: Insert ExamContext rows & build llm_id → real DB uuid map ──
+            llm_to_real_id: dict[str, str] = {}
+            for ctx_data in contexts_data:
+                llm_id = ctx_data.get("llm_id", "")
+                new_ctx = exam_model.ExamContext(
+                    exam_id=self.viewmodel.exam_id,
+                    context_type=ctx_data.get("context_type", "READING_PASSAGE"),
+                    content=ctx_data.get("content", {}),
+                    index=ctx_data.get("index", 0),
+                )
+                session.add(new_ctx)
+                session.flush()  # populate new_ctx.id without full commit
+                if llm_id:
+                    llm_to_real_id[llm_id] = new_ctx.id
+
+            # ── Step 2: Insert ExamQuestion rows with resolved context_id ──────────
             for idx, q_data in enumerate(questions_data):
-                meta = {
-                    "audio_start": q_data.get("audio_start", 0.0),
-                    "audio_end":   q_data.get("audio_end",   0.0),
+                # Resolve the LLM's temporary context reference to the real DB uuid
+                llm_ctx_id = q_data.get("llm_context_id")
+                real_ctx_id = llm_to_real_id.get(llm_ctx_id) if llm_ctx_id else None
+
+                # additional_meta is already a dict from the parser
+                additional_meta = q_data.get("additional_meta") or {
+                    "audio_start": 0.0,
+                    "audio_end":   0.0,
                 }
+
                 new_q = exam_model.ExamQuestion(
                     exam_id=self.viewmodel.exam_id,
-                    context_id=q_data.get("context_id") or None,
+                    context_id=real_ctx_id,
                     part=int(q_data.get("part", 1)),
                     question_number=int(q_data.get("question_number", idx + 1)),
                     question_type=q_data.get("question_type", "MULTIPLE_CHOICE"),
                     content=q_data["content"],
                     options=q_data["options"],
-                    correct_answer=q_data["correct_answer"],
-                    additional_meta=meta,
+                    correct_answer=q_data.get("correct_answer", ""),
+                    additional_meta=additional_meta,
                 )
                 session.add(new_q)
 
             session.commit()
+            n_ctx = len(contexts_data)
+            n_q   = len(questions_data)
             QMessageBox.information(
-                self, "Success",
-                f"Successfully imported {len(questions_data)} questions!"
+                self, "Import Successful",
+                f"Imported {n_ctx} context(s) and {n_q} question(s) successfully!"
             )
             self.viewmodel.load_exam()
             self.populate()
@@ -723,8 +1103,8 @@ class ExamGroupsWidget(QWidget):
         except Exception as exc:
             session.rollback()
             QMessageBox.critical(
-                self, "Error Saving Questions",
-                f"Could not save questions to database.\nDetails: {exc}"
+                self, "Error Saving Import",
+                f"Could not save to database.\nDetails: {exc}"
             )
         finally:
             session.close()
@@ -737,7 +1117,10 @@ class ExamGroupsWidget(QWidget):
         Parse READING_PASSAGE content and render double-bracket placeholders
         [[131]] → clickable anchor tags, per spec §4.
         """
-        raw = ctx.content if isinstance(ctx.content, str) else json.dumps(ctx.content)
+        if isinstance(ctx.content, dict):
+            raw = ctx.content.get("text", "")
+        else:
+            raw = str(ctx.content or "")
 
         def replace_placeholder(m):
             num = m.group(1)

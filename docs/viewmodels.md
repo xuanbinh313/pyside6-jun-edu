@@ -1,6 +1,6 @@
 # ViewModels Layer
 
-> **Location:** `viewmodels/`  
+> **Location:** `src/viewmodels/`  
 > **Base class:** `PySide6.QtCore.QObject`  
 > **Pattern:** All state-bearing ViewModels extend `QObject` and communicate with Views via Qt Signals.
 
@@ -8,7 +8,7 @@
 
 ## `ExamListViewModel`
 
-**File:** [`viewmodels/exam_list_viewmodel.py`](../viewmodels/exam_list_viewmodel.py)
+**File:** [`src/viewmodels/exam_list_viewmodel.py`](../src/viewmodels/exam_list_viewmodel.py)
 
 Manages the list of exams with real-time search filtering and deletion.
 
@@ -37,7 +37,7 @@ Manages the list of exams with real-time search filtering and deletion.
 
 ## `ExamDetailsViewModel`
 
-**File:** [`viewmodels/exam_details_viewmodel.py`](../viewmodels/exam_details_viewmodel.py)
+**File:** [`src/viewmodels/exam_details_viewmodel.py`](../src/viewmodels/exam_details_viewmodel.py)
 
 Manages a single exam's metadata and its SRT chunk list. Used by both **new exam creation** (no `exam_id`) and **editing** (existing `exam_id`).
 
@@ -72,7 +72,7 @@ Manages a single exam's metadata and its SRT chunk list. Used by both **new exam
 
 ## `ExamAddExternalViewModel`
 
-**File:** [`viewmodels/exam_add_external_viewmodel.py`](../viewmodels/exam_add_external_viewmodel.py)
+**File:** [`src/viewmodels/exam_add_external_viewmodel.py`](../src/viewmodels/exam_add_external_viewmodel.py)
 
 Handles the two-phase async workflow for importing an exam from an external audio file:
 
@@ -139,7 +139,7 @@ Emits `progress(str)`, `finished(dict)`, or `error(str)`.
 
 ## `ExamTranscriptViewModel`
 
-**File:** [`viewmodels/exam_transcript_viewmodel.py`](../viewmodels/exam_transcript_viewmodel.py)
+**File:** [`src/viewmodels/exam_transcript_viewmodel.py`](../src/viewmodels/exam_transcript_viewmodel.py)
 
 A lightweight ViewModel (no `QObject`, no Signals) used directly by `ExamTranscriptWidget` for in-memory chunk manipulation.
 
@@ -165,7 +165,7 @@ A lightweight ViewModel (no `QObject`, no Signals) used directly by `ExamTranscr
 
 ## `ReminderViewModel`
 
-**File:** [`viewmodels/reminder_viewmodel.py`](../viewmodels/reminder_viewmodel.py)
+**File:** [`src/viewmodels/reminder_viewmodel.py`](../src/viewmodels/reminder_viewmodel.py)
 
 Manages a single countdown timer that fires a study reminder when it expires.
 

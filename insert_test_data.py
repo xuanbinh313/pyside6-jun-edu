@@ -1,6 +1,6 @@
 import json
-from models.database import engine, Base, get_session
-from models.exam import Exam, ExamQuestion, ExamContext, ExamSrtChunk
+from src.models.database import engine, Base, get_session
+from src.models.exam import Exam, ExamQuestion, ExamContext, ExamSrtChunk
 
 # 1. Drop existing tables that are being modified/created
 print("Dropping old tables...")

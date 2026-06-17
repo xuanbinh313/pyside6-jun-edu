@@ -6,16 +6,16 @@ import qtawesome as qta
 
 # Add current directory to path if needed, but normally running from jun-edu is fine.
 import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from views.exam_list_view import ExamListView
-from views.exam_details_view import ExamDetailsView
-from views.exam_add_external_view import ExamAddExternalView
-from viewmodels.exam_list_viewmodel import ExamListViewModel
-from viewmodels.exam_details_viewmodel import ExamDetailsViewModel
-from viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
-from viewmodels.reminder_viewmodel import ReminderViewModel
-from models.database import init_db
+from src.views.exam_list_view import ExamListView
+from src.views.exam_details_view import ExamDetailsView
+from src.views.exam_add_external_view import ExamAddExternalView
+from src.viewmodels.exam_list_viewmodel import ExamListViewModel
+from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
+from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
+from src.viewmodels.reminder_viewmodel import ReminderViewModel
+from src.models.database import init_db
 
 class MainWindow(QMainWindow):
     def __init__(self, parent=None):

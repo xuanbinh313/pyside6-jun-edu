@@ -9,7 +9,7 @@
 | File | Description |
 |---|---|
 | [architecture.md](./architecture.md) | High-level MVVM overview, project structure, navigation, and tray/reminder flow |
-| [mainwindow.md](./mainwindow.md) | `MainWindow` — entry point, navigation controller, system tray, close behavior |
+| [main_window.md](./main_window.md) | `MainWindow` — entry point, navigation controller, system tray, close behavior |
 | [models.md](./models.md) | `Exam` and `ExamSrtChunk` ORM models, database bootstrap |
 | [viewmodels.md](./viewmodels.md) | All 4 ViewModels — signals, state, methods |
 | [views.md](./views.md) | All Views and component Widgets — UI elements, signal bindings, widget behavior |
@@ -20,7 +20,7 @@
 
 ```bash
 pip install -r requirements.txt
-python mainwindow.py
+python main.py
 ```
 
 Copy `.env.example` (or create `.env`) and set:

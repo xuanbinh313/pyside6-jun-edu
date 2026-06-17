@@ -1,13 +1,13 @@
 # Views Layer
 
-> **Location:** `views/`  
+> **Location:** `src/views/`  
 > **Pattern:** Views receive a ViewModel reference at construction time. They connect to ViewModel signals in `__init__` and never directly touch the database.
 
 ---
 
 ## `ExamListView`
 
-**File:** [`views/exam_list_view.py`](../views/exam_list_view.py)  
+**File:** [`src/views/exam_list_view.py`](../src/views/exam_list_view.py)  
 **ViewModel:** `ExamListViewModel`
 
 The home screen. Displays all exams in a table with search, add, and per-row edit/delete actions.
@@ -43,7 +43,7 @@ ExamListView(viewmodel: ExamListViewModel, navigate_to_details_callback: Callabl
 
 ## `ExamDetailsView`
 
-**File:** [`views/exam_details_view.py`](../views/exam_details_view.py)  
+**File:** [`src/views/exam_details_view.py`](../src/views/exam_details_view.py)  
 **ViewModel:** `ExamDetailsViewModel`
 
 A tabbed detail screen for a single exam. Hosts three sub-widgets as tabs.
@@ -74,7 +74,7 @@ Immediately calls `viewmodel.load_exam()` on construction.
 
 ## `ExamAddExternalView`
 
-**File:** [`views/exam_add_external_view.py`](../views/exam_add_external_view.py)  
+**File:** [`src/views/exam_add_external_view.py`](../src/views/exam_add_external_view.py)  
 **ViewModel:** `ExamAddExternalViewModel`
 
 Screen for importing an exam from an external audio file via the TTS API.
@@ -125,7 +125,7 @@ current_task_id set → pick_btn disabled (audio locked)
 
 ### `ExamFormWidget`
 
-**File:** [`views/components/exam_form_widget.py`](../views/components/exam_form_widget.py)
+**File:** [`src/views/components/exam_form_widget.py`](../src/views/components/exam_form_widget.py)
 
 Form for editing exam metadata. Used as a tab inside `ExamDetailsView`.
 
@@ -160,7 +160,7 @@ Expected header row + data rows: `index,start,end,text[,...]`
 
 ### `ExamGroupsWidget`
 
-**File:** [`views/components/exam_groups_widget.py`](../views/components/exam_groups_widget.py)
+**File:** [`src/views/components/exam_groups_widget.py`](../src/views/components/exam_groups_widget.py)
 
 Placeholder tab — displays a single "not yet implemented" label. Accepts a `viewmodel` reference but does not use it.
 
@@ -168,7 +168,7 @@ Placeholder tab — displays a single "not yet implemented" label. Accepts a `vi
 
 ### `ExamTranscriptWidget`
 
-**File:** [`views/components/exam_transcript_widget.py`](../views/components/exam_transcript_widget.py)
+**File:** [`src/views/components/exam_transcript_widget.py`](../src/views/components/exam_transcript_widget.py)
 
 The most complex component. A full-featured audio player and SRT chunk editor.
 
@@ -186,7 +186,7 @@ Inline `±0.1s` spinner for precise timestamp editing.
 
 #### UI Loading
 
-Layout loaded from [`views/ui/exam_transcript_widget.ui`](../views/ui/exam_transcript_widget.ui) via `QUiLoader`.
+Layout loaded from [`ui/exam_transcript_widget.ui`](../ui/exam_transcript_widget.ui) via `QUiLoader`.
 
 Named widgets from `.ui` file:
 

@@ -1,5 +1,5 @@
-from models.database import get_session
-from models.exam import ExamSrtChunk
+from src.models.database import get_session
+from src.models.exam import ExamSrtChunk
 
 class ExamTranscriptViewModel:
     def __init__(self, exam=None):

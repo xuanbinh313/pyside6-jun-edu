@@ -75,7 +75,7 @@ class ExamTranscriptWidget(QWidget):
         
     def setup_ui(self):
         loader = QUiLoader()
-        ui_file_path = os.path.join(os.path.dirname(__file__), "../ui/exam_transcript_widget.ui")
+        ui_file_path = os.path.join(os.path.dirname(__file__), "../../../ui/exam_transcript_widget.ui")
         ui_file = QFile(ui_file_path)
         ui_file.open(QFile.ReadOnly)
         self.ui = loader.load(ui_file, self)

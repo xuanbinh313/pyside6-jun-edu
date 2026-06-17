@@ -6,8 +6,8 @@ import tempfile
 import time as time_module
 from PySide6.QtCore import QObject, Signal, QThread
 from dotenv import load_dotenv
-from models.database import get_session
-from models.exam import Exam, ExamSrtChunk
+from src.models.database import get_session
+from src.models.exam import Exam, ExamSrtChunk
 
 load_dotenv()
 TTS_AGENT_URL = os.getenv("TTS_AGENT_URL", "https://api.jun-edu.shop")
