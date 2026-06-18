@@ -4,7 +4,6 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QTextEdit, QMessageBox, QApplication, QFrame
 )
-from PySide6.QtCore import Qt
 
 
 class ImportQuestionsDialog(QDialog):

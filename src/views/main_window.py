@@ -1,21 +1,24 @@
-import sys
-from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QSystemTrayIcon, QMenu, QInputDialog, QMessageBox
-from PySide6.QtGui import QAction
-from PySide6.QtCore import Qt
-import qtawesome as qta
-
 # Add current directory to path if needed, but normally running from jun-edu is fine.
 import os
+import sys
+
+import qtawesome as qta
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (QApplication, QInputDialog, QMainWindow, QMenu,
+                               QMessageBox, QStackedWidget, QSystemTrayIcon)
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.views.exam_list_view import ExamListView
-from src.views.exam_details_view import ExamDetailsView
-from src.views.exam_add_external_view import ExamAddExternalView
-from src.viewmodels.exam_list_viewmodel import ExamListViewModel
-from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
-from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
-from src.viewmodels.reminder_viewmodel import ReminderViewModel
 from src.models.database import init_db
+from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
+from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
+from src.viewmodels.exam_list_viewmodel import ExamListViewModel
+from src.viewmodels.reminder_viewmodel import ReminderViewModel
+from src.views.exam_add_external_view import ExamAddExternalView
+from src.views.exam_details_view import ExamDetailsView
+from src.views.exam_list_view import ExamListView
+
 
 class MainWindow(QMainWindow):
     def __init__(self, parent=None):
@@ -119,7 +122,7 @@ class MainWindow(QMainWindow):
             msg_box.setIcon(QMessageBox.Icon.Question)
 
             btn_tray = msg_box.addButton("Chạy ngầm (System Tray)", QMessageBox.ButtonRole.AcceptRole)
-            btn_exit = msg_box.addButton("Thoát hoàn toàn", QMessageBox.ButtonRole.RejectRole)
+            msg_box.addButton("Thoát hoàn toàn", QMessageBox.ButtonRole.RejectRole)
             msg_box.setDefaultButton(btn_tray)
             msg_box.exec()
 

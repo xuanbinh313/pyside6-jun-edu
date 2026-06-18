@@ -1,5 +1,4 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QLabel
-from PySide6.QtCore import Qt
 
 class ExamListView(QWidget):
     def __init__(self, viewmodel, navigate_to_details_callback):

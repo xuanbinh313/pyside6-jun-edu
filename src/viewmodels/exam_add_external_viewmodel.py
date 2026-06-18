@@ -1,7 +1,6 @@
 import os
 import time
 import requests
-import json
 import tempfile
 import time as time_module
 from PySide6.QtCore import QObject, Signal, QThread
