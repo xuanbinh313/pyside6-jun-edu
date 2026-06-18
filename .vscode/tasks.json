@@ -5,7 +5,7 @@
             "label": "Compile UI",
             "type": "shell",
             // Dùng đường dẫn tuyệt đối đến .venv thay vì gọi lệnh 'python'
-            "command": "${workspaceFolder}/.venv/Scripts/pyside6-uic.exe ${file} -o ${workspaceFolder}/src/views/ui_${fileBasenameNoExtension}.py",
+            "command": "${workspaceFolder}/.venv/Scripts/pyside6-uic.exe ${file} -o ${workspaceFolder}/src/views/components/ui_${fileBasenameNoExtension}.py",
             "options": {
                 "cwd": "${workspaceFolder}"
             },

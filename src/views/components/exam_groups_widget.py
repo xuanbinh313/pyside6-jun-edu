@@ -516,7 +516,7 @@ class OptionWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 4)
         layout.setSpacing(4)
 
-        # Header layout for question stem and tag button
+        # Header layout for question stem and action buttons
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -526,12 +526,7 @@ class OptionWidget(QWidget):
         stem.setStyleSheet("font-size: 13px; color: #202124; padding: 4px 0;")
         header_layout.addWidget(stem, stretch=1)
 
-        # Bookmark/Tag button
-        self.tag_btn = QPushButton()
-        self.tag_btn.setIcon(qta.icon('fa5s.tags', color='#5f6368'))
-        self.tag_btn.setToolTip("Manage tags for this question")
-        self.tag_btn.setFixedSize(24, 24)
-        self.tag_btn.setStyleSheet("""
+        _icon_btn_style = """
             QPushButton {
                 border: none;
                 background-color: transparent;
@@ -540,7 +535,23 @@ class OptionWidget(QWidget):
                 background-color: #f1f3f4;
                 border-radius: 12px;
             }
-        """)
+        """
+
+        # Edit question button (before tag_btn)
+        self.edit_q_btn = QPushButton()
+        self.edit_q_btn.setIcon(qta.icon('fa5s.edit', color='#1a73e8'))
+        self.edit_q_btn.setToolTip("Edit this question")
+        self.edit_q_btn.setFixedSize(24, 24)
+        self.edit_q_btn.setStyleSheet(_icon_btn_style)
+        self.edit_q_btn.clicked.connect(self._on_edit_question)
+        header_layout.addWidget(self.edit_q_btn)
+
+        # Bookmark/Tag button
+        self.tag_btn = QPushButton()
+        self.tag_btn.setIcon(qta.icon('fa5s.tags', color='#5f6368'))
+        self.tag_btn.setToolTip("Manage tags for this question")
+        self.tag_btn.setFixedSize(24, 24)
+        self.tag_btn.setStyleSheet(_icon_btn_style)
         self.tag_btn.clicked.connect(self._show_tag_menu)
         header_layout.addWidget(self.tag_btn)
 
@@ -549,20 +560,13 @@ class OptionWidget(QWidget):
         self.select_audio_btn.setIcon(qta.icon('fa5s.music', color='#5f6368'))
         self.select_audio_btn.setToolTip("Select audio segment from transcript")
         self.select_audio_btn.setFixedSize(24, 24)
-        self.select_audio_btn.setStyleSheet("""
-            QPushButton {
-                border: none;
-                background-color: transparent;
-            }
-            QPushButton:hover {
-                background-color: #f1f3f4;
-                border-radius: 12px;
-            }
-        """)
+        self.select_audio_btn.setStyleSheet(_icon_btn_style)
         self.select_audio_btn.clicked.connect(self._on_select_audio_segment)
         header_layout.addWidget(self.select_audio_btn)
 
+        self.play_audio_btn = None
         layout.addLayout(header_layout)
+        self.update_audio_ui()
 
         # Prepare options
         try:
@@ -635,6 +639,76 @@ class OptionWidget(QWidget):
             self._result_label.setText(f"❌ Wrong. Correct answer: {self.display_correct_letter}")
             self._result_label.setStyleSheet("color: #ea4335; font-weight: bold; font-size: 12px;")
 
+    def update_audio_ui(self):
+        # Remove old play button if it exists
+        if hasattr(self, 'play_audio_btn') and self.play_audio_btn is not None:
+            try:
+                self.play_audio_btn.deleteLater()
+            except RuntimeError:
+                pass
+            self.play_audio_btn = None
+        
+        # Build play button if it has audio segment
+        audio_start, audio_end = _get_audio_meta(self.question)
+        if audio_end > 0.0:
+            header_layout = self.layout().itemAt(0).layout()
+            if header_layout:
+                self.play_audio_btn = QPushButton()
+                self.play_audio_btn.setIcon(qta.icon('fa5s.play', color='#34a853'))
+                self.play_audio_btn.setToolTip(f"Play segment: {audio_start:.2f}s – {audio_end:.2f}s")
+                self.play_audio_btn.setFixedSize(24, 24)
+                
+                _icon_btn_style = """
+                    QPushButton {
+                        border: none;
+                        background-color: transparent;
+                    }
+                    QPushButton:hover {
+                        background-color: #f1f3f4;
+                        border-radius: 12px;
+                    }
+                """
+                self.play_audio_btn.setStyleSheet(_icon_btn_style)
+                self.play_audio_btn.clicked.connect(self._on_play_audio)
+                
+                # Insert it before select_audio_btn
+                idx = header_layout.indexOf(self.select_audio_btn)
+                header_layout.insertWidget(idx, self.play_audio_btn)
+
+    def _on_play_audio(self):
+        # Find parent ExamGroupsWidget
+        parent_widget = self.parent()
+        while parent_widget:
+            if hasattr(parent_widget, 'player') and hasattr(parent_widget, 'audio_output'):
+                # Set player position and play
+                audio_start, audio_end = _get_audio_meta(self.question)
+                parent_widget._audio_end_ms = int(audio_end * 1000)
+                parent_widget.player.setPosition(int(audio_start * 1000))
+                parent_widget.player.play()
+                break
+            parent_widget = parent_widget.parent()
+
+    def _on_edit_question(self):
+        dialog = EditQuestionDialog(self.question, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        # Refresh the stem label with updated content
+        updated_q = dialog.question
+        self.question = updated_q
+        # Find the stem label (first widget in the header layout)
+        header_layout = self.layout().itemAt(0).layout()
+        if header_layout:
+            stem_item = header_layout.itemAt(0)
+            if stem_item and stem_item.widget():
+                stem_item.widget().setText(f"<b>Q{updated_q.question_number}.</b> {updated_q.content}")
+        # Notify parent to refresh list item label
+        parent_widget = self.parent()
+        while parent_widget:
+            if hasattr(parent_widget, 'on_question_edited'):
+                parent_widget.on_question_edited(updated_q)
+                break
+            parent_widget = parent_widget.parent()
+
     def _show_tag_menu(self):
         popup = TagMenuPopup(self.question, self)
         pos = self.tag_btn.mapToGlobal(QPoint(0, self.tag_btn.height()))
@@ -675,6 +749,105 @@ class OptionWidget(QWidget):
                 parent_widget = parent_widget.parent()
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EditContextDialog — inline editor for an ExamContext (READING_PASSAGE)
+# ─────────────────────────────────────────────────────────────────────────────
+class EditContextDialog(QDialog):
+    """Simple editor for an ExamContext's text content."""
+
+    def __init__(self, context, parent=None):
+        super().__init__(parent)
+        self.context = context
+        self.setWindowTitle("Edit Context")
+        self.resize(640, 420)
+        self._build_ui()
+        self._populate()
+
+    def _build_ui(self):
+        self.setStyleSheet("""
+            QDialog { background-color: #f8f9fa; }
+            QLabel { font-size: 12px; color: #3c4043; }
+            QTextEdit {
+                border: 1px solid #dadce0; border-radius: 6px;
+                padding: 6px 8px; font-size: 12px; background-color: white;
+            }
+            QTextEdit:focus { border-color: #1a73e8; }
+            QPushButton#save_btn {
+                background-color: #1a73e8; color: white; font-weight: bold;
+                border-radius: 6px; padding: 8px 20px; font-size: 12px;
+            }
+            QPushButton#save_btn:hover { background-color: #1558b0; }
+            QPushButton#cancel_btn {
+                background-color: white; color: #3c4043;
+                border: 1px solid #dadce0; border-radius: 6px;
+                padding: 8px 20px; font-size: 12px;
+            }
+            QPushButton#cancel_btn:hover { background-color: #f1f3f4; }
+        """)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 20, 20, 20)
+        root.setSpacing(12)
+
+        header = QLabel(f"✏️  Editing Context  [{self.context.context_type}]")
+        header.setStyleSheet("font-size: 15px; font-weight: bold; color: #202124;")
+        root.addWidget(header)
+
+        desc = QLabel("Content (text field for READING_PASSAGE; raw JSON for other types):")
+        root.addWidget(desc)
+
+        self.content_edit = QTextEdit()
+        self.content_edit.setPlaceholderText("Context content…")
+        root.addWidget(self.content_edit)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("cancel_btn")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+        save_btn = QPushButton("💾  Save")
+        save_btn.setObjectName("save_btn")
+        save_btn.clicked.connect(self._on_save)
+        btn_row.addWidget(save_btn)
+        root.addLayout(btn_row)
+
+    def _populate(self):
+        content = self.context.content
+        if isinstance(content, dict):
+            self.content_edit.setPlainText(content.get("text", ""))
+        else:
+            self.content_edit.setPlainText(str(content or ""))
+
+    def _on_save(self):
+        raw = self.content_edit.toPlainText().strip()
+        if not raw:
+            QMessageBox.warning(self, "Validation", "Content cannot be empty.")
+            return
+        session = get_session()
+        try:
+            db_ctx = session.query(exam_model.ExamContext).filter(
+                exam_model.ExamContext.id == self.context.id
+            ).first()
+            if not db_ctx:
+                QMessageBox.critical(self, "Error", "Context not found in database.")
+                return
+            if isinstance(db_ctx.content, dict):
+                new_content = dict(db_ctx.content)
+                new_content["text"] = raw
+            else:
+                new_content = {"text": raw}
+            db_ctx.content = new_content
+            session.commit()
+            self.context.content = new_content
+        except Exception as exc:
+            session.rollback()
+            QMessageBox.critical(self, "Error Saving", f"Could not save:\n{exc}")
+            return
+        finally:
+            session.close()
+        self.accept()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -749,12 +922,78 @@ class ExamGroupsWidget(QWidget):
                 self.player.setSource(QUrl(path))
 
         questions = getattr(self.viewmodel, 'questions', [])
+        self._populate_q_list(questions)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # q_list population helper — groups by ExamContext
+    # ─────────────────────────────────────────────────────────────────────────
+    def _populate_q_list(self, questions):
+        """Fill q_list with selectable ExamContext items and standalone questions."""
+        # Gather distinct context IDs in order of first appearance
+        seen_ctx_ids: list[str] = []
         for q in questions:
-            label = f"Q{q.question_number}  [Part {q.part}]  {q.content[:60]}…" \
-                    if len(q.content) > 60 else f"Q{q.question_number}  [Part {q.part}]  {q.content}"
-            item = QListWidgetItem(label)
-            item.setData(Qt.ItemDataRole.UserRole, q)
-            self.ui.q_list.addItem(item)
+            if q.context_id and q.context_id not in seen_ctx_ids:
+                seen_ctx_ids.append(q.context_id)
+
+        # Fetch all referenced contexts in one query
+        ctx_map: dict[str, object] = {}
+        if seen_ctx_ids:
+            session = get_session()
+            try:
+                rows = session.query(exam_model.ExamContext).filter(
+                    exam_model.ExamContext.id.in_(seen_ctx_ids)
+                ).all()
+                for ctx in rows:
+                    session.expunge(ctx)
+                    ctx_map[ctx.id] = ctx
+            finally:
+                session.close()
+
+        # Build the list of selectable items
+        # 1. Add Context items
+        for ctx_id in seen_ctx_ids:
+            ctx = ctx_map.get(ctx_id)
+            if ctx:
+                type_label = ctx.context_type.replace("_", " ").title()
+                preview = ""
+                if isinstance(ctx.content, dict):
+                    preview = ctx.content.get("text", "")[:60]
+                else:
+                    preview = str(ctx.content or "")[:60]
+                header_text = f"📄  {type_label} (idx {ctx.index})  — {preview}…" if preview else f"📄  {type_label} (idx {ctx.index})"
+                
+                item = QListWidgetItem(header_text)
+                item.setData(Qt.ItemDataRole.UserRole, ctx)  # store ctx object
+                item.setData(Qt.ItemDataRole.UserRole + 1, "context")  # marker
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+                item.setForeground(Qt.GlobalColor.darkBlue)
+                self.ui.q_list.addItem(item)
+
+        # 2. Add Standalone question items (questions that have no context_id)
+        standalone = [q for q in questions if not q.context_id]
+        if standalone:
+            if seen_ctx_ids:  # add a separator header only when there are also context groups
+                sep_item = QListWidgetItem("── Standalone Questions ──")
+                sep_item.setFlags(Qt.ItemFlag.NoItemFlags | Qt.ItemFlag.ItemIsEnabled)
+                sep_item.setData(Qt.ItemDataRole.UserRole + 1, "separator")
+                font = sep_item.font()
+                font.setItalic(True)
+                sep_item.setFont(font)
+                sep_item.setForeground(Qt.GlobalColor.darkGray)
+                self.ui.q_list.addItem(sep_item)
+
+            for q in standalone:
+                label = (
+                    f"Q{q.question_number}  [Part {q.part}]  {q.content[:60]}…"
+                    if len(q.content) > 60
+                    else f"Q{q.question_number}  [Part {q.part}]  {q.content}"
+                )
+                item = QListWidgetItem(label)
+                item.setData(Qt.ItemDataRole.UserRole, q)
+                item.setData(Qt.ItemDataRole.UserRole + 1, "standalone_question")
+                self.ui.q_list.addItem(item)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Slots
@@ -767,65 +1006,50 @@ class ExamGroupsWidget(QWidget):
         self.ui.transcript_label.setVisible(False)
         self.ui.transcript_browser.setVisible(False)
         self.ui.listen_widget.setVisible(False)
+        # Hide the inline edit-context button row if present
+        if hasattr(self, '_ctx_edit_row') and self._ctx_edit_row is not None:
+            self._ctx_edit_row.setVisible(False)
 
         if not current:
             return
 
-        q = current.data(Qt.ItemDataRole.UserRole)
-        self.ui.title_label.setText(f"Part {q.part} — {q.content}")
+        item_kind = current.data(Qt.ItemDataRole.UserRole + 1)
+        if item_kind == "separator":
+            return
 
-        # ── Audio metadata ─────────────────────────────────────────────────
-        audio_start, audio_end = _get_audio_meta(q)
-        has_audio = audio_end > 0.0
+        group = []
+        if item_kind == "context":
+            ctx = current.data(Qt.ItemDataRole.UserRole)
+            self._current_ctx = ctx
+            type_label = ctx.context_type.replace("_", " ").title()
+            self.ui.title_label.setText(f"{type_label} (idx {ctx.index})")
 
-        if has_audio:
-            self._audio_end_ms = int(audio_end * 1000)
-            self.ui.status_label.setText(f"Segment: {audio_start:.2f}s – {audio_end:.2f}s")
-            self.ui.listen_widget.setVisible(True)
+            # ── ExamContext rendering ──────────────────────────────────────────
+            if ctx.context_type == "READING_PASSAGE":
+                self._render_reading_passage(ctx)
+            elif ctx.context_type == "AUDIO_SRT":
+                self._render_audio_srt_context(ctx)
 
-            # ── Transcript from SRT chunks ─────────────────────────────────
-            self.ui.transcript_label.setVisible(True)
-            self.ui.transcript_browser.setVisible(True)
+            # Retrieve all questions for this context
             session = get_session()
             try:
-                chunks = session.query(exam_model.ExamSrtChunk).filter(
-                    exam_model.ExamSrtChunk.exam_id == self.viewmodel.exam_id,
-                    exam_model.ExamSrtChunk.start_time >= audio_start,
-                    exam_model.ExamSrtChunk.end_time <= audio_end
-                ).order_by(exam_model.ExamSrtChunk.index.asc()).all()
-                text = "\n".join(
-                    f"[{c.start_time:.2f}s – {c.end_time:.2f}s]  {c.text}" for c in chunks
-                )
-                self.ui.transcript_browser.setText(
-                    text if text else "No matching transcript chunks found."
-                )
+                group = session.query(exam_model.ExamQuestion).filter(
+                    exam_model.ExamQuestion.context_id == ctx.id
+                ).order_by(exam_model.ExamQuestion.question_number.asc()).all()
+                for gq in group:
+                    session.expunge(gq)
             except Exception as exc:
-                self.ui.transcript_browser.setText(f"Error: {exc}")
-            finally:
-                session.close()
-
-        # ── ExamContext rendering ──────────────────────────────────────────
-        if q.context_id:
-            session = get_session()
-            try:
-                ctx = session.query(exam_model.ExamContext).filter(
-                    exam_model.ExamContext.id == q.context_id
-                ).first()
-                if ctx:
-                    if ctx.context_type == "READING_PASSAGE":
-                        self._render_reading_passage(ctx)
-                    elif ctx.context_type == "AUDIO_SRT":
-                        self._render_audio_srt_context(ctx)
-            except Exception as exc:
-                self.ui.passage_browser.setPlainText(f"Error loading context: {exc}")
+                self.ui.passage_browser.setPlainText(f"Error loading questions: {exc}")
                 self.ui.passage_browser.setVisible(True)
+                group = []
             finally:
                 session.close()
 
-        # ── Build shuffled option widgets for this question ────────────────
-        # Load all questions that share the same context (e.g. a passage group)
-        questions = getattr(self.viewmodel, 'questions', [])
-        group = [x for x in questions if x.context_id == q.context_id] if q.context_id else [q]
+        elif item_kind == "standalone_question":
+            q = current.data(Qt.ItemDataRole.UserRole)
+            self._current_ctx = None
+            self.ui.title_label.setText(f"Part {q.part} — Question {q.question_number}")
+            group = [q]
 
         for gq in group:
             opt_w = OptionWidget(gq)
@@ -834,25 +1058,29 @@ class ExamGroupsWidget(QWidget):
             count = self.ui.options_layout.count()
             self.ui.options_layout.insertWidget(count - 1, opt_w)
 
-        # Scroll to the selected question
-        if q.question_number in self._question_widgets:
-            target = self._question_widgets[q.question_number]
-            def _safe_scroll(w=target):
-                try:
-                    self.ui.options_scroll.ensureWidgetVisible(w)
-                except RuntimeError:
-                    pass  # C++ object already deleted – ignore
-            QTimer.singleShot(50, _safe_scroll)
-
     def _on_listen_clicked(self):
-        item = self.ui.q_list.currentItem()
-        if not item:
+        current = self.ui.q_list.currentItem()
+        if not current:
             return
-        q = item.data(Qt.ItemDataRole.UserRole)
-        audio_start, audio_end = _get_audio_meta(q)
-        self._audio_end_ms = int(audio_end * 1000)
-        self.player.setPosition(int(audio_start * 1000))
-        self.player.play()
+        item_kind = current.data(Qt.ItemDataRole.UserRole + 1)
+        if item_kind == "standalone_question":
+            q = current.data(Qt.ItemDataRole.UserRole)
+            audio_start, audio_end = _get_audio_meta(q)
+            if audio_end > 0.0:
+                self._audio_end_ms = int(audio_end * 1000)
+                self.player.setPosition(int(audio_start * 1000))
+                self.player.play()
+        elif item_kind == "context":
+            # Play first question in _question_widgets that has audio
+            for q_num in sorted(self._question_widgets.keys()):
+                opt_w = self._question_widgets[q_num]
+                q = opt_w.question
+                audio_start, audio_end = _get_audio_meta(q)
+                if audio_end > 0.0:
+                    self._audio_end_ms = int(audio_end * 1000)
+                    self.player.setPosition(int(audio_start * 1000))
+                    self.player.play()
+                    break
 
     def _on_position_changed(self, pos_ms):
         """Pause automatically when the clip end is reached."""
@@ -890,9 +1118,14 @@ class ExamGroupsWidget(QWidget):
         if not clicked_item:
             return
 
-        # Make sure the clicked item is part of the selection; if the user
-        # right-clicked on an unselected item select only that one.
-        selected_items = self.ui.q_list.selectedItems()
+        item_kind = clicked_item.data(Qt.ItemDataRole.UserRole + 1)
+        if item_kind == "separator":
+            return
+
+        selected_items = [
+            it for it in self.ui.q_list.selectedItems()
+            if it.data(Qt.ItemDataRole.UserRole + 1) in ("context", "standalone_question")
+        ]
         if clicked_item not in selected_items:
             self.ui.q_list.clearSelection()
             clicked_item.setSelected(True)
@@ -920,21 +1153,26 @@ class ExamGroupsWidget(QWidget):
             QMenu::separator { height: 1px; background: #dadce0; margin: 4px 8px; }
         """)
 
-        # Edit is only available when exactly one question is selected
         edit_action = None
         if n == 1:
-            edit_action = menu.addAction(qta.icon('fa5s.edit', color='#1a73e8'), "Edit Question")
+            if item_kind == "context":
+                edit_action = menu.addAction(qta.icon('fa5s.edit', color='#1a73e8'), "Edit Context")
+            elif item_kind == "standalone_question":
+                edit_action = menu.addAction(qta.icon('fa5s.edit', color='#1a73e8'), "Edit Question")
             menu.addSeparator()
 
-        delete_label = f"Delete {n} Questions" if n > 1 else "Delete Question"
+        delete_label = f"Delete {n} Items" if n > 1 else "Delete Item"
         delete_action = menu.addAction(qta.icon('fa5s.trash-alt', color='#ea4335'), delete_label)
 
         action = menu.exec(self.ui.q_list.viewport().mapToGlobal(pos))
 
         if edit_action and action == edit_action:
-            self._on_edit_question(clicked_item)
+            if item_kind == "context":
+                self._on_edit_context()
+            elif item_kind == "standalone_question":
+                self._on_edit_question(clicked_item)
         elif action == delete_action:
-            self._on_delete_questions(selected_items)
+            self._on_delete_items(selected_items)
 
     def _on_edit_question(self, item: QListWidgetItem):
         """Open EditQuestionDialog for the given list item."""
@@ -960,27 +1198,36 @@ class ExamGroupsWidget(QWidget):
 
         QMessageBox.information(self, "Saved", "Question updated successfully.")
 
-    def _on_delete_questions(self, items: list):
-        """Confirm and permanently delete one or more questions from the database."""
+    def _on_delete_items(self, items: list):
+        """Confirm and delete selected contexts or standalone questions.
+        Deleting a context also deletes all associated questions.
+        """
         n = len(items)
-        if n == 1:
-            q = items[0].data(Qt.ItemDataRole.UserRole)
-            msg = (
-                f"Are you sure you want to permanently delete Q{q.question_number}?\n"
-                "This action cannot be undone."
-            )
-        else:
-            nums = ", ".join(
-                f"Q{it.data(Qt.ItemDataRole.UserRole).question_number}" for it in items
-            )
-            msg = (
-                f"Are you sure you want to permanently delete {n} questions?\n"
-                f"{nums}\n\nThis action cannot be undone."
-            )
+        if n == 0:
+            return
+
+        context_names = []
+        standalone_nums = []
+        for it in items:
+            kind = it.data(Qt.ItemDataRole.UserRole + 1)
+            obj = it.data(Qt.ItemDataRole.UserRole)
+            if kind == "context":
+                type_label = obj.context_type.replace("_", " ").title()
+                context_names.append(f"{type_label} (idx {obj.index})")
+            elif kind == "standalone_question":
+                standalone_nums.append(f"Q{obj.question_number}")
+
+        msg_parts = []
+        if context_names:
+            msg_parts.append("Contexts to delete (and all their questions):\n- " + "\n- ".join(context_names))
+        if standalone_nums:
+            msg_parts.append("Standalone questions to delete:\n- " + "\n- ".join(standalone_nums))
+
+        msg = "\n\n".join(msg_parts) + "\n\nAre you sure you want to delete these? This action cannot be undone."
 
         reply = QMessageBox.question(
             self,
-            "Delete Question" if n == 1 else f"Delete {n} Questions",
+            "Delete Confirmation",
             msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -988,37 +1235,35 @@ class ExamGroupsWidget(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        ids_to_delete = [it.data(Qt.ItemDataRole.UserRole).id for it in items]
-
         session = get_session()
         try:
-            session.query(exam_model.ExamQuestion).filter(
-                exam_model.ExamQuestion.id.in_(ids_to_delete)
-            ).delete(synchronize_session="fetch")
+            for it in items:
+                kind = it.data(Qt.ItemDataRole.UserRole + 1)
+                obj = it.data(Qt.ItemDataRole.UserRole)
+                if kind == "context":
+                    # Delete questions first
+                    session.query(exam_model.ExamQuestion).filter(
+                        exam_model.ExamQuestion.context_id == obj.id
+                    ).delete(synchronize_session="fetch")
+                    # Delete context
+                    session.query(exam_model.ExamContext).filter(
+                        exam_model.ExamContext.id == obj.id
+                    ).delete(synchronize_session="fetch")
+                elif kind == "standalone_question":
+                    # Delete question
+                    session.query(exam_model.ExamQuestion).filter(
+                        exam_model.ExamQuestion.id == obj.id
+                    ).delete(synchronize_session="fetch")
             session.commit()
         except Exception as exc:
             session.rollback()
-            QMessageBox.critical(self, "Error", f"Could not delete questions:\n{exc}")
+            QMessageBox.critical(self, "Error Deleting", f"Could not delete items:\n{exc}")
             return
         finally:
             session.close()
 
-        # Remove all deleted items from the list (iterate in reverse to keep indices stable)
-        self.ui.q_list.blockSignals(True)
-        for item in items:
-            row = self.ui.q_list.row(item)
-            self.ui.q_list.takeItem(row)
-        self.ui.q_list.blockSignals(False)
-
-        # Clear detail panel if nothing is selected anymore
-        if self.ui.q_list.currentItem() is None:
-            self._clear_options()
-            self.ui.title_label.setText("Select a question to view details")
-            self.ui.listen_widget.setVisible(False)
-            self.ui.passage_label.setVisible(False)
-            self.ui.passage_browser.setVisible(False)
-            self.ui.transcript_label.setVisible(False)
-            self.ui.transcript_browser.setVisible(False)
+        # Re-populate / refresh UI
+        self._on_filter_changed()
 
     def _on_import_questions_clicked(self):
         dialog = ImportQuestionsDialog(self)
@@ -1098,7 +1343,11 @@ class ExamGroupsWidget(QWidget):
         """
         Parse READING_PASSAGE content and render double-bracket placeholders
         [[131]] → clickable anchor tags, per spec §4.
+        Also attaches an edit icon button next to the passage_label.
         """
+        # ── Store current context reference for the edit button ──────────────
+        self._current_ctx = ctx
+
         if isinstance(ctx.content, dict):
             raw = ctx.content.get("text", "")
         else:
@@ -1121,6 +1370,12 @@ class ExamGroupsWidget(QWidget):
         self.ui.passage_label.setVisible(True)
         self.ui.passage_browser.setVisible(True)
 
+        # ── Show the edit-context button row ────────────────────────────────
+        if not hasattr(self, '_ctx_edit_row') or self._ctx_edit_row is None:
+            self._ctx_edit_row = self._create_ctx_edit_row()
+        else:
+            self._ctx_edit_row.setVisible(True)
+
     def _render_audio_srt_context(self, ctx):
         """Display AUDIO_SRT context as a readable transcript."""
         try:
@@ -1135,6 +1390,85 @@ class ExamGroupsWidget(QWidget):
         except Exception as exc:
             self.ui.transcript_browser.setText(f"Error reading audio context: {exc}")
             self.ui.transcript_browser.setVisible(True)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Context edit row helper
+    # ─────────────────────────────────────────────────────────────────────────
+    def _create_ctx_edit_row(self) -> QWidget:
+        """Create (once) a small QWidget with an edit icon button and insert it
+        into right_outer_layout directly after passage_label."""
+        row = QWidget(self.ui.right_outer)
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(4)
+
+        edit_ctx_btn = QPushButton()
+        edit_ctx_btn.setIcon(qta.icon('fa5s.edit', color='#1a73e8'))
+        edit_ctx_btn.setToolTip("Edit reading passage")
+        edit_ctx_btn.setFixedSize(24, 24)
+        edit_ctx_btn.setStyleSheet("""
+            QPushButton {
+                border: none; background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #e8f0fe; border-radius: 12px;
+            }
+        """)
+        edit_ctx_btn.clicked.connect(self._on_edit_context)
+        row_layout.addWidget(edit_ctx_btn)
+        row_layout.addStretch()
+
+        # Insert after passage_label in right_outer_layout
+        passage_label_idx = self.ui.right_outer_layout.indexOf(self.ui.passage_label)
+        self.ui.right_outer_layout.insertWidget(passage_label_idx + 1, row)
+        return row
+
+    def _on_edit_context(self):
+        ctx = getattr(self, '_current_ctx', None)
+        if not ctx:
+            return
+        dialog = EditContextDialog(ctx, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        # Re-render the passage with updated content
+        self._render_reading_passage(ctx)
+        # Also refresh the header item text in q_list
+        self._refresh_ctx_header_item(ctx)
+
+    def _refresh_ctx_header_item(self, ctx):
+        """Find and update the q_list header item for the given context."""
+        for i in range(self.ui.q_list.count()):
+            item = self.ui.q_list.item(i)
+            if item.data(Qt.ItemDataRole.UserRole + 1) == "context":
+                stored = item.data(Qt.ItemDataRole.UserRole)
+                if stored and stored.id == ctx.id:
+                    type_label = ctx.context_type.replace("_", " ").title()
+                    preview = ""
+                    if isinstance(ctx.content, dict):
+                        preview = ctx.content.get("text", "")[:60]
+                    else:
+                        preview = str(ctx.content or "")[:60]
+                    header_text = f"📄  {type_label} (idx {ctx.index})  — {preview}…" if preview else f"📄  {type_label} (idx {ctx.index})"
+                    item.setText(header_text)
+                    item.setData(Qt.ItemDataRole.UserRole, ctx)
+                    break
+
+    def on_question_edited(self, updated_q):
+        """Called by OptionWidget after an inline question edit to refresh the list item or current view."""
+        # Update standalone question if matches
+        for i in range(self.ui.q_list.count()):
+            item = self.ui.q_list.item(i)
+            if item.data(Qt.ItemDataRole.UserRole + 1) == "standalone_question":
+                q = item.data(Qt.ItemDataRole.UserRole)
+                if q and q.id == updated_q.id:
+                    label = (
+                        f"Q{updated_q.question_number}  [Part {updated_q.part}]  {updated_q.content[:60]}…"
+                        if len(updated_q.content) > 60
+                        else f"Q{updated_q.question_number}  [Part {updated_q.part}]  {updated_q.content}"
+                    )
+                    item.setText(label)
+                    item.setData(Qt.ItemDataRole.UserRole, updated_q)
+                    break
 
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers
@@ -1210,12 +1544,8 @@ class ExamGroupsWidget(QWidget):
                 ).distinct().order_by(exam_model.ExamQuestion.question_number.asc()).all()
 
             for q in questions:
-                label = f"Q{q.question_number}  [Part {q.part}]  {q.content[:60]}…" \
-                        if len(q.content) > 60 else f"Q{q.question_number}  [Part {q.part}]  {q.content}"
-                item = QListWidgetItem(label)
                 session.expunge(q)
-                item.setData(Qt.ItemDataRole.UserRole, q)
-                self.ui.q_list.addItem(item)
+            self._populate_q_list(questions)
         finally:
             session.close()
 

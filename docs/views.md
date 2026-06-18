@@ -67,7 +67,7 @@ Immediately calls `viewmodel.load_exam()` on construction.
 | Tab Label | Widget | Description |
 |---|---|---|
 | "Exam Details" | `ExamFormWidget` | Metadata form (title, description, audio, duration, published) |
-| "Groups & Questions" | `ExamGroupsWidget` | Placeholder — not yet implemented |
+| "Groups & Questions" | `ExamGroupsWidget` | Full question list with tag filtering, answer checking, and audio segment playback |
 | "Transcript" | `ExamTranscriptWidget` | SRT chunk editor with audio player |
 
 ---
@@ -162,7 +162,61 @@ Expected header row + data rows: `index,start,end,text[,...]`
 
 **File:** [`src/views/components/exam_groups_widget.py`](../src/views/components/exam_groups_widget.py)
 
-Placeholder tab — displays a single "not yet implemented" label. Accepts a `viewmodel` reference but does not use it.
+Full Groups & Questions panel. Layout loaded from [`ui/exam_groups_widget.ui`](../ui/exam_groups_widget.ui) via `pyside6-uic` → generates [`src/views/components/ui_exam_groups_widget.py`](../src/views/components/ui_exam_groups_widget.py).
+
+In `setup_ui()`:
+
+```python
+self.ui = Ui_ExamGroupsWidget()
+self.ui.setupUi(self)
+```
+
+Named widgets from `.ui` file:
+
+| Widget Name | Type | Description |
+|---|---|---|
+| `q_label` | `QLabel` | "Exam Questions" section header |
+| `import_q_btn` | `QPushButton` | Import questions from CSV (28×28 icon button) |
+| `filter_label` | `QLabel` | "Filter by Tags:" label |
+| `tag_filter_list` | `QListWidget` | Checkable tag filter list (max height 80px) |
+| `q_list` | `QListWidget` | Question list (supports ExtendedSelection + right-click context menu) |
+| `title_label` | `QLabel` | Right-panel title / selected question detail header |
+| `listen_widget` | `QWidget` | Audio listen controls — hidden until a question with audio is selected |
+| `listen_btn` | `QPushButton` | Play button for the question's audio segment |
+| `status_label` | `QLabel` | Shows current audio segment timestamps |
+| `passage_label` | `QLabel` | "Reading Passage" label — hidden for non-reading questions |
+| `passage_browser` | `QTextBrowser` | Passage text display (yellow background) |
+| `transcript_label` | `QLabel` | "Transcript Context" label — hidden until audio segment is set |
+| `transcript_browser` | `QTextBrowser` | SRT chunk transcript for the selected audio segment |
+| `options_scroll` | `QScrollArea` | Scrollable container for question option radio buttons |
+| `options_container` | `QWidget` | Inner widget of `options_scroll` |
+| `options_layout` | `QVBoxLayout` | Layout that holds `OptionWidget` instances |
+
+#### Helper Classes
+
+- **`TagMenuPopup`** — floating popup dialog (`QDialog` with `Popup | FramelessWindowHint`) for adding/removing tags on a question.
+- **`SelectTranscriptDialog`** — dialog to select one or more SRT chunks to set the audio segment timestamps on a question.
+- **`EditQuestionDialog`** — form dialog to edit question fields: Part, Correct Answer, Content, and Options A–D.
+- **`EditContextDialog`** — inline editor dialog for editing `ExamContext` text content.
+- **`OptionWidget`** — renders shuffled ABCD radio buttons for a single question. Options are shuffled per session for anti-cheat purposes; the correct answer is validated by original DB index, not display position.
+
+#### Key Methods
+
+| Method | Description |
+|---|---|
+| `populate()` | Loads audio source, populates `q_list`, resets right panel |
+| `_populate_q_list(questions)` | Fills `q_list` with context-section headers followed by their respective questions |
+| `populate_tags()` | Fills `tag_filter_list` with all distinct user tags |
+| `_on_question_selected(current, previous)` | Shows question detail, audio controls, passage/transcript, and manages context edit controls |
+| `_on_filter_changed()` | Filters `q_list` based on selected tags |
+| `_on_listen_clicked()` | Seeks and plays the audio segment for the selected question |
+| `_on_import_questions_clicked()` | Opens `ImportQuestionsDialog` |
+| `_on_q_list_context_menu(pos)` | Right-click menu with Edit / Delete / Duplicate actions (filters actions based on item type) |
+| `_on_edit_context()` | Opens `EditContextDialog` to modify the currently selected context |
+| `_refresh_ctx_header_item(ctx)` | Refreshes the display text of a context header in the question list |
+| `on_question_edited(updated_q)` | Called by `OptionWidget` after an inline question edit to refresh the list item text |
+| `on_question_tag_changed()` | Called by `TagMenuPopup` to refresh the tag filter list |
+| `on_question_audio_changed(question)` | Called by `OptionWidget` after saving a new audio segment |
 
 ---
 
@@ -186,7 +240,14 @@ Inline `±0.1s` spinner for precise timestamp editing.
 
 #### UI Loading
 
-Layout loaded from [`ui/exam_transcript_widget.ui`](../ui/exam_transcript_widget.ui) via `QUiLoader`.
+Layout loaded from [`ui/exam_transcript_widget.ui`](../ui/exam_transcript_widget.ui) via `pyside6-uic` (compile step) → generates [`src/views/components/ui_exam_transcript_widget.py`](../src/views/components/ui_exam_transcript_widget.py).
+
+In `setup_ui()`:
+
+```python
+self.ui = Ui_ExamTranscriptWidget()
+self.ui.setupUi(self)
+```
 
 Named widgets from `.ui` file:
 
