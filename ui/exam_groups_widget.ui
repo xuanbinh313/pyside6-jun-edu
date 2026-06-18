@@ -184,17 +184,21 @@
        <number>0</number>
       </property>
       <item>
-       <widget class="QLabel" name="title_label">
-        <property name="styleSheet">
-         <string notr="true">font-size: 16px; font-weight: bold; color: #3c4043;</string>
-        </property>
-        <property name="text">
-         <string>Select a question to view details</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="title_outer">
+        <item>
+         <widget class="QLabel" name="title_label">
+          <property name="styleSheet">
+           <string notr="true">font-size: 16px; font-weight: bold; color: #3c4043;</string>
+          </property>
+          <property name="text">
+           <string>Select a question to view details</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item>
        <widget class="QWidget" name="listen_widget" native="true">
@@ -254,19 +258,6 @@
           </spacer>
          </item>
         </layout>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="passage_label">
-        <property name="visible">
-         <bool>false</bool>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">font-size: 14px; font-weight: bold; color: #1a73e8;</string>
-        </property>
-        <property name="text">
-         <string>Reading Passage</string>
-        </property>
        </widget>
       </item>
       <item>
@@ -330,8 +321,8 @@
           <rect>
            <x>0</x>
            <y>0</y>
-           <width>400</width>
-           <height>200</height>
+           <width>459</width>
+           <height>548</height>
           </rect>
          </property>
          <layout class="QVBoxLayout" name="options_layout">

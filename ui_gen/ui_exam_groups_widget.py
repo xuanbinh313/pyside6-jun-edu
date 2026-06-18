@@ -8,10 +8,15 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject, QRect,
-    QSize)
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QListWidget,
-    QPushButton, QScrollArea, QSizePolicy,
+from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
+    QMetaObject, QObject, QPoint, QRect,
+    QSize, QTime, QUrl, Qt)
+from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
+    QFont, QFontDatabase, QGradient, QIcon,
+    QImage, QKeySequence, QLinearGradient, QPainter,
+    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QListWidget,
+    QListWidgetItem, QPushButton, QScrollArea, QSizePolicy,
     QSpacerItem, QTextBrowser, QVBoxLayout, QWidget)
 
 class Ui_ExamGroupsWidget(object):
@@ -116,12 +121,17 @@ class Ui_ExamGroupsWidget(object):
         self.right_outer_layout.setSpacing(8)
         self.right_outer_layout.setObjectName(u"right_outer_layout")
         self.right_outer_layout.setContentsMargins(0, 0, 0, 0)
+        self.title_outer = QHBoxLayout()
+        self.title_outer.setObjectName(u"title_outer")
         self.title_label = QLabel(self.right_outer)
         self.title_label.setObjectName(u"title_label")
         self.title_label.setStyleSheet(u"font-size: 16px; font-weight: bold; color: #3c4043;")
         self.title_label.setWordWrap(True)
 
-        self.right_outer_layout.addWidget(self.title_label)
+        self.title_outer.addWidget(self.title_label)
+
+
+        self.right_outer_layout.addLayout(self.title_outer)
 
         self.listen_widget = QWidget(self.right_outer)
         self.listen_widget.setObjectName(u"listen_widget")
@@ -153,13 +163,6 @@ class Ui_ExamGroupsWidget(object):
 
 
         self.right_outer_layout.addWidget(self.listen_widget)
-
-        self.passage_label = QLabel(self.right_outer)
-        self.passage_label.setObjectName(u"passage_label")
-        self.passage_label.setVisible(False)
-        self.passage_label.setStyleSheet(u"font-size: 14px; font-weight: bold; color: #1a73e8;")
-
-        self.right_outer_layout.addWidget(self.passage_label)
 
         self.passage_browser = QTextBrowser(self.right_outer)
         self.passage_browser.setObjectName(u"passage_browser")
@@ -201,7 +204,7 @@ class Ui_ExamGroupsWidget(object):
         self.options_scroll.setWidgetResizable(True)
         self.options_container = QWidget()
         self.options_container.setObjectName(u"options_container")
-        self.options_container.setGeometry(QRect(0, 0, 400, 200))
+        self.options_container.setGeometry(QRect(0, 0, 459, 548))
         self.options_layout = QVBoxLayout(self.options_container)
         self.options_layout.setSpacing(12)
         self.options_layout.setObjectName(u"options_layout")
@@ -233,7 +236,6 @@ class Ui_ExamGroupsWidget(object):
         self.title_label.setText(QCoreApplication.translate("ExamGroupsWidget", u"Select a question to view details", None))
         self.listen_btn.setText(QCoreApplication.translate("ExamGroupsWidget", u"Listen to this segment", None))
         self.status_label.setText("")
-        self.passage_label.setText(QCoreApplication.translate("ExamGroupsWidget", u"Reading Passage", None))
         self.transcript_label.setText(QCoreApplication.translate("ExamGroupsWidget", u"Transcript Context", None))
     # retranslateUi
 

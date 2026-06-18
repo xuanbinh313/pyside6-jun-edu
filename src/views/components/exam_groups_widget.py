@@ -7,8 +7,8 @@ from PySide6.QtCore import QPoint, Qt, QUrl
 from PySide6.QtGui import QCursor
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout,
-                               QListWidgetItem,
-                               QMenu, QMessageBox, QPushButton, QWidget)
+                               QListWidgetItem, QMenu, QMessageBox,
+                               QPushButton, QWidget)
 
 import src.models.exam as exam_model
 from src.models.database import get_session
@@ -18,7 +18,6 @@ from src.views.components.edit_context_dialog import EditContextDialog
 from src.views.components.edit_question_dialog import EditQuestionDialog
 from src.views.components.import_questions_dialog import ImportQuestionsDialog
 from src.views.components.option_question_item import OptionQuestionItem
-
 from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
 
 
@@ -80,7 +79,6 @@ class ExamGroupsWidget(QWidget):
         self._clear_options()
         self.ui.title_label.setText("Select a question to view details")
         self.ui.listen_widget.setVisible(False)
-        self.ui.passage_label.setVisible(False)
         self.ui.passage_browser.setVisible(False)
         self.ui.transcript_label.setVisible(False)
         self.ui.transcript_browser.setVisible(False)
@@ -126,13 +124,10 @@ class ExamGroupsWidget(QWidget):
         for ctx_id in seen_ctx_ids:
             ctx = ctx_map.get(ctx_id)
             if ctx:
-                type_label = ctx.context_type.replace("_", " ").title()
-                preview = ""
-                if isinstance(ctx.content, dict):
-                    preview = ctx.content.get("text", "")[:60]
-                else:
-                    preview = str(ctx.content or "")[:60]
-                header_text = f"📄  {type_label} (idx {ctx.index})  — {preview}…" if preview else f"📄  {type_label} (idx {ctx.index})"
+                min_question = min([q.question_number for q in questions if q.context_id == ctx_id])
+                max_question = max([q.question_number for q in questions if q.context_id == ctx_id])
+
+                header_text = f"Questions {min_question}-{max_question}"
                 
                 item = QListWidgetItem(header_text)
                 item.setData(Qt.ItemDataRole.UserRole, ctx)  # store ctx object
@@ -158,9 +153,9 @@ class ExamGroupsWidget(QWidget):
 
             for q in standalone:
                 label = (
-                    f"Q{q.question_number}  [Part {q.part}]  {q.content[:60]}…"
+                    f"Question {q.question_number}  [Part {q.part}]  {q.content[:60]}…"
                     if len(q.content) > 60
-                    else f"Q{q.question_number}  [Part {q.part}]  {q.content}"
+                    else f"Question {q.question_number}  [Part {q.part}]  {q.content}"
                 )
                 item = QListWidgetItem(label)
                 item.setData(Qt.ItemDataRole.UserRole, q)
@@ -173,7 +168,6 @@ class ExamGroupsWidget(QWidget):
     def _on_question_selected(self, current, previous):
         self.player.stop()
         self._clear_options()
-        self.ui.passage_label.setVisible(False)
         self.ui.passage_browser.setVisible(False)
         self.ui.transcript_label.setVisible(False)
         self.ui.transcript_browser.setVisible(False)
@@ -539,7 +533,7 @@ class ExamGroupsWidget(QWidget):
             f'<div style="font-family: Georgia, serif; font-size:13px; '
             f'line-height:1.8; color:#202124;">{html_content}</div>'
         )
-        self.ui.passage_label.setVisible(True)
+        # self.ui.passage_label.setVisible(True)
         self.ui.passage_browser.setVisible(True)
 
         # ── Show the edit-context button row ────────────────────────────────
@@ -566,14 +560,9 @@ class ExamGroupsWidget(QWidget):
     # ─────────────────────────────────────────────────────────────────────────
     # Context edit row helper
     # ─────────────────────────────────────────────────────────────────────────
-    def _create_ctx_edit_row(self) -> QWidget:
+    def _create_ctx_edit_row(self) -> QPushButton:
         """Create (once) a small QWidget with an edit icon button and insert it
         into right_outer_layout directly after passage_label."""
-        row = QWidget(self.ui.right_outer)
-        row_layout = QHBoxLayout(row)
-        row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(4)
-
         edit_ctx_btn = QPushButton()
         edit_ctx_btn.setIcon(qta.icon('fa5s.edit', color='#1a73e8'))
         edit_ctx_btn.setToolTip("Edit reading passage")
@@ -587,13 +576,8 @@ class ExamGroupsWidget(QWidget):
             }
         """)
         edit_ctx_btn.clicked.connect(self._on_edit_context)
-        row_layout.addWidget(edit_ctx_btn)
-        row_layout.addStretch()
-
-        # Insert after passage_label in right_outer_layout
-        passage_label_idx = self.ui.right_outer_layout.indexOf(self.ui.passage_label)
-        self.ui.right_outer_layout.insertWidget(passage_label_idx + 1, row)
-        return row
+        self.ui.title_outer.layout().addWidget(edit_ctx_btn)
+        return edit_ctx_btn
 
     def _on_edit_context(self):
         ctx = getattr(self, '_current_ctx', None)
