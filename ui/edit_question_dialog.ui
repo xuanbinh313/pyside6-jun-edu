@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>EditQuestionDialog</class>
+ <widget class="QDialog" name="EditQuestionDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>640</width>
+    <height>520</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Edit Question</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QDialog { background-color: #f8f9fa; }
+QLabel { font-size: 12px; color: #3c4043; }
+QLineEdit, QTextEdit, QComboBox {
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12px;
+    background-color: white;
+}
+QLineEdit:focus, QTextEdit:focus, QComboBox:focus { border-color: #1a73e8; }
+QGroupBox {
+    font-weight: bold;
+    font-size: 12px;
+    color: #1a73e8;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+}
+QPushButton#save_btn {
+    background-color: #1a73e8;
+    color: white;
+    font-weight: bold;
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-size: 12px;
+}
+QPushButton#save_btn:hover { background-color: #1558b0; }
+QPushButton#cancel_btn {
+    background-color: white;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-size: 12px;
+}
+QPushButton#cancel_btn:hover { background-color: #f1f3f4; }</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>14</number>
+   </property>
+   <property name="leftMargin">
+    <number>20</number>
+   </property>
+   <property name="topMargin">
+    <number>20</number>
+   </property>
+   <property name="rightMargin">
+    <number>20</number>
+   </property>
+   <property name="bottomMargin">
+    <number>20</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="header_label">
+     <property name="styleSheet">
+      <string notr="true">font-size: 15px; font-weight: bold; color: #202124;</string>
+     </property>
+     <property name="text">
+      <string>Editing Question</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="meta_group">
+     <property name="title">
+      <string>Meta</string>
+     </property>
+     <layout class="QFormLayout" name="meta_form">
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="part_label">
+        <property name="text">
+         <string>Part:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="part_combo"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="answer_label">
+        <property name="text">
+         <string>Correct Answer:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="answer_combo"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="content_group">
+     <property name="title">
+      <string>Question Content</string>
+     </property>
+     <layout class="QVBoxLayout" name="content_layout">
+      <item>
+       <widget class="QTextEdit" name="content_edit">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>80</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>80</height>
+         </size>
+        </property>
+        <property name="placeholderText">
+         <string>Enter question text here...</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="options_group">
+     <property name="title">
+      <string>Options (A / B / C / D)</string>
+     </property>
+     <layout class="QFormLayout" name="options_form">
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="option_a_label">
+        <property name="text">
+         <string>A:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="option_a_edit">
+        <property name="placeholderText">
+         <string>Option A...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="option_b_label">
+        <property name="text">
+         <string>B:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="option_b_edit">
+        <property name="placeholderText">
+         <string>Option B...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="option_c_label">
+        <property name="text">
+         <string>C:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLineEdit" name="option_c_edit">
+        <property name="placeholderText">
+         <string>Option C...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="option_d_label">
+        <property name="text">
+         <string>D:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLineEdit" name="option_d_edit">
+        <property name="placeholderText">
+         <string>Option D...</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="button_layout">
+     <item>
+      <spacer name="button_spacer">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancel_btn">
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="save_btn">
+       <property name="text">
+        <string>Save Changes</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

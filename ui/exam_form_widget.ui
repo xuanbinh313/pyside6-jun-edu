@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ExamFormWidget</class>
+ <widget class="QWidget" name="ExamFormWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>650</width>
+    <height>420</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Exam Details</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <item>
+    <layout class="QFormLayout" name="form_layout">
+     <item row="0" column="0">
+      <widget class="QLabel" name="title_label">
+       <property name="text">
+        <string>Title:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QLineEdit" name="title_input"/>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="description_label">
+       <property name="text">
+        <string>Description:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QTextEdit" name="description_input"/>
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="audio_label">
+       <property name="text">
+        <string>Audio URL:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1">
+      <layout class="QHBoxLayout" name="audio_layout">
+       <item>
+        <widget class="QLineEdit" name="audio_input"/>
+       </item>
+       <item>
+        <widget class="QPushButton" name="upload_audio_btn">
+         <property name="text">
+          <string>Upload Audio</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="duration_label">
+       <property name="text">
+        <string>Duration (minutes):</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="1">
+      <widget class="QSpinBox" name="duration_input">
+       <property name="maximum">
+        <number>1000</number>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="0">
+      <widget class="QLabel" name="published_label">
+       <property name="text">
+        <string>Published:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="1">
+      <widget class="QCheckBox" name="published_checkbox">
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="action_layout">
+     <item>
+      <widget class="QPushButton" name="attach_srt_btn">
+       <property name="text">
+        <string>Attach SRT</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="import_csv_btn">
+       <property name="text">
+        <string>Import CSV</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QPushButton" name="save_btn">
+     <property name="styleSheet">
+      <string notr="true">background-color: #34a853; color: white; padding: 10px; font-weight: bold; border-radius: 4px;</string>
+     </property>
+     <property name="text">
+      <string>Save Details</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SelectTranscriptDialog</class>
+ <widget class="QDialog" name="SelectTranscriptDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>600</width>
+    <height>400</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Select Transcript Segment</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <item>
+    <widget class="QLabel" name="description_label">
+     <property name="styleSheet">
+      <string notr="true">font-size: 13px; color: #5f6368;</string>
+     </property>
+     <property name="text">
+      <string>Select one or more transcript lines to set the audio segment:</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QListWidget" name="list_widget">
+     <property name="styleSheet">
+      <string notr="true">QListWidget {
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    background-color: white;
+    padding: 5px;
+}
+QListWidget::item {
+    padding: 8px;
+    border-bottom: 1px solid #f1f3f4;
+}
+QListWidget::item:selected {
+    background-color: #e8f0fe;
+    color: #1a73e8;
+}</string>
+     </property>
+     <property name="selectionMode">
+      <enum>QAbstractItemView::SelectionMode::MultiSelection</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="button_layout">
+     <item>
+      <spacer name="button_spacer">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancel_btn">
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    padding: 6px 12px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    background-color: white;
+}
+QPushButton:hover { background-color: #f1f3f4; }</string>
+       </property>
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="ok_btn">
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    padding: 6px 16px;
+    background-color: #1a73e8;
+    color: white;
+    font-weight: bold;
+    border-radius: 4px;
+}
+QPushButton:hover { background-color: #1558b0; }</string>
+       </property>
+       <property name="text">
+        <string>Save Segment</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

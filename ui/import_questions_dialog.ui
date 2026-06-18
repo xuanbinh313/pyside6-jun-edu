@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ImportQuestionsDialog</class>
+ <widget class="QDialog" name="ImportQuestionsDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>720</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Import Questions - LLM JSON Import</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>10</number>
+   </property>
+   <property name="leftMargin">
+    <number>16</number>
+   </property>
+   <property name="topMargin">
+    <number>16</number>
+   </property>
+   <property name="rightMargin">
+    <number>16</number>
+   </property>
+   <property name="bottomMargin">
+    <number>16</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="step1_title">
+     <property name="styleSheet">
+      <string notr="true">font-weight: bold; font-size: 14px; color: #1a73e8;</string>
+     </property>
+     <property name="text">
+      <string>Step 1 - Copy prompt, then paste into Gemini/ChatGPT with your exam image</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="description_label">
+     <property name="styleSheet">
+      <string notr="true">color: #5f6368; font-size: 12px;</string>
+     </property>
+     <property name="text">
+      <string>The LLM will extract contexts (passages, audio, diagrams) and questions as a structured JSON object, aligned with ExamContext and ExamQuestion models.</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTextEdit" name="prompt_edit">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>160</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>160</height>
+      </size>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: #f8f9fa; border: 1px solid #dadce0; border-radius: 4px; font-family: monospace; font-size: 11px;</string>
+     </property>
+     <property name="readOnly">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="copy_btn">
+     <property name="styleSheet">
+      <string notr="true">background-color: #1a73e8; color: white; font-weight: bold; padding: 6px 12px; border-radius: 4px;</string>
+     </property>
+     <property name="text">
+      <string>Copy Prompt to Clipboard</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="Line" name="divider_line">
+     <property name="styleSheet">
+      <string notr="true">color: #dadce0;</string>
+     </property>
+     <property name="orientation">
+      <enum>Qt::Orientation::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="step2_title">
+     <property name="styleSheet">
+      <string notr="true">font-weight: bold; font-size: 14px; color: #1a73e8;</string>
+     </property>
+     <property name="text">
+      <string>Step 2 - Paste the generated JSON data below and click Import</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTextEdit" name="json_edit">
+     <property name="styleSheet">
+      <string notr="true">border: 1px solid #dadce0; border-radius: 4px; font-family: monospace; font-size: 11px;</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="button_layout">
+     <item>
+      <spacer name="button_spacer">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancel_btn">
+       <property name="styleSheet">
+        <string notr="true">padding: 6px 12px;</string>
+       </property>
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="import_btn">
+       <property name="styleSheet">
+        <string notr="true">background-color: #34a853; color: white; font-weight: bold; padding: 6px 14px; border-radius: 4px;</string>
+       </property>
+       <property name="text">
+        <string>Import &amp;&amp; Save</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

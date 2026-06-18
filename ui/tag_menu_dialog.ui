@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>TagMenuDialog</class>
+ <widget class="QDialog" name="TagMenuDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>200</width>
+    <height>160</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Manage Tags</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QDialog {
+    border: 1px solid #dadce0;
+    background-color: white;
+    border-radius: 6px;
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>6</number>
+   </property>
+   <property name="leftMargin">
+    <number>8</number>
+   </property>
+   <property name="topMargin">
+    <number>8</number>
+   </property>
+   <property name="rightMargin">
+    <number>8</number>
+   </property>
+   <property name="bottomMargin">
+    <number>8</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="title_label">
+     <property name="styleSheet">
+      <string notr="true">font-weight: bold; color: #1a73e8; font-size: 12px;</string>
+     </property>
+     <property name="text">
+      <string>Manage Tags</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="tags_layout">
+     <property name="spacing">
+      <number>4</number>
+     </property>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="new_tag_input">
+     <property name="styleSheet">
+      <string notr="true">QLineEdit {
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    padding: 4px;
+    font-size: 11px;
+}</string>
+     </property>
+     <property name="placeholderText">
+      <string>Add new tag...</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

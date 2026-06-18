@@ -6,7 +6,7 @@ import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (QApplication, QInputDialog, QMainWindow, QMenu,
-                               QMessageBox, QStackedWidget, QSystemTrayIcon)
+                               QMessageBox, QSystemTrayIcon)
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -18,18 +18,18 @@ from src.viewmodels.reminder_viewmodel import ReminderViewModel
 from src.views.exam_add_external_view import ExamAddExternalView
 from src.views.exam_details_view import ExamDetailsView
 from src.views.exam_list_view import ExamListView
+from src.views.ui_main_window import Ui_MainWindow
 
 
 class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Jun Edu - Exam Management")
-        self.resize(1000, 700)
+        self.ui = Ui_MainWindow()
+        self.ui.setupUi(self)
         
         self.reminder_viewmodel = ReminderViewModel()
         
-        self.stacked_widget = QStackedWidget()
-        self.setCentralWidget(self.stacked_widget)
+        self.stacked_widget = self.ui.stacked_widget
         
         self.list_viewmodel = ExamListViewModel()
         self.list_view = ExamListView(self.list_viewmodel, self.navigate_to_details)
@@ -66,11 +66,7 @@ class MainWindow(QMainWindow):
             widget.deleteLater()
 
     def setup_menu_bar(self):
-        menubar = self.menuBar()
-        settings_menu = menubar.addMenu("Menu")
-        settings_action = QAction("Settings", self)
-        settings_action.triggered.connect(self.show_settings_modal)
-        settings_menu.addAction(settings_action)
+        self.ui.action_settings.triggered.connect(self.show_settings_modal)
 
     def show_settings_modal(self):
         minutes, ok = QInputDialog.getInt(self, "Settings", "Set time closeEvent (minutes):", self.close_event_minutes, 1, 1440, 1)

@@ -3,9 +3,8 @@ import random
 
 import qtawesome as qta
 from PySide6.QtCore import QPoint
-from PySide6.QtWidgets import (QButtonGroup, QDialog, QHBoxLayout,
-                               QLabel, QMessageBox, QPushButton, QRadioButton,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QButtonGroup, QDialog, QMessageBox, QPushButton,
+                               QRadioButton, QWidget)
 
 import src.models.exam as exam_model
 from src.models.database import get_session
@@ -15,6 +14,7 @@ from src.views.components.select_transcript_dialog import \
     SelectTranscriptDialog
 from src.views.components.tag_menu_dialog import TagMenuDialog
 
+from .ui_option_question_item import Ui_OptionQuestionItem
 
 # ─────────────────────────────────────────────────────────────────────────────
 # OptionQuestionItem — shuffled ABCD radio buttons for a single question
@@ -43,19 +43,13 @@ class OptionQuestionItem(QWidget):
         self._build(question)
 
     def _build(self, q):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 4, 0, 4)
-        layout.setSpacing(4)
+        self.ui = Ui_OptionQuestionItem()
+        self.ui.setupUi(self)
 
-        # Header layout for question stem and action buttons
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Question stem
-        stem = QLabel(f"<b>Q{q.question_number}.</b> {q.content}")
-        stem.setWordWrap(True)
-        stem.setStyleSheet("font-size: 13px; color: #202124; padding: 4px 0;")
-        header_layout.addWidget(stem, stretch=1)
+        # Question stem text & stretch factor
+        self.ui.stem.setText(f"<b>Q{q.question_number}.</b> {q.content}")
+        self.ui.stem.setStyleSheet("font-size: 13px; color: #202124; padding: 4px 0;")
+        self.ui.header_layout.setStretchFactor(self.ui.stem, 1)
 
         _icon_btn_style = """
             QPushButton {
@@ -68,35 +62,28 @@ class OptionQuestionItem(QWidget):
             }
         """
 
-        # Edit question button (before tag_btn)
-        self.edit_q_btn = QPushButton()
-        self.edit_q_btn.setIcon(qta.icon('fa5s.edit', color='#1a73e8'))
-        self.edit_q_btn.setToolTip("Edit this question")
-        self.edit_q_btn.setFixedSize(24, 24)
-        self.edit_q_btn.setStyleSheet(_icon_btn_style)
-        self.edit_q_btn.clicked.connect(self._on_edit_question)
-        header_layout.addWidget(self.edit_q_btn)
+        # Edit question button setup
+        self.ui.edit_q_btn.setIcon(qta.icon('fa5s.edit', color='#1a73e8'))
+        self.ui.edit_q_btn.setToolTip("Edit this question")
+        self.ui.edit_q_btn.setFixedSize(24, 24)
+        self.ui.edit_q_btn.setStyleSheet(_icon_btn_style)
+        self.ui.edit_q_btn.clicked.connect(self._on_edit_question)
 
-        # Bookmark/Tag button
-        self.tag_btn = QPushButton()
-        self.tag_btn.setIcon(qta.icon('fa5s.tags', color='#5f6368'))
-        self.tag_btn.setToolTip("Manage tags for this question")
-        self.tag_btn.setFixedSize(24, 24)
-        self.tag_btn.setStyleSheet(_icon_btn_style)
-        self.tag_btn.clicked.connect(self._show_tag_menu)
-        header_layout.addWidget(self.tag_btn)
+        # Bookmark/Tag button setup
+        self.ui.tag_btn.setIcon(qta.icon('fa5s.tags', color='#5f6368'))
+        self.ui.tag_btn.setToolTip("Manage tags for this question")
+        self.ui.tag_btn.setFixedSize(24, 24)
+        self.ui.tag_btn.setStyleSheet(_icon_btn_style)
+        self.ui.tag_btn.clicked.connect(self._show_tag_menu)
 
-        # Select audio segment button
-        self.select_audio_btn = QPushButton()
-        self.select_audio_btn.setIcon(qta.icon('fa5s.music', color='#5f6368'))
-        self.select_audio_btn.setToolTip("Select audio segment from transcript")
-        self.select_audio_btn.setFixedSize(24, 24)
-        self.select_audio_btn.setStyleSheet(_icon_btn_style)
-        self.select_audio_btn.clicked.connect(self._on_select_audio_segment)
-        header_layout.addWidget(self.select_audio_btn)
+        # Select audio segment button setup
+        self.ui.select_audio_btn.setIcon(qta.icon('fa5s.music', color='#5f6368'))
+        self.ui.select_audio_btn.setToolTip("Select audio segment from transcript")
+        self.ui.select_audio_btn.setFixedSize(24, 24)
+        self.ui.select_audio_btn.setStyleSheet(_icon_btn_style)
+        self.ui.select_audio_btn.clicked.connect(self._on_select_audio_segment)
 
         self.play_audio_btn = None
-        layout.addLayout(header_layout)
         self.update_audio_ui()
 
         # Prepare options
@@ -131,15 +118,13 @@ class OptionQuestionItem(QWidget):
             # Store the original DB index on the button
             radio.setProperty("orig_idx", orig_idx)
             self.btn_group.addButton(radio, display_pos)
-            layout.addWidget(radio)
+            self.ui.options_layout.addWidget(radio)
 
-        self._result_label = QLabel("")
+        self._result_label = self.ui.result_label
         self._result_label.setStyleSheet("font-size: 12px; font-weight: bold; padding: 2px 6px;")
-        layout.addWidget(self._result_label)
 
-        check_btn = QPushButton("Check Answer")
-        check_btn.setFixedWidth(130)
-        check_btn.setStyleSheet("""
+        self.ui.check_btn.setFixedWidth(130)
+        self.ui.check_btn.setStyleSheet("""
             QPushButton {
                 background-color: #1a73e8;
                 color: white;
@@ -149,8 +134,7 @@ class OptionQuestionItem(QWidget):
             }
             QPushButton:hover { background-color: #1558b0; }
         """)
-        check_btn.clicked.connect(self._on_check)
-        layout.addWidget(check_btn)
+        self.ui.check_btn.clicked.connect(self._on_check)
 
     def _on_check(self):
         selected = self.btn_group.checkedButton()
@@ -182,29 +166,28 @@ class OptionQuestionItem(QWidget):
         # Build play button if it has audio segment
         audio_start, audio_end = get_audio_meta(self.question)
         if audio_end > 0.0:
-            header_layout = self.layout().itemAt(0).layout()
-            if header_layout:
-                self.play_audio_btn = QPushButton()
-                self.play_audio_btn.setIcon(qta.icon('fa5s.play', color='#34a853'))
-                self.play_audio_btn.setToolTip(f"Play segment: {audio_start:.2f}s – {audio_end:.2f}s")
-                self.play_audio_btn.setFixedSize(24, 24)
+            self.play_audio_btn = QPushButton()
+            self.play_audio_btn.setIcon(qta.icon('fa5s.play', color='#34a853'))
+            self.play_audio_btn.setToolTip(f"Play segment: {audio_start:.2f}s – {audio_end:.2f}s")
+            self.play_audio_btn.setFixedSize(24, 24)
+            
+            _icon_btn_style = """
+                QPushButton {
+                    border: none;
+                    background-color: transparent;
+                }
+                QPushButton:hover {
+                    background-color: #f1f3f4;
+                    border-radius: 12px;
+                }
+            """
+            self.play_audio_btn.setStyleSheet(_icon_btn_style)
+            self.play_audio_btn.clicked.connect(self._on_play_audio)
+            
+            # Insert it before select_audio_btn
+            idx = self.ui.header_layout.indexOf(self.ui.select_audio_btn)
+            self.ui.header_layout.insertWidget(idx, self.play_audio_btn)
                 
-                _icon_btn_style = """
-                    QPushButton {
-                        border: none;
-                        background-color: transparent;
-                    }
-                    QPushButton:hover {
-                        background-color: #f1f3f4;
-                        border-radius: 12px;
-                    }
-                """
-                self.play_audio_btn.setStyleSheet(_icon_btn_style)
-                self.play_audio_btn.clicked.connect(self._on_play_audio)
-                
-                # Insert it before select_audio_btn
-                idx = header_layout.indexOf(self.select_audio_btn)
-                header_layout.insertWidget(idx, self.play_audio_btn)
 
     def _on_play_audio(self):
         # Find parent ExamGroupsWidget
@@ -213,9 +196,9 @@ class OptionQuestionItem(QWidget):
             if hasattr(parent_widget, 'player') and hasattr(parent_widget, 'audio_output'):
                 # Set player position and play
                 audio_start, audio_end = get_audio_meta(self.question)
-                parent_widget._audio_end_ms = int(audio_end * 1000)
-                parent_widget.player.setPosition(int(audio_start * 1000))
-                parent_widget.player.play()
+                setattr(parent_widget, '_audio_end_ms', int(audio_end * 1000))
+                parent_widget.player.setPosition(int(audio_start * 1000))  # type: ignore
+                parent_widget.player.play()  # type: ignore
                 break
             parent_widget = parent_widget.parent()
 
@@ -226,12 +209,7 @@ class OptionQuestionItem(QWidget):
         # Refresh the stem label with updated content
         updated_q = dialog.question
         self.question = updated_q
-        # Find the stem label (first widget in the header layout)
-        header_layout = self.layout().itemAt(0).layout()
-        if header_layout:
-            stem_item = header_layout.itemAt(0)
-            if stem_item and stem_item.widget():
-                stem_item.widget().setText(f"<b>Q{updated_q.question_number}.</b> {updated_q.content}")
+        self.ui.stem.setText(f"<b>Q{updated_q.question_number}.</b> {updated_q.content}")
         # Notify parent to refresh list item label
         parent_widget = self.parent()
         while parent_widget:
@@ -242,7 +220,7 @@ class OptionQuestionItem(QWidget):
 
     def _show_tag_menu(self):
         popup = TagMenuDialog(self.question, self)
-        pos = self.tag_btn.mapToGlobal(QPoint(0, self.tag_btn.height()))
+        pos = self.ui.tag_btn.mapToGlobal(QPoint(0, self.ui.tag_btn.height()))
         popup.move(pos)
         popup.exec()
 

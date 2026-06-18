@@ -1,13 +1,10 @@
+from PySide6.QtWidgets import QDialog, QMessageBox
 
-from PySide6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QMessageBox, QDialog, QTextEdit
-)
-from src.models.database import get_session
 import src.models.exam as exam_model
-# ─────────────────────────────────────────────────────────────────────────────
-# EditContextDialog — inline editor for an ExamContext (READING_PASSAGE)
-# ─────────────────────────────────────────────────────────────────────────────
+from src.models.database import get_session
+from src.views.components.ui_edit_context_dialog import Ui_EditContextDialog
+
+
 class EditContextDialog(QDialog):
     """Simple editor for an ExamContext's text content."""
 
@@ -20,52 +17,13 @@ class EditContextDialog(QDialog):
         self._populate()
 
     def _build_ui(self):
-        self.setStyleSheet("""
-            QDialog { background-color: #f8f9fa; }
-            QLabel { font-size: 12px; color: #3c4043; }
-            QTextEdit {
-                border: 1px solid #dadce0; border-radius: 6px;
-                padding: 6px 8px; font-size: 12px; background-color: white;
-            }
-            QTextEdit:focus { border-color: #1a73e8; }
-            QPushButton#save_btn {
-                background-color: #1a73e8; color: white; font-weight: bold;
-                border-radius: 6px; padding: 8px 20px; font-size: 12px;
-            }
-            QPushButton#save_btn:hover { background-color: #1558b0; }
-            QPushButton#cancel_btn {
-                background-color: white; color: #3c4043;
-                border: 1px solid #dadce0; border-radius: 6px;
-                padding: 8px 20px; font-size: 12px;
-            }
-            QPushButton#cancel_btn:hover { background-color: #f1f3f4; }
-        """)
-        root = QVBoxLayout(self)
-        root.setContentsMargins(20, 20, 20, 20)
-        root.setSpacing(12)
+        self.ui = Ui_EditContextDialog()
+        self.ui.setupUi(self)
 
-        header = QLabel(f"✏️  Editing Context  [{self.context.context_type}]")
-        header.setStyleSheet("font-size: 15px; font-weight: bold; color: #202124;")
-        root.addWidget(header)
-
-        desc = QLabel("Content (text field for READING_PASSAGE; raw JSON for other types):")
-        root.addWidget(desc)
-
-        self.content_edit = QTextEdit()
-        self.content_edit.setPlaceholderText("Context content…")
-        root.addWidget(self.content_edit)
-
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("cancel_btn")
-        cancel_btn.clicked.connect(self.reject)
-        btn_row.addWidget(cancel_btn)
-        save_btn = QPushButton("💾  Save")
-        save_btn.setObjectName("save_btn")
-        save_btn.clicked.connect(self._on_save)
-        btn_row.addWidget(save_btn)
-        root.addLayout(btn_row)
+        self.content_edit = self.ui.content_edit
+        self.ui.header_label.setText(f"Editing Context [{self.context.context_type}]")
+        self.ui.cancel_btn.clicked.connect(self.reject)
+        self.ui.save_btn.clicked.connect(self._on_save)
 
     def _populate(self):
         content = self.context.content

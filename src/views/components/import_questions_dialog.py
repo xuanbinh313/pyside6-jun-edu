@@ -1,32 +1,31 @@
-import json
+﻿import json
 
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QTextEdit, QMessageBox, QApplication, QFrame
-)
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+
+from src.views.components.ui_import_questions_dialog import Ui_ImportQuestionsDialog
 
 
 class ImportQuestionsDialog(QDialog):
     """
     Two-step import dialog:
-      Step 1 — Copy a structured LLM prompt, send it to Gemini/ChatGPT with the exam image.
-      Step 2 — Paste the returned JSON object and click Import.
+      Step 1 â€” Copy a structured LLM prompt, send it to Gemini/ChatGPT with the exam image.
+      Step 2 â€” Paste the returned JSON object and click Import.
 
     The JSON response contains two arrays that map directly to DB models:
-      - "contexts"  → ExamContext  (context_type, content, index)
-      - "questions" → ExamQuestion (context_id, content, options, correct_answer,
+      - "contexts"  â†’ ExamContext  (context_type, content, index)
+      - "questions" â†’ ExamQuestion (context_id, content, options, correct_answer,
                                     part, question_number, question_type, additional_meta)
     """
 
-    # ── LLM prompt template ──────────────────────────────────────────────────
+    # â”€â”€ LLM prompt template â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     PROMPT_TEXT = (
 r'''
 Analyze the attached exam image and extract all content into a structured JSON object
 with two main arrays: "contexts" and "questions".
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 OBJECTIVE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 
 - Identify if questions share a common context (reading passage, listening block,
   diagram, etc.).
@@ -35,9 +34,9 @@ OBJECTIVE
 - If a question is standalone (e.g. TOEIC Part 5), set "context_id" to null and
   do NOT create a context entry.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OUTPUT FORMAT  (output ONLY raw JSON — no markdown, no code fences, no explanation)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+OUTPUT FORMAT  (output ONLY raw JSON â€” no markdown, no code fences, no explanation)
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 
 {
   "contexts": [
@@ -62,30 +61,30 @@ OUTPUT FORMAT  (output ONLY raw JSON — no markdown, no code fences, no explana
   ]
 }
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-FIELD RULES — contexts
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+FIELD RULES â€” contexts
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 
 id
   * A short unique string you invent (e.g. "ctx_1", "ctx_2").
   * Must be referenced exactly by questions that belong to this context.
 
-context_type  — choose ONE:
-  * "READING_PASSAGE"  — paragraphs, articles, emails, letters
-  * "AUDIO_SRT"        — listening transcripts / subtitles with timestamps
-  * "IMAGE_DIAGRAM"    — charts, maps, graphs, floor plans
+context_type  â€” choose ONE:
+  * "READING_PASSAGE"  â€” paragraphs, articles, emails, letters
+  * "AUDIO_SRT"        â€” listening transcripts / subtitles with timestamps
+  * "IMAGE_DIAGRAM"    â€” charts, maps, graphs, floor plans
 
-content  — shape depends on context_type:
-  * READING_PASSAGE  → { "text": "<full passage text, replacing each blank '-------' or blank question indicator with [[question_number]] matching the corresponding question (e.g. [[131]])>" }
-  * AUDIO_SRT        → { "srt_lines": [ {"start": 0.0, "end": 2.5, "text": "..."}, ... ] }
-  * IMAGE_DIAGRAM    → { "text": "<describe the diagram briefly>" }
+content  â€” shape depends on context_type:
+  * READING_PASSAGE  â†’ { "text": "<full passage text, replacing each blank '-------' or blank question indicator with [[question_number]] matching the corresponding question (e.g. [[131]])>" }
+  * AUDIO_SRT        â†’ { "srt_lines": [ {"start": 0.0, "end": 2.5, "text": "..."}, ... ] }
+  * IMAGE_DIAGRAM    â†’ { "text": "<describe the diagram briefly>" }
 
 index
   * Integer order in which this context appears in the image (0-based).
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-FIELD RULES — questions
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+FIELD RULES â€” questions
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 
 context_id
   * Must match the "id" value of a context in the "contexts" array above.
@@ -106,12 +105,12 @@ correct_answer
   * Never infer the answer.
 
 part
-  * TOEIC part (1–7) or IELTS section as an integer.
+  * TOEIC part (1â€“7) or IELTS section as an integer.
 
 question_number
   * Printed question number as an integer.
 
-question_type  — choose ONE:
+question_type  â€” choose ONE:
   * "MULTIPLE_CHOICE"
   * "FILL_IN_THE_BLANK"
   * "ESSAY"
@@ -121,18 +120,18 @@ additional_meta
   * Always include { "audio_start": 0.0, "audio_end": 0.0 }.
   * Fill in real timestamps only if shown in the image.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 CONSTRAINTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 
-* Output ONLY the raw JSON object — no code blocks, no explanation, no markdown.
+* Output ONLY the raw JSON object â€” no code blocks, no explanation, no markdown.
 * Every question in the image must appear in the output.
 * If no context exists (e.g. Part 5 grammar), set context_id to null and leave
   "contexts" as an empty array [].
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EXAMPLE OUTPUT (Part 6 — reading passage + 2 questions)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 
 {
   "contexts": [
@@ -169,69 +168,29 @@ EXAMPLE OUTPUT (Part 6 — reading passage + 2 questions)
 '''
     )
 
-    # ── Field defaults ────────────────────────────────────────────────────────
+    # â”€â”€ Field defaults â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     VALID_CONTEXT_TYPES = {"READING_PASSAGE", "AUDIO_SRT", "IMAGE_DIAGRAM"}
     VALID_QUESTION_TYPES = {"MULTIPLE_CHOICE", "FILL_IN_THE_BLANK", "ESSAY", "RECORDING"}
     DEFAULT_QUESTION_TYPE = "MULTIPLE_CHOICE"
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Import Questions — LLM JSON Import")
+        self.setWindowTitle("Import Questions â€” LLM JSON Import")
         self.resize(720, 600)
         self.result_contexts: list[dict] = []
         self.result_questions: list[dict] = []
         self._setup_ui()
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # UI
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(16, 16, 16, 16)
+        self.ui = Ui_ImportQuestionsDialog()
+        self.ui.setupUi(self)
 
-        # ── Step 1 ────────────────────────────────────────────────────────
-        step1_title = QLabel("Step 1 — Copy prompt → paste into Gemini/ChatGPT with your exam image")
-        step1_title.setStyleSheet("font-weight: bold; font-size: 14px; color: #1a73e8;")
-        layout.addWidget(step1_title)
-
-        desc = QLabel(
-            "The LLM will extract contexts (passages, audio, diagrams) and questions "
-            "as a structured JSON object, aligned with ExamContext and ExamQuestion models."
-        )
-        desc.setWordWrap(True)
-        desc.setStyleSheet("color: #5f6368; font-size: 12px;")
-        layout.addWidget(desc)
-
-        self.prompt_edit = QTextEdit()
-        self.prompt_edit.setReadOnly(True)
-        self.prompt_edit.setFixedHeight(160)
-        self.prompt_edit.setStyleSheet(
-            "background-color: #f8f9fa; border: 1px solid #dadce0; "
-            "border-radius: 4px; font-family: monospace; font-size: 11px;"
-        )
+        self.prompt_edit = self.ui.prompt_edit
+        self.json_edit = self.ui.json_edit
         self.prompt_edit.setText(self.PROMPT_TEXT)
-        layout.addWidget(self.prompt_edit)
-
-        copy_btn = QPushButton("📋  Copy Prompt to Clipboard")
-        copy_btn.setStyleSheet(
-            "background-color: #1a73e8; color: white; font-weight: bold; padding: 6px 12px;"
-            "border-radius: 4px;"
-        )
-        copy_btn.clicked.connect(self._copy_prompt)
-        layout.addWidget(copy_btn)
-
-        # ── Divider ───────────────────────────────────────────────────────
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet("color: #dadce0;")
-        layout.addWidget(line)
-
-        # ── Step 2 ────────────────────────────────────────────────────────
-        step2_title = QLabel("Step 2 — Paste the generated JSON data below and click Import")
-        step2_title.setStyleSheet("font-weight: bold; font-size: 14px; color: #1a73e8;")
-        layout.addWidget(step2_title)
 
         placeholder = (
             '{\n'
@@ -257,35 +216,12 @@ EXAMPLE OUTPUT (Part 6 — reading passage + 2 questions)
             '  ]\n'
             '}'
         )
-        self.json_edit = QTextEdit()
         self.json_edit.setPlaceholderText(placeholder)
-        self.json_edit.setStyleSheet(
-            "border: 1px solid #dadce0; border-radius: 4px; font-family: monospace; font-size: 11px;"
-        )
-        layout.addWidget(self.json_edit)
 
-        # ── Footer buttons ────────────────────────────────────────────────
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
+        self.ui.copy_btn.clicked.connect(self._copy_prompt)
+        self.ui.cancel_btn.clicked.connect(self.reject)
+        self.ui.import_btn.clicked.connect(self._on_import)
 
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setStyleSheet("padding: 6px 12px;")
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
-
-        import_btn = QPushButton("✅  Import && Save")
-        import_btn.setStyleSheet(
-            "background-color: #34a853; color: white; font-weight: bold; "
-            "padding: 6px 14px; border-radius: 4px;"
-        )
-        import_btn.clicked.connect(self._on_import)
-        btn_layout.addWidget(import_btn)
-
-        layout.addLayout(btn_layout)
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Slots
-    # ─────────────────────────────────────────────────────────────────────────
     def _copy_prompt(self):
         QApplication.clipboard().setText(self.PROMPT_TEXT)
         QMessageBox.information(self, "Copied", "Prompt copied to clipboard!")
@@ -314,9 +250,9 @@ EXAMPLE OUTPUT (Part 6 — reading passage + 2 questions)
         self.result_questions = questions
         self.accept()
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # JSON parser
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _parse_json(self, raw_text: str) -> tuple[list[dict], list[dict]]:
         """
         Parse the LLM-generated JSON object.
@@ -328,11 +264,11 @@ EXAMPLE OUTPUT (Part 6 — reading passage + 2 questions)
                 context_type, content (dict/JSON), index
             The caller must supply exam_id before persisting.
             The 'llm_id' key carries the LLM-generated id so that the caller
-            can build the mapping llm_id → real DB uuid.
+            can build the mapping llm_id â†’ real DB uuid.
 
         questions : list[dict]
             Dicts ready to be passed to ExamQuestion constructor:
-                context_id (real DB uuid or None — resolved by caller),
+                context_id (real DB uuid or None â€” resolved by caller),
                 content, options (JSON string), correct_answer,
                 part, question_number, question_type, additional_meta (dict)
             The 'llm_context_id' key carries the raw LLM reference before resolution.
@@ -345,7 +281,7 @@ EXAMPLE OUTPUT (Part 6 — reading passage + 2 questions)
                 "\"contexts\" and \"questions\"."
             )
 
-        # ── Parse contexts ─────────────────────────────────────────────────
+        # â”€â”€ Parse contexts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         raw_contexts = data.get("contexts", [])
         if not isinstance(raw_contexts, list):
             raise ValueError("\"contexts\" must be a JSON array.")
@@ -381,7 +317,7 @@ EXAMPLE OUTPUT (Part 6 — reading passage + 2 questions)
                 "index":        index,
             })
 
-        # ── Parse questions ────────────────────────────────────────────────
+        # â”€â”€ Parse questions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         raw_questions = data.get("questions", [])
         if not isinstance(raw_questions, list):
             raise ValueError("\"questions\" must be a JSON array.")
@@ -443,7 +379,7 @@ EXAMPLE OUTPUT (Part 6 — reading passage + 2 questions)
 
             correct_answer = str(q.get("correct_answer") or "").strip().upper()
 
-            # context_id — stored as llm reference; caller resolves to real uuid
+            # context_id â€” stored as llm reference; caller resolves to real uuid
             llm_ctx_id = q.get("context_id")
             if llm_ctx_id is not None:
                 llm_ctx_id = str(llm_ctx_id).strip() or None

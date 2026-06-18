@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>EditContextDialog</class>
+ <widget class="QDialog" name="EditContextDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>640</width>
+    <height>420</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Edit Context</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QDialog { background-color: #f8f9fa; }
+QLabel { font-size: 12px; color: #3c4043; }
+QTextEdit {
+    border: 1px solid #dadce0; border-radius: 6px;
+    padding: 6px 8px; font-size: 12px; background-color: white;
+}
+QTextEdit:focus { border-color: #1a73e8; }
+QPushButton#save_btn {
+    background-color: #1a73e8; color: white; font-weight: bold;
+    border-radius: 6px; padding: 8px 20px; font-size: 12px;
+}
+QPushButton#save_btn:hover { background-color: #1558b0; }
+QPushButton#cancel_btn {
+    background-color: white; color: #3c4043;
+    border: 1px solid #dadce0; border-radius: 6px;
+    padding: 8px 20px; font-size: 12px;
+}
+QPushButton#cancel_btn:hover { background-color: #f1f3f4; }</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>12</number>
+   </property>
+   <property name="leftMargin">
+    <number>20</number>
+   </property>
+   <property name="topMargin">
+    <number>20</number>
+   </property>
+   <property name="rightMargin">
+    <number>20</number>
+   </property>
+   <property name="bottomMargin">
+    <number>20</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="header_label">
+     <property name="styleSheet">
+      <string notr="true">font-size: 15px; font-weight: bold; color: #202124;</string>
+     </property>
+     <property name="text">
+      <string>Editing Context</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="description_label">
+     <property name="text">
+      <string>Content (text field for READING_PASSAGE; raw JSON for other types):</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTextEdit" name="content_edit">
+     <property name="placeholderText">
+      <string>Context content...</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="button_layout">
+     <item>
+      <spacer name="button_spacer">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancel_btn">
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="save_btn">
+       <property name="text">
+        <string>Save</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ExamListView</class>
+ <widget class="QWidget" name="ExamListView">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Exam List</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <item>
+    <layout class="QHBoxLayout" name="header_layout">
+     <item>
+      <widget class="QLabel" name="title_label">
+       <property name="styleSheet">
+        <string notr="true">font-size: 24px; font-weight: bold; color: #1a73e8;</string>
+       </property>
+       <property name="text">
+        <string>Exam List</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="search_input">
+       <property name="placeholderText">
+        <string>Search exams...</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="add_btn">
+       <property name="styleSheet">
+        <string notr="true">background-color: #1a73e8; color: white; padding: 5px 15px; font-weight: bold; border-radius: 4px;</string>
+       </property>
+       <property name="text">
+        <string>Add Exam</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="add_ext_btn">
+       <property name="styleSheet">
+        <string notr="true">background-color: #34a853; color: white; padding: 5px 15px; font-weight: bold; border-radius: 4px;</string>
+       </property>
+       <property name="text">
+        <string>Add External</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="table">
+     <column>
+      <property name="text">
+       <string>Title</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Duration (mins)</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Published</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Actions</string>
+      </property>
+     </column>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
