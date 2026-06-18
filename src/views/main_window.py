@@ -138,7 +138,7 @@ class MainWindow(QMainWindow):
         )
         
         # 2. Force Window Focus (Qt Native Window Management)
-        self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
+        self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
         self.showNormal()      
         self.raise_()           
         self.activateWindow()   

@@ -61,7 +61,7 @@ class ExamAddExternalView(QWidget):
         # Progress label
         self.progress_label = QLabel("")
         self.progress_label.setStyleSheet("color: #666; font-style: italic;")
-        self.progress_label.setAlignment(Qt.AlignCenter)
+        self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.progress_label)
 
     def pick_file(self):

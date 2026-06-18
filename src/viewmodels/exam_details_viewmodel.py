@@ -1,3 +1,4 @@
+from src.models.exam import ExamQuestion
 from PySide6.QtCore import QObject, Signal
 from src.models.database import get_session
 from src.models.exam import Exam, ExamSrtChunk
@@ -31,9 +32,11 @@ class ExamDetailsViewModel(QObject):
 
     def save_exam(self, title, description, duration_minutes, is_published):
         session = get_session()
+        exam = None
         if self.exam_id:
             exam = session.query(Exam).filter(Exam.id == self.exam_id).first()
-        else:
+        
+        if not exam:
             exam = Exam()
             session.add(exam)
 

@@ -1,12 +1,13 @@
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                                QTableWidgetItem, QHeaderView,
-                               QLineEdit, QAbstractItemView)
+from PySide6.QtWidgets import (QWidget, QHBoxLayout, QPushButton,QTableWidgetItem,
+                            QHeaderView,QLineEdit, QAbstractItemView)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PySide6.QtCore import QUrl, Qt, QTimer, QFile, QSize
-from PySide6.QtUiTools import QUiLoader
+from PySide6.QtCore import QUrl, Qt, QTimer, QSize
 import os
-# 1. Import thư viện quản lý icon
+
+# Import thư viện quản lý icon
 import qtawesome as qta
+
+from .ui_exam_transcript_widget import Ui_ExamTranscriptWidget
 
 class TimeAdjustWidget(QWidget):
     def __init__(self, value, on_change, parent=None):
@@ -24,7 +25,7 @@ class TimeAdjustWidget(QWidget):
         layout.addWidget(self.minus_btn)
         
         self.val_edit = QLineEdit(f"{value:.3f}")
-        self.val_edit.setAlignment(Qt.AlignCenter)
+        self.val_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.val_edit.editingFinished.connect(self._text_changed)
         layout.addWidget(self.val_edit)
         
@@ -74,16 +75,8 @@ class ExamTranscriptWidget(QWidget):
         self.setup_ui()
         
     def setup_ui(self):
-        loader = QUiLoader()
-        ui_file_path = os.path.join(os.path.dirname(__file__), "../../../ui/exam_transcript_widget.ui")
-        ui_file = QFile(ui_file_path)
-        ui_file.open(QFile.ReadOnly)
-        self.ui = loader.load(ui_file, self)
-        ui_file.close()
-        
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.ui)
+        self.ui = Ui_ExamTranscriptWidget()
+        self.ui.setupUi(self)
         
         # Cấu hình nút Play/Pause chính
         self.play_pause_btn = self.ui.play_pause_btn
@@ -104,9 +97,9 @@ class ExamTranscriptWidget(QWidget):
         self.save_btn.setVisible(False)
         
         self.table = self.ui.table
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.itemChanged.connect(self._on_item_changed)
 
         # Seek bar
@@ -128,14 +121,14 @@ class ExamTranscriptWidget(QWidget):
         )
         
     def _toggle_play(self):
-        if self.player.playbackState() == QMediaPlayer.PlayingState:
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
         else:
             self.player.play()
 
     def _update_play_pause_icon(self):
         """Tự động thay đổi thiết kế nút Play/Pause bằng Python"""
-        if self.player.playbackState() == QMediaPlayer.PlayingState:
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.play_pause_btn.setIcon(qta.icon('fa5s.pause', color='#d93025'))
             self.play_pause_btn.setText(" Tạm dừng")
         else:
@@ -226,7 +219,7 @@ class ExamTranscriptWidget(QWidget):
         self.table.insertRow(row)
         
         idx_item = QTableWidgetItem(str(chunk.index))
-        idx_item.setFlags(idx_item.flags() & ~Qt.ItemIsEditable)
+        idx_item.setFlags(idx_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.table.setItem(row, 0, idx_item)
         
         # Start Time
@@ -301,7 +294,10 @@ class ExamTranscriptWidget(QWidget):
     def _on_item_changed(self, item):
         if item.column() == 3: 
             row = item.row()
-            idx_str = self.table.item(row, 0).text()
+            idx_item = self.table.item(row, 0)
+            if idx_item is None:
+                return
+            idx_str = idx_item.text()
             idx = int(idx_str)
             chunk = next((c for c in self.viewmodel.srt_chunks if c.index == idx), None)
             if chunk:
@@ -329,10 +325,12 @@ class ExamTranscriptWidget(QWidget):
             return
             
         self.table.blockSignals(True)
-        self.table.item(idx, 3).setText(chunk.text)
-        end_w = self.table.cellWidget(idx, 2)
-        end_w.val_edit.setText(f"{chunk.end_time:.3f}")
-        
+        idx_item = self.table.item(idx, 3)
+        if idx_item:
+            idx_item.setText(chunk.text)
+        end_item = self.table.item(idx, 2)
+        if end_item:
+            end_item.setText(f"{chunk.end_time:.3f}")
         self.table.removeRow(idx + 1)
         self.table.blockSignals(False)
         self._mark_changed()

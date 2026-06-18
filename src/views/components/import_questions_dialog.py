@@ -224,8 +224,8 @@ EXAMPLE OUTPUT (Part 6 — reading passage + 2 questions)
 
         # ── Divider ───────────────────────────────────────────────────────
         line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
         line.setStyleSheet("color: #dadce0;")
         layout.addWidget(line)
 

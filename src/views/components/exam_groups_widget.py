@@ -14,9 +14,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import QUrl, Qt, QTimer, QPoint, QFile
 from PySide6.QtGui import QColor, QPalette, QCursor
-from PySide6.QtUiTools import QUiLoader
-
 import qtawesome as qta
+from .ui_exam_groups_widget import Ui_ExamGroupsWidget
 from src.models.database import get_session
 from src.views.components.import_questions_dialog import ImportQuestionsDialog
 import src.models.exam as exam_model
@@ -39,7 +38,7 @@ def _get_audio_meta(question):
 # ─────────────────────────────────────────────────────────────────────────────
 class TagMenuPopup(QDialog):
     def __init__(self, question, parent=None):
-        super().__init__(parent, Qt.Popup | Qt.FramelessWindowHint)
+        super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.question = question
         self.user_id = "local_user"
         self.setStyleSheet("""
@@ -87,8 +86,13 @@ class TagMenuPopup(QDialog):
         # Clear tags layout
         while self.tags_layout.count():
             item = self.tags_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item is None:
+                continue
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+            else:
+                del item
 
         session = get_session()
         try:
@@ -117,7 +121,7 @@ class TagMenuPopup(QDialog):
     def _on_tag_state_changed(self, tag_name, state):
         session = get_session()
         try:
-            if state == Qt.Checked.value:
+            if state == Qt.CheckState.Checked.value:
                 # Add tag
                 exists = session.query(exam_model.UserQuestionTag).filter(
                     exam_model.UserQuestionTag.user_id == self.user_id,
@@ -207,7 +211,7 @@ class SelectTranscriptDialog(QDialog):
         layout.addWidget(desc)
         
         self.list_widget = QListWidget()
-        self.list_widget.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.list_widget.setStyleSheet("""
             QListWidget {
                 border: 1px solid #dadce0;
@@ -234,7 +238,7 @@ class SelectTranscriptDialog(QDialog):
             ).order_by(exam_model.ExamSrtChunk.index.asc()).all()
             for chunk in self.chunks:
                 item = QListWidgetItem(f"[{chunk.start_time:.2f}s – {chunk.end_time:.2f}s]  {chunk.text}")
-                item.setData(Qt.UserRole, chunk)
+                item.setData(Qt.ItemDataRole.UserRole, chunk)
                 self.list_widget.addItem(item)
         finally:
             session.close()
@@ -278,7 +282,7 @@ class SelectTranscriptDialog(QDialog):
             return
             
         self.selected_chunks = sorted(
-            [item.data(Qt.UserRole) for item in selected_items],
+            [item.data(Qt.ItemDataRole.UserRole) for item in selected_items],
             key=lambda c: c.index
         )
         self.accept()
@@ -639,7 +643,7 @@ class OptionWidget(QWidget):
 
     def _on_select_audio_segment(self):
         dialog = SelectTranscriptDialog(self.question.exam_id, self)
-        if dialog.exec() == QDialog.Accepted and dialog.selected_chunks:
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_chunks:
             first = dialog.selected_chunks[0]
             last = dialog.selected_chunks[-1]
             
@@ -697,16 +701,8 @@ class ExamGroupsWidget(QWidget):
     # UI construction
     # ─────────────────────────────────────────────────────────────────────────
     def setup_ui(self):
-        loader = QUiLoader()
-        ui_file_path = os.path.join(os.path.dirname(__file__), "../../../ui/exam_groups_widget.ui")
-        ui_file = QFile(ui_file_path)
-        ui_file.open(QFile.ReadOnly)
-        self.ui = loader.load(ui_file, self)
-        ui_file.close()
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.ui)
+        self.ui = Ui_ExamGroupsWidget()
+        self.ui.setupUi(self)
 
         # Wire up references to widgets inside the loaded UI
         self.import_q_btn = self.ui.import_q_btn
@@ -736,10 +732,10 @@ class ExamGroupsWidget(QWidget):
         self.passage_browser.anchorClicked.connect(self._on_passage_anchor_clicked)
 
         # Allow Ctrl/Shift multi-select so users can bulk-delete
-        self.q_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.q_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 
         # Right-click context menu on the question list
-        self.q_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.q_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.q_list.customContextMenuRequested.connect(self._on_q_list_context_menu)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -771,7 +767,7 @@ class ExamGroupsWidget(QWidget):
             label = f"Q{q.question_number}  [Part {q.part}]  {q.content[:60]}…" \
                     if len(q.content) > 60 else f"Q{q.question_number}  [Part {q.part}]  {q.content}"
             item = QListWidgetItem(label)
-            item.setData(Qt.UserRole, q)
+            item.setData(Qt.ItemDataRole.UserRole, q)
             self.q_list.addItem(item)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -789,7 +785,7 @@ class ExamGroupsWidget(QWidget):
         if not current:
             return
 
-        q = current.data(Qt.UserRole)
+        q = current.data(Qt.ItemDataRole.UserRole)
         self.title_label.setText(f"Part {q.part} — {q.content}")
 
         # ── Audio metadata ─────────────────────────────────────────────────
@@ -866,7 +862,7 @@ class ExamGroupsWidget(QWidget):
         item = self.q_list.currentItem()
         if not item:
             return
-        q = item.data(Qt.UserRole)
+        q = item.data(Qt.ItemDataRole.UserRole)
         audio_start, audio_end = _get_audio_meta(q)
         self._audio_end_ms = int(audio_end * 1000)
         self.player.setPosition(int(audio_start * 1000))
@@ -874,7 +870,7 @@ class ExamGroupsWidget(QWidget):
 
     def _on_position_changed(self, pos_ms):
         """Pause automatically when the clip end is reached."""
-        if (self.player.playbackState() == QMediaPlayer.PlayingState
+        if (self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
                 and self._audio_end_ms > 0
                 and pos_ms >= self._audio_end_ms):
             self.player.pause()
@@ -956,9 +952,9 @@ class ExamGroupsWidget(QWidget):
 
     def _on_edit_question(self, item: QListWidgetItem):
         """Open EditQuestionDialog for the given list item."""
-        q = item.data(Qt.UserRole)
+        q = item.data(Qt.ItemDataRole.UserRole)
         dialog = EditQuestionDialog(q, self)
-        if dialog.exec() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         # Update list item label to reflect new content
@@ -970,7 +966,7 @@ class ExamGroupsWidget(QWidget):
             else f"Q{updated_q.question_number}  [Part {updated_q.part}]  {updated_q.content}"
         )
         item.setText(label)
-        item.setData(Qt.UserRole, updated_q)
+        item.setData(Qt.ItemDataRole.UserRole, updated_q)
 
         # If this item is currently selected, refresh the detail panel
         if self.q_list.currentItem() is item:
@@ -982,14 +978,14 @@ class ExamGroupsWidget(QWidget):
         """Confirm and permanently delete one or more questions from the database."""
         n = len(items)
         if n == 1:
-            q = items[0].data(Qt.UserRole)
+            q = items[0].data(Qt.ItemDataRole.UserRole)
             msg = (
                 f"Are you sure you want to permanently delete Q{q.question_number}?\n"
                 "This action cannot be undone."
             )
         else:
             nums = ", ".join(
-                f"Q{it.data(Qt.UserRole).question_number}" for it in items
+                f"Q{it.data(Qt.ItemDataRole.UserRole).question_number}" for it in items
             )
             msg = (
                 f"Are you sure you want to permanently delete {n} questions?\n"
@@ -1000,13 +996,13 @@ class ExamGroupsWidget(QWidget):
             self,
             "Delete Question" if n == 1 else f"Delete {n} Questions",
             msg,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if reply != QMessageBox.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
             return
 
-        ids_to_delete = [it.data(Qt.UserRole).id for it in items]
+        ids_to_delete = [it.data(Qt.ItemDataRole.UserRole).id for it in items]
 
         session = get_session()
         try:
@@ -1040,7 +1036,7 @@ class ExamGroupsWidget(QWidget):
 
     def _on_import_questions_clicked(self):
         dialog = ImportQuestionsDialog(self)
-        if dialog.exec() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         contexts_data = dialog.result_contexts   # list[dict] with 'llm_id' key
@@ -1161,8 +1157,13 @@ class ExamGroupsWidget(QWidget):
         """Remove all OptionWidget children from the scrollable layout."""
         while self.options_layout.count() > 1:   # keep trailing stretch
             item = self.options_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item is None:
+                continue
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+            else:
+                del item
         self._question_widgets.clear()
 
     def populate_tags(self):
@@ -1170,7 +1171,7 @@ class ExamGroupsWidget(QWidget):
         checked_tags = set()
         for i in range(self.tag_filter_list.count()):
             item = self.tag_filter_list.item(i)
-            if item.checkState() == Qt.Checked:
+            if item.checkState() == Qt.CheckState.Checked:
                 checked_tags.add(item.text())
 
         self.tag_filter_list.clear()
@@ -1184,11 +1185,11 @@ class ExamGroupsWidget(QWidget):
             
             for tag_name in all_tags:
                 item = QListWidgetItem(tag_name)
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 if tag_name in checked_tags:
-                    item.setCheckState(Qt.Checked)
+                    item.setCheckState(Qt.CheckState.Checked)
                 else:
-                    item.setCheckState(Qt.Unchecked)
+                    item.setCheckState(Qt.CheckState.Unchecked)
                 self.tag_filter_list.addItem(item)
         finally:
             session.close()
@@ -1199,7 +1200,7 @@ class ExamGroupsWidget(QWidget):
         selected_tags = []
         for i in range(self.tag_filter_list.count()):
             item = self.tag_filter_list.item(i)
-            if item.checkState() == Qt.Checked:
+            if item.checkState() == Qt.CheckState.Checked:
                 selected_tags.append(item.text())
 
         self.q_list.blockSignals(True)
@@ -1227,7 +1228,7 @@ class ExamGroupsWidget(QWidget):
                         if len(q.content) > 60 else f"Q{q.question_number}  [Part {q.part}]  {q.content}"
                 item = QListWidgetItem(label)
                 session.expunge(q)
-                item.setData(Qt.UserRole, q)
+                item.setData(Qt.ItemDataRole.UserRole, q)
                 self.q_list.addItem(item)
         finally:
             session.close()
@@ -1242,10 +1243,10 @@ class ExamGroupsWidget(QWidget):
     def on_question_audio_changed(self, question):
         current_item = self.q_list.currentItem()
         if current_item:
-            q = current_item.data(Qt.UserRole)
+            q = current_item.data(Qt.ItemDataRole.UserRole)
             if q.id == question.id:
                 q.additional_meta = question.additional_meta
-                current_item.setData(Qt.UserRole, q)
+                current_item.setData(Qt.ItemDataRole.UserRole, q)
                 self._on_question_selected(current_item, None)
 
 
