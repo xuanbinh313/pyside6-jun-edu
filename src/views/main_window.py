@@ -1,5 +1,5 @@
 import sys
-from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QSystemTrayIcon, QMenu, QInputDialog
+from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QSystemTrayIcon, QMenu, QInputDialog, QMessageBox
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt
 import qtawesome as qta
@@ -33,7 +33,7 @@ class MainWindow(QMainWindow):
         
         self.stacked_widget.addWidget(self.list_view)
         
-        self.close_event_minutes = 1
+        self.close_event_minutes = 10
         self.setup_menu_bar()
         
         self.setup_system_tray()
@@ -108,24 +108,43 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Kích hoạt bộ đếm giờ ngay khi user bấm nút X thoát app"""
         if self.tray_icon.isVisible():
-            minutes = self.close_event_minutes
-            
-            # 2. Ra lệnh cho bộ não bắt đầu đếm ngược ngầm với số phút tìm được
-            self.reminder_viewmodel.start_countdown(minutes)
-            
-            # 3. Ẩn cửa sổ chính đi
-            self.hide()
-            
-            # 4. Bắn thông báo hệ thống
-            self.tray_icon.showMessage(
-                "Jun Edu",
-                f"Đã tự động hẹn giờ {minutes} phút và chạy ngầm dưới khay hệ thống!",
-                QSystemTrayIcon.MessageIcon.Information,
-                3000
+            # Hỏi người dùng muốn chạy ngầm hay thoát hoàn toàn
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Jun Edu")
+            msg_box.setText("Bạn muốn làm gì?")
+            msg_box.setInformativeText(
+                f"Chạy ngầm: Hẹn giờ {self.close_event_minutes} phút rồi nhắc học.\n"
+                "Thoát: Đóng hoàn toàn ứng dụng."
             )
-            
-            # 5. Ngăn không cho ứng dụng bị tắt hoàn toàn
-            event.ignore()
+            msg_box.setIcon(QMessageBox.Icon.Question)
+
+            btn_tray = msg_box.addButton("Chạy ngầm (System Tray)", QMessageBox.ButtonRole.AcceptRole)
+            btn_exit = msg_box.addButton("Thoát hoàn toàn", QMessageBox.ButtonRole.RejectRole)
+            msg_box.setDefaultButton(btn_tray)
+            msg_box.exec()
+
+            if msg_box.clickedButton() == btn_tray:
+                minutes = self.close_event_minutes
+
+                # Ra lệnh cho bộ não bắt đầu đếm ngược ngầm với số phút tìm được
+                self.reminder_viewmodel.start_countdown(minutes)
+
+                # Ẩn cửa sổ chính đi
+                self.hide()
+
+                # Bắn thông báo hệ thống
+                self.tray_icon.showMessage(
+                    "Jun Edu",
+                    f"Đã tự động hẹn giờ {minutes} phút và chạy ngầm dưới khay hệ thống!",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    3000
+                )
+
+                # Ngăn không cho ứng dụng bị tắt hoàn toàn
+                event.ignore()
+            else:
+                # Thoát hoàn toàn
+                QApplication.quit()
 
     def wakeup_and_focus_app(self):
         """Force window into user focus and display study contents."""
