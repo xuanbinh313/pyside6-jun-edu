@@ -118,27 +118,7 @@ class ExamGroupsWidget(QWidget):
                     ctx_map[ctx.id] = ctx
             finally:
                 session.close()
-
-        # Build the list of selectable items
-        # 1. Add Context items
-        for ctx_id in seen_ctx_ids:
-            ctx = ctx_map.get(ctx_id)
-            if ctx:
-                min_question = min([q.question_number for q in questions if q.context_id == ctx_id])
-                max_question = max([q.question_number for q in questions if q.context_id == ctx_id])
-
-                header_text = f"Questions {min_question}-{max_question}"
-                
-                item = QListWidgetItem(header_text)
-                item.setData(Qt.ItemDataRole.UserRole, ctx)  # store ctx object
-                item.setData(Qt.ItemDataRole.UserRole + 1, "context")  # marker
-                font = item.font()
-                font.setBold(True)
-                item.setFont(font)
-                item.setForeground(Qt.GlobalColor.darkBlue)
-                self.ui.q_list.addItem(item)
-
-        # 2. Add Standalone question items (questions that have no context_id)
+        # 1. Add Standalone question items (questions that have no context_id)
         standalone = [q for q in questions if not q.context_id]
         if standalone:
             if seen_ctx_ids:  # add a separator header only when there are also context groups
@@ -161,6 +141,26 @@ class ExamGroupsWidget(QWidget):
                 item.setData(Qt.ItemDataRole.UserRole, q)
                 item.setData(Qt.ItemDataRole.UserRole + 1, "standalone_question")
                 self.ui.q_list.addItem(item)
+
+        # 2. Add Context items
+        for ctx_id in seen_ctx_ids:
+            ctx = ctx_map.get(ctx_id)
+            if ctx:
+                min_question = min([q.question_number for q in questions if q.context_id == ctx_id])
+                max_question = max([q.question_number for q in questions if q.context_id == ctx_id])
+
+                header_text = f"Questions {min_question}-{max_question}"
+                
+                item = QListWidgetItem(header_text)
+                item.setData(Qt.ItemDataRole.UserRole, ctx)  # store ctx object
+                item.setData(Qt.ItemDataRole.UserRole + 1, "context")  # marker
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+                item.setForeground(Qt.GlobalColor.darkBlue)
+                self.ui.q_list.addItem(item)
+
+        
 
     # ─────────────────────────────────────────────────────────────────────────
     # Slots
