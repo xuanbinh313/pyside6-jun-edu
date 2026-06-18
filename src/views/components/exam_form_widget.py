@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
 
-from src.views.components.ui_exam_form_widget import Ui_ExamFormWidget
+from ui_gen.ui_exam_form_widget import Ui_ExamFormWidget
 
 
 class ExamFormWidget(QWidget):

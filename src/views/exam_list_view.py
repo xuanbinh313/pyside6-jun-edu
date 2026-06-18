@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QHBoxLayout, QHeaderView, QPushButton, QTableWidgetItem, QWidget
 
-from src.views.ui_exam_list_view import Ui_ExamListView
+from ui_gen.ui_exam_list_view import Ui_ExamListView
 
 
 class ExamListView(QWidget):

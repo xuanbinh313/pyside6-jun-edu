@@ -13,12 +13,13 @@ from PySide6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout,
 import src.models.exam as exam_model
 from src.models.database import get_session
 from src.utils.helpers import get_audio_meta
+from src.utils.qt import clear_layout
 from src.views.components.edit_context_dialog import EditContextDialog
 from src.views.components.edit_question_dialog import EditQuestionDialog
 from src.views.components.import_questions_dialog import ImportQuestionsDialog
 from src.views.components.option_question_item import OptionQuestionItem
 
-from .ui_exam_groups_widget import Ui_ExamGroupsWidget
+from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -646,15 +647,7 @@ class ExamGroupsWidget(QWidget):
     # ─────────────────────────────────────────────────────────────────────────
     def _clear_options(self):
         """Remove all OptionQuestionItem children from the scrollable layout."""
-        while self.ui.options_layout.count() > 1:   # keep trailing stretch
-            item = self.ui.options_layout.takeAt(0)
-            if item is None:
-                continue
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-            else:
-                del item
+        clear_layout(self.ui.options_layout, keep_tail=1)
         self._question_widgets.clear()
 
     def populate_tags(self):

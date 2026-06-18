@@ -12,13 +12,18 @@ authors = [
 files = [
     "main.py",
     "src/**/*.py",
+    "ui_gen/**/*.py",
     "ui/**/*.ui"
 ]
 
 [tool.pyright]
 # Ép Pyright/Pyrefly nhận thư mục gốc làm Import Root thay vì tự đoán là `src`
-include = ["src", "main.py"]
+include = ["src", "ui_gen", "main.py"]
 extraPaths = ["."]
+
+[tool.ruff]
+src = ["src", "ui_gen"]
+extend-exclude = ["ui_gen"]
 
 [project.optional-dependencies]
 dev = [

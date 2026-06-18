@@ -18,7 +18,7 @@ from src.viewmodels.reminder_viewmodel import ReminderViewModel
 from src.views.exam_add_external_view import ExamAddExternalView
 from src.views.exam_details_view import ExamDetailsView
 from src.views.exam_list_view import ExamListView
-from src.views.ui_main_window import Ui_MainWindow
+from ui_gen.ui_main_window import Ui_MainWindow
 
 
 class MainWindow(QMainWindow):

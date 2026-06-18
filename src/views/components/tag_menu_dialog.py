@@ -3,7 +3,8 @@ from PySide6.QtWidgets import QCheckBox, QDialog
 
 import src.models.exam as exam_model
 from src.models.database import get_session
-from src.views.components.ui_tag_menu_dialog import Ui_TagMenuDialog
+from src.utils.qt import clear_layout
+from ui_gen.ui_tag_menu_dialog import Ui_TagMenuDialog
 
 
 class TagMenuDialog(QDialog):
@@ -25,15 +26,7 @@ class TagMenuDialog(QDialog):
         self._load_tags()
 
     def _load_tags(self):
-        while self.tags_layout.count():
-            item = self.tags_layout.takeAt(0)
-            if item is None:
-                continue
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-            else:
-                del item
+        clear_layout(self.tags_layout)
 
         session = get_session()
         try:

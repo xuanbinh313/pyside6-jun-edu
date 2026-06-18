@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 
 import src.models.exam as exam_model
 from src.models.database import get_session
-from src.views.components.ui_edit_question_dialog import Ui_EditQuestionDialog
+from ui_gen.ui_edit_question_dialog import Ui_EditQuestionDialog
 
 
 class EditQuestionDialog(QDialog):

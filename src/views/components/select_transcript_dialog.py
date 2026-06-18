@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QDialog, QListWidgetItem, QMessageBox
 
 import src.models.exam as exam_model
 from src.models.database import get_session
-from src.views.components.ui_select_transcript_dialog import Ui_SelectTranscriptDialog
+from ui_gen.ui_select_transcript_dialog import Ui_SelectTranscriptDialog
 
 
 class SelectTranscriptDialog(QDialog):

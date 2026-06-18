@@ -2,6 +2,7 @@
 
 > **Location:** `src/views/`  
 > **Pattern:** Views receive a ViewModel reference at construction time. They connect to ViewModel signals in `__init__` and never directly touch the database.
+> **Generated UI:** Views import `Ui_*` classes from `ui_gen/`. Do not edit generated files by hand; edit `ui/*.ui` and regenerate with `pyside6-uic`.
 
 ---
 
@@ -162,7 +163,7 @@ Expected header row + data rows: `index,start,end,text[,...]`
 
 **File:** [`src/views/components/exam_groups_widget.py`](../src/views/components/exam_groups_widget.py)
 
-Full Groups & Questions panel. Layout loaded from [`ui/exam_groups_widget.ui`](../ui/exam_groups_widget.ui) via `pyside6-uic` → generates [`src/views/components/ui_exam_groups_widget.py`](../src/views/components/ui_exam_groups_widget.py).
+Full Groups & Questions panel. Layout loaded from [`ui/exam_groups_widget.ui`](../ui/exam_groups_widget.ui) via `pyside6-uic` and generated into [`ui_gen/ui_exam_groups_widget.py`](../ui_gen/ui_exam_groups_widget.py).
 
 In `setup_ui()`:
 
@@ -240,7 +241,7 @@ Inline `±0.1s` spinner for precise timestamp editing.
 
 #### UI Loading
 
-Layout loaded from [`ui/exam_transcript_widget.ui`](../ui/exam_transcript_widget.ui) via `pyside6-uic` (compile step) → generates [`src/views/components/ui_exam_transcript_widget.py`](../src/views/components/ui_exam_transcript_widget.py).
+Layout loaded from [`ui/exam_transcript_widget.ui`](../ui/exam_transcript_widget.ui) via `pyside6-uic` and generated into [`ui_gen/ui_exam_transcript_widget.py`](../ui_gen/ui_exam_transcript_widget.py).
 
 In `setup_ui()`:
 

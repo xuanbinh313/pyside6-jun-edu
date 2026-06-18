@@ -14,7 +14,7 @@ from src.views.components.select_transcript_dialog import \
     SelectTranscriptDialog
 from src.views.components.tag_menu_dialog import TagMenuDialog
 
-from .ui_option_question_item import Ui_OptionQuestionItem
+from ui_gen.ui_option_question_item import Ui_OptionQuestionItem
 
 # ─────────────────────────────────────────────────────────────────────────────
 # OptionQuestionItem — shuffled ABCD radio buttons for a single question

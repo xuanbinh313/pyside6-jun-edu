@@ -2,7 +2,7 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 
 import src.models.exam as exam_model
 from src.models.database import get_session
-from src.views.components.ui_edit_context_dialog import Ui_EditContextDialog
+from ui_gen.ui_edit_context_dialog import Ui_EditContextDialog
 
 
 class EditContextDialog(QDialog):

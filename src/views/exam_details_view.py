@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QWidget
 from src.views.components.exam_form_widget import ExamFormWidget
 from src.views.components.exam_groups_widget import ExamGroupsWidget
 from src.views.components.exam_transcript_widget import ExamTranscriptWidget
-from src.views.ui_exam_details_view import Ui_ExamDetailsView
+from ui_gen.ui_exam_details_view import Ui_ExamDetailsView
 
 
 class ExamDetailsView(QWidget):

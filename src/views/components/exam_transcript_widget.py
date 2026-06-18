@@ -7,7 +7,7 @@ import os
 # Import thư viện quản lý icon
 import qtawesome as qta
 
-from .ui_exam_transcript_widget import Ui_ExamTranscriptWidget
+from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
 
 class TimeAdjustWidget(QWidget):
     def __init__(self, value, on_change, parent=None):

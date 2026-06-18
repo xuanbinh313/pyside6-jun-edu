@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
 
-from src.views.ui_exam_add_external_view import Ui_ExamAddExternalView
+from ui_gen.ui_exam_add_external_view import Ui_ExamAddExternalView
 
 
 class ExamAddExternalView(QWidget):
