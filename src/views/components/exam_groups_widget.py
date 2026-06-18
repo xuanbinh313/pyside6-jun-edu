@@ -705,38 +705,24 @@ class ExamGroupsWidget(QWidget):
         self.ui.setupUi(self)
 
         # Wire up references to widgets inside the loaded UI
-        self.import_q_btn = self.ui.import_q_btn
-        self.tag_filter_list = self.ui.tag_filter_list
-        self.q_list = self.ui.q_list
-        self.title_label = self.ui.title_label
-        self.listen_widget = self.ui.listen_widget
-        self.listen_btn = self.ui.listen_btn
-        self.status_label = self.ui.status_label
-        self.passage_label = self.ui.passage_label
-        self.passage_browser = self.ui.passage_browser
-        self.transcript_label = self.ui.transcript_label
-        self.transcript_browser = self.ui.transcript_browser
-        self.options_scroll = self.ui.options_scroll
-        self.options_container = self.ui.options_container
-        self.options_layout = self.ui.options_layout
 
         # Setup icons
-        self.import_q_btn.setIcon(qta.icon('fa5s.file-import', color='#34a853'))
-        self.listen_btn.setIcon(qta.icon('fa5s.play', color='white'))
+        self.ui.import_q_btn.setIcon(qta.icon('fa5s.file-import', color='#34a853'))
+        self.ui.listen_btn.setIcon(qta.icon('fa5s.play', color='white'))
 
         # Setup connections
-        self.import_q_btn.clicked.connect(self._on_import_questions_clicked)
-        self.tag_filter_list.itemChanged.connect(self._on_filter_changed)
-        self.q_list.currentItemChanged.connect(self._on_question_selected)
-        self.listen_btn.clicked.connect(self._on_listen_clicked)
-        self.passage_browser.anchorClicked.connect(self._on_passage_anchor_clicked)
+        self.ui.import_q_btn.clicked.connect(self._on_import_questions_clicked)
+        self.ui.tag_filter_list.itemChanged.connect(self._on_filter_changed)
+        self.ui.q_list.currentItemChanged.connect(self._on_question_selected)
+        self.ui.listen_btn.clicked.connect(self._on_listen_clicked)
+        self.ui.passage_browser.anchorClicked.connect(self._on_passage_anchor_clicked)
 
         # Allow Ctrl/Shift multi-select so users can bulk-delete
-        self.q_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.ui.q_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 
         # Right-click context menu on the question list
-        self.q_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.q_list.customContextMenuRequested.connect(self._on_q_list_context_menu)
+        self.ui.q_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.ui.q_list.customContextMenuRequested.connect(self._on_q_list_context_menu)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Public: populate from viewmodel
@@ -744,15 +730,15 @@ class ExamGroupsWidget(QWidget):
     def populate(self):
         self.player.stop()
         self.populate_tags()
-        self.q_list.clear()
+        self.ui.q_list.clear()
         self._question_widgets.clear()
         self._clear_options()
-        self.title_label.setText("Select a question to view details")
-        self.listen_widget.setVisible(False)
-        self.passage_label.setVisible(False)
-        self.passage_browser.setVisible(False)
-        self.transcript_label.setVisible(False)
-        self.transcript_browser.setVisible(False)
+        self.ui.title_label.setText("Select a question to view details")
+        self.ui.listen_widget.setVisible(False)
+        self.ui.passage_label.setVisible(False)
+        self.ui.passage_browser.setVisible(False)
+        self.ui.transcript_label.setVisible(False)
+        self.ui.transcript_browser.setVisible(False)
 
         # Load audio source
         if self.viewmodel.exam and self.viewmodel.exam.full_audio_url:
@@ -768,7 +754,7 @@ class ExamGroupsWidget(QWidget):
                     if len(q.content) > 60 else f"Q{q.question_number}  [Part {q.part}]  {q.content}"
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, q)
-            self.q_list.addItem(item)
+            self.ui.q_list.addItem(item)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Slots
@@ -776,17 +762,17 @@ class ExamGroupsWidget(QWidget):
     def _on_question_selected(self, current, previous):
         self.player.stop()
         self._clear_options()
-        self.passage_label.setVisible(False)
-        self.passage_browser.setVisible(False)
-        self.transcript_label.setVisible(False)
-        self.transcript_browser.setVisible(False)
-        self.listen_widget.setVisible(False)
+        self.ui.passage_label.setVisible(False)
+        self.ui.passage_browser.setVisible(False)
+        self.ui.transcript_label.setVisible(False)
+        self.ui.transcript_browser.setVisible(False)
+        self.ui.listen_widget.setVisible(False)
 
         if not current:
             return
 
         q = current.data(Qt.ItemDataRole.UserRole)
-        self.title_label.setText(f"Part {q.part} — {q.content}")
+        self.ui.title_label.setText(f"Part {q.part} — {q.content}")
 
         # ── Audio metadata ─────────────────────────────────────────────────
         audio_start, audio_end = _get_audio_meta(q)
@@ -794,12 +780,12 @@ class ExamGroupsWidget(QWidget):
 
         if has_audio:
             self._audio_end_ms = int(audio_end * 1000)
-            self.status_label.setText(f"Segment: {audio_start:.2f}s – {audio_end:.2f}s")
-            self.listen_widget.setVisible(True)
+            self.ui.status_label.setText(f"Segment: {audio_start:.2f}s – {audio_end:.2f}s")
+            self.ui.listen_widget.setVisible(True)
 
             # ── Transcript from SRT chunks ─────────────────────────────────
-            self.transcript_label.setVisible(True)
-            self.transcript_browser.setVisible(True)
+            self.ui.transcript_label.setVisible(True)
+            self.ui.transcript_browser.setVisible(True)
             session = get_session()
             try:
                 chunks = session.query(exam_model.ExamSrtChunk).filter(
@@ -810,11 +796,11 @@ class ExamGroupsWidget(QWidget):
                 text = "\n".join(
                     f"[{c.start_time:.2f}s – {c.end_time:.2f}s]  {c.text}" for c in chunks
                 )
-                self.transcript_browser.setText(
+                self.ui.transcript_browser.setText(
                     text if text else "No matching transcript chunks found."
                 )
             except Exception as exc:
-                self.transcript_browser.setText(f"Error: {exc}")
+                self.ui.transcript_browser.setText(f"Error: {exc}")
             finally:
                 session.close()
 
@@ -831,8 +817,8 @@ class ExamGroupsWidget(QWidget):
                     elif ctx.context_type == "AUDIO_SRT":
                         self._render_audio_srt_context(ctx)
             except Exception as exc:
-                self.passage_browser.setPlainText(f"Error loading context: {exc}")
-                self.passage_browser.setVisible(True)
+                self.ui.passage_browser.setPlainText(f"Error loading context: {exc}")
+                self.ui.passage_browser.setVisible(True)
             finally:
                 session.close()
 
@@ -845,21 +831,21 @@ class ExamGroupsWidget(QWidget):
             opt_w = OptionWidget(gq)
             self._question_widgets[gq.question_number] = opt_w
             # Insert before the trailing stretch
-            count = self.options_layout.count()
-            self.options_layout.insertWidget(count - 1, opt_w)
+            count = self.ui.options_layout.count()
+            self.ui.options_layout.insertWidget(count - 1, opt_w)
 
         # Scroll to the selected question
         if q.question_number in self._question_widgets:
             target = self._question_widgets[q.question_number]
             def _safe_scroll(w=target):
                 try:
-                    self.options_scroll.ensureWidgetVisible(w)
+                    self.ui.options_scroll.ensureWidgetVisible(w)
                 except RuntimeError:
                     pass  # C++ object already deleted – ignore
             QTimer.singleShot(50, _safe_scroll)
 
     def _on_listen_clicked(self):
-        item = self.q_list.currentItem()
+        item = self.ui.q_list.currentItem()
         if not item:
             return
         q = item.data(Qt.ItemDataRole.UserRole)
@@ -888,7 +874,7 @@ class ExamGroupsWidget(QWidget):
 
         target = self._question_widgets.get(q_num)
         if target:
-            self.options_scroll.ensureWidgetVisible(target)
+            self.ui.options_scroll.ensureWidgetVisible(target)
         else:
             # Show a quick informational popup at cursor
             menu = QMenu(self)
@@ -900,15 +886,15 @@ class ExamGroupsWidget(QWidget):
     # ─────────────────────────────────────────────────────────────────────────
     def _on_q_list_context_menu(self, pos: QPoint):
         """Show Edit / Delete context menu for the right-clicked list item."""
-        clicked_item = self.q_list.itemAt(pos)
+        clicked_item = self.ui.q_list.itemAt(pos)
         if not clicked_item:
             return
 
         # Make sure the clicked item is part of the selection; if the user
         # right-clicked on an unselected item select only that one.
-        selected_items = self.q_list.selectedItems()
+        selected_items = self.ui.q_list.selectedItems()
         if clicked_item not in selected_items:
-            self.q_list.clearSelection()
+            self.ui.q_list.clearSelection()
             clicked_item.setSelected(True)
             selected_items = [clicked_item]
 
@@ -943,7 +929,7 @@ class ExamGroupsWidget(QWidget):
         delete_label = f"Delete {n} Questions" if n > 1 else "Delete Question"
         delete_action = menu.addAction(qta.icon('fa5s.trash-alt', color='#ea4335'), delete_label)
 
-        action = menu.exec(self.q_list.viewport().mapToGlobal(pos))
+        action = menu.exec(self.ui.q_list.viewport().mapToGlobal(pos))
 
         if edit_action and action == edit_action:
             self._on_edit_question(clicked_item)
@@ -969,7 +955,7 @@ class ExamGroupsWidget(QWidget):
         item.setData(Qt.ItemDataRole.UserRole, updated_q)
 
         # If this item is currently selected, refresh the detail panel
-        if self.q_list.currentItem() is item:
+        if self.ui.q_list.currentItem() is item:
             self._on_question_selected(item, None)
 
         QMessageBox.information(self, "Saved", "Question updated successfully.")
@@ -1018,21 +1004,21 @@ class ExamGroupsWidget(QWidget):
             session.close()
 
         # Remove all deleted items from the list (iterate in reverse to keep indices stable)
-        self.q_list.blockSignals(True)
+        self.ui.q_list.blockSignals(True)
         for item in items:
-            row = self.q_list.row(item)
-            self.q_list.takeItem(row)
-        self.q_list.blockSignals(False)
+            row = self.ui.q_list.row(item)
+            self.ui.q_list.takeItem(row)
+        self.ui.q_list.blockSignals(False)
 
         # Clear detail panel if nothing is selected anymore
-        if self.q_list.currentItem() is None:
+        if self.ui.q_list.currentItem() is None:
             self._clear_options()
-            self.title_label.setText("Select a question to view details")
-            self.listen_widget.setVisible(False)
-            self.passage_label.setVisible(False)
-            self.passage_browser.setVisible(False)
-            self.transcript_label.setVisible(False)
-            self.transcript_browser.setVisible(False)
+            self.ui.title_label.setText("Select a question to view details")
+            self.ui.listen_widget.setVisible(False)
+            self.ui.passage_label.setVisible(False)
+            self.ui.passage_browser.setVisible(False)
+            self.ui.transcript_label.setVisible(False)
+            self.ui.transcript_browser.setVisible(False)
 
     def _on_import_questions_clicked(self):
         dialog = ImportQuestionsDialog(self)
@@ -1128,12 +1114,12 @@ class ExamGroupsWidget(QWidget):
         html_content = re.sub(r'\[\[(\d+)\]\]', replace_placeholder, raw)
         html_content = html_content.replace("\n", "<br>")
 
-        self.passage_browser.setHtml(
+        self.ui.passage_browser.setHtml(
             f'<div style="font-family: Georgia, serif; font-size:13px; '
             f'line-height:1.8; color:#202124;">{html_content}</div>'
         )
-        self.passage_label.setVisible(True)
-        self.passage_browser.setVisible(True)
+        self.ui.passage_label.setVisible(True)
+        self.ui.passage_browser.setVisible(True)
 
     def _render_audio_srt_context(self, ctx):
         """Display AUDIO_SRT context as a readable transcript."""
@@ -1143,20 +1129,20 @@ class ExamGroupsWidget(QWidget):
                 f"[{e.get('start', 0):.2f}s – {e.get('end', 0):.2f}s]  {e.get('text', '')}"
                 for e in entries
             ]
-            self.transcript_browser.setText("\n".join(lines))
-            self.transcript_label.setVisible(True)
-            self.transcript_browser.setVisible(True)
+            self.ui.transcript_browser.setText("\n".join(lines))
+            self.ui.transcript_label.setVisible(True)
+            self.ui.transcript_browser.setVisible(True)
         except Exception as exc:
-            self.transcript_browser.setText(f"Error reading audio context: {exc}")
-            self.transcript_browser.setVisible(True)
+            self.ui.transcript_browser.setText(f"Error reading audio context: {exc}")
+            self.ui.transcript_browser.setVisible(True)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers
     # ─────────────────────────────────────────────────────────────────────────
     def _clear_options(self):
         """Remove all OptionWidget children from the scrollable layout."""
-        while self.options_layout.count() > 1:   # keep trailing stretch
-            item = self.options_layout.takeAt(0)
+        while self.ui.options_layout.count() > 1:   # keep trailing stretch
+            item = self.ui.options_layout.takeAt(0)
             if item is None:
                 continue
             widget = item.widget()
@@ -1167,14 +1153,14 @@ class ExamGroupsWidget(QWidget):
         self._question_widgets.clear()
 
     def populate_tags(self):
-        self.tag_filter_list.blockSignals(True)
+        self.ui.tag_filter_list.blockSignals(True)
         checked_tags = set()
-        for i in range(self.tag_filter_list.count()):
-            item = self.tag_filter_list.item(i)
+        for i in range(self.ui.tag_filter_list.count()):
+            item = self.ui.tag_filter_list.item(i)
             if item.checkState() == Qt.CheckState.Checked:
                 checked_tags.add(item.text())
 
-        self.tag_filter_list.clear()
+        self.ui.tag_filter_list.clear()
         
         session = get_session()
         try:
@@ -1190,21 +1176,21 @@ class ExamGroupsWidget(QWidget):
                     item.setCheckState(Qt.CheckState.Checked)
                 else:
                     item.setCheckState(Qt.CheckState.Unchecked)
-                self.tag_filter_list.addItem(item)
+                self.ui.tag_filter_list.addItem(item)
         finally:
             session.close()
             
-        self.tag_filter_list.blockSignals(False)
+        self.ui.tag_filter_list.blockSignals(False)
 
     def _on_filter_changed(self):
         selected_tags = []
-        for i in range(self.tag_filter_list.count()):
-            item = self.tag_filter_list.item(i)
+        for i in range(self.ui.tag_filter_list.count()):
+            item = self.ui.tag_filter_list.item(i)
             if item.checkState() == Qt.CheckState.Checked:
                 selected_tags.append(item.text())
 
-        self.q_list.blockSignals(True)
-        self.q_list.clear()
+        self.ui.q_list.blockSignals(True)
+        self.ui.q_list.clear()
         self._clear_options()
 
         session = get_session()
@@ -1229,19 +1215,19 @@ class ExamGroupsWidget(QWidget):
                 item = QListWidgetItem(label)
                 session.expunge(q)
                 item.setData(Qt.ItemDataRole.UserRole, q)
-                self.q_list.addItem(item)
+                self.ui.q_list.addItem(item)
         finally:
             session.close()
 
-        self.q_list.blockSignals(False)
-        self.title_label.setText("Select a question to view details")
+        self.ui.q_list.blockSignals(False)
+        self.ui.title_label.setText("Select a question to view details")
 
     def on_question_tag_changed(self):
         self.populate_tags()
         self._on_filter_changed()
 
     def on_question_audio_changed(self, question):
-        current_item = self.q_list.currentItem()
+        current_item = self.ui.q_list.currentItem()
         if current_item:
             q = current_item.data(Qt.ItemDataRole.UserRole)
             if q.id == question.id:

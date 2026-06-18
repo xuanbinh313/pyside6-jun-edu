@@ -79,41 +79,34 @@ class ExamTranscriptWidget(QWidget):
         self.ui.setupUi(self)
         
         # Cấu hình nút Play/Pause chính
-        self.play_pause_btn = self.ui.play_pause_btn
-        self.play_pause_btn.clicked.connect(self._toggle_play)
+        self.ui.play_pause_btn.clicked.connect(self._toggle_play)
         self._update_play_pause_icon() # Khởi tạo icon ban đầu
         
-        self.delay_spin = self.ui.delay_spin
         
-        self.save_btn = self.ui.save_btn
-        self.save_btn.setIcon(qta.icon('fa5s.save', color='white'))
-        self.save_btn.setIconSize(QSize(16, 16))
-        self.save_btn.setStyleSheet(
+        self.ui.save_btn.setIcon(qta.icon('fa5s.save', color='white'))
+        self.ui.save_btn.setIconSize(QSize(16, 16))
+        self.ui.save_btn.setStyleSheet(
             "QPushButton { background-color: #1a73e8; color: white; "
             "padding: 4px 12px; border-radius: 4px; font-weight: bold; }"
             "QPushButton:hover { background-color: #1558b0; }"
         )
-        self.save_btn.clicked.connect(self._on_save_clicked)
-        self.save_btn.setVisible(False)
+        self.ui.save_btn.clicked.connect(self._on_save_clicked)
+        self.ui.save_btn.setVisible(False)
         
-        self.table = self.ui.table
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.itemChanged.connect(self._on_item_changed)
+        self.ui.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.ui.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.ui.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.ui.table.itemChanged.connect(self._on_item_changed)
 
         # Seek bar
-        self.seek_slider = self.ui.seek_slider
-        self.seek_slider.setTracking(False)  # only emit on release
-        self.seek_slider.sliderMoved.connect(self._on_slider_moved)
-        self.seek_slider.sliderPressed.connect(self._on_slider_pressed)
-        self.seek_slider.sliderReleased.connect(self._on_slider_released)
+        self.ui.seek_slider.setTracking(False)  # only emit on release
+        self.ui.seek_slider.sliderMoved.connect(self._on_slider_moved)
+        self.ui.seek_slider.sliderPressed.connect(self._on_slider_pressed)
+        self.ui.seek_slider.sliderReleased.connect(self._on_slider_released)
         self._slider_dragging = False
 
-        self.time_current_label = self.ui.time_current_label
-        self.time_total_label = self.ui.time_total_label
 
-        self.seek_slider.setStyleSheet(
+        self.ui.seek_slider.setStyleSheet(
             "QSlider::groove:horizontal { height: 6px; background: #dadce0; border-radius: 3px; }"
             "QSlider::sub-page:horizontal { background: #1a73e8; border-radius: 3px; }"
             "QSlider::handle:horizontal { width: 14px; height: 14px; margin: -4px 0;"
@@ -129,12 +122,12 @@ class ExamTranscriptWidget(QWidget):
     def _update_play_pause_icon(self):
         """Tự động thay đổi thiết kế nút Play/Pause bằng Python"""
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self.play_pause_btn.setIcon(qta.icon('fa5s.pause', color='#d93025'))
-            self.play_pause_btn.setText(" Tạm dừng")
+            self.ui.play_pause_btn.setIcon(qta.icon('fa5s.pause', color='#d93025'))
+            self.ui.play_pause_btn.setText(" Tạm dừng")
         else:
-            self.play_pause_btn.setIcon(qta.icon('fa5s.play', color='#1e8e3e'))
-            self.play_pause_btn.setText(" Phát nhạc")
-        self.play_pause_btn.setIconSize(QSize(16, 16))
+            self.ui.play_pause_btn.setIcon(qta.icon('fa5s.play', color='#1e8e3e'))
+            self.ui.play_pause_btn.setText(" Phát nhạc")
+        self.ui.play_pause_btn.setIconSize(QSize(16, 16))
             
     @staticmethod
     def _fmt_time(ms):
@@ -143,18 +136,18 @@ class ExamTranscriptWidget(QWidget):
         return f"{ms / 1000.0:.3f}"
 
     def _on_duration_changed(self, duration_ms):
-        self.seek_slider.setMaximum(max(duration_ms, 1))
-        self.time_total_label.setText(self._fmt_time(duration_ms))
+        self.ui.seek_slider.setMaximum(max(duration_ms, 1))
+        self.ui.time_total_label.setText(self._fmt_time(duration_ms))
 
     def _on_slider_pressed(self):
         self._slider_dragging = True
 
     def _on_slider_moved(self, value):
-        self.time_current_label.setText(self._fmt_time(value))
+        self.ui.time_current_label.setText(self._fmt_time(value))
 
     def _on_slider_released(self):
         self._slider_dragging = False
-        self.player.setPosition(self.seek_slider.value())
+        self.player.setPosition(self.ui.seek_slider.value())
 
     def _on_position_changed(self, pos_ms):
         if self.play_until and pos_ms >= self.play_until:
@@ -164,21 +157,21 @@ class ExamTranscriptWidget(QWidget):
             self.play_until = None
             
             if loop_idx is not None:
-                delay_ms = self.delay_spin.value() * 1000
+                delay_ms = self.ui.delay_spin.value() * 1000
                 QTimer.singleShot(delay_ms, lambda: self._play_loop(loop_idx))
 
         # Update seek slider & time label (skip if user is dragging)
         if not self._slider_dragging:
-            self.seek_slider.blockSignals(True)
-            self.seek_slider.setValue(pos_ms)
-            self.seek_slider.blockSignals(False)
-            self.time_current_label.setText(self._fmt_time(pos_ms))
+            self.ui.seek_slider.blockSignals(True)
+            self.ui.seek_slider.setValue(pos_ms)
+            self.ui.seek_slider.blockSignals(False)
+            self.ui.time_current_label.setText(self._fmt_time(pos_ms))
 
         pos_sec = pos_ms / 1000.0
         for row, chunk in enumerate(self.viewmodel.srt_chunks):
             if chunk.start_time <= pos_sec <= chunk.end_time:
                 if getattr(self, '_current_highlighted_row', None) != row:
-                    self.table.selectRow(row)
+                    self.ui.table.selectRow(row)
                     self._current_highlighted_row = row
                 break
 
@@ -198,10 +191,10 @@ class ExamTranscriptWidget(QWidget):
         self.player.play()
         
     def populate(self):
-        self.table.blockSignals(True)
-        self.table.setRowCount(0)
+        self.ui.table.blockSignals(True)
+        self.ui.table.setRowCount(0)
         self._has_changes = False
-        self.save_btn.setVisible(False)
+        self.ui.save_btn.setVisible(False)
         
         if self.viewmodel.exam and self.viewmodel.exam.full_audio_url:
             path = self.viewmodel.exam.full_audio_url
@@ -213,26 +206,26 @@ class ExamTranscriptWidget(QWidget):
         for row, chunk in enumerate(self.viewmodel.srt_chunks):
             self._insert_chunk_row(row, chunk)
             
-        self.table.blockSignals(False)
+        self.ui.table.blockSignals(False)
 
     def _insert_chunk_row(self, row, chunk):
-        self.table.insertRow(row)
+        self.ui.table.insertRow(row)
         
         idx_item = QTableWidgetItem(str(chunk.index))
         idx_item.setFlags(idx_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self.table.setItem(row, 0, idx_item)
+        self.ui.table.setItem(row, 0, idx_item)
         
         # Start Time
         start_w = TimeAdjustWidget(chunk.start_time, lambda v, c=chunk: self._update_time(c, 'start', v))
-        self.table.setCellWidget(row, 1, start_w)
+        self.ui.table.setCellWidget(row, 1, start_w)
         
         # End Time
         end_w = TimeAdjustWidget(chunk.end_time, lambda v, c=chunk: self._update_time(c, 'end', v))
-        self.table.setCellWidget(row, 2, end_w)
+        self.ui.table.setCellWidget(row, 2, end_w)
         
         # Text
         text_item = QTableWidgetItem(chunk.text)
-        self.table.setItem(row, 3, text_item)
+        self.ui.table.setItem(row, 3, text_item)
         
         # --- THÊM BỘ ICON CHO CÁC NÚT THAO TÁC TRÊN TỪNG DÒNG ---
         action_widget = QWidget()
@@ -272,17 +265,17 @@ class ExamTranscriptWidget(QWidget):
         merge_btn.clicked.connect(lambda checked, c=chunk: self._merge_chunk(c))
         action_layout.addWidget(merge_btn)
         
-        self.table.setCellWidget(row, 4, action_widget)
+        self.ui.table.setCellWidget(row, 4, action_widget)
 
     def _mark_changed(self):
         if not self._has_changes:
             self._has_changes = True
-            self.save_btn.setVisible(True)
+            self.ui.save_btn.setVisible(True)
 
     def _on_save_clicked(self):
         self.viewmodel.save_chunks()
         self._has_changes = False
-        self.save_btn.setVisible(False)
+        self.ui.save_btn.setVisible(False)
 
     def _update_time(self, chunk, field, value):
         if field == 'start':
@@ -294,7 +287,7 @@ class ExamTranscriptWidget(QWidget):
     def _on_item_changed(self, item):
         if item.column() == 3: 
             row = item.row()
-            idx_item = self.table.item(row, 0)
+            idx_item = self.ui.table.item(row, 0)
             if idx_item is None:
                 return
             idx_str = idx_item.text()
@@ -314,9 +307,9 @@ class ExamTranscriptWidget(QWidget):
     def _duplicate_chunk(self, chunk):
         new_idx, new_chunk = self.viewmodel.duplicate_chunk(chunk)
         
-        self.table.blockSignals(True)
+        self.ui.table.blockSignals(True)
         self._insert_chunk_row(new_idx, new_chunk)
-        self.table.blockSignals(False)
+        self.ui.table.blockSignals(False)
         self._mark_changed()
 
     def _merge_chunk(self, chunk):
@@ -324,13 +317,13 @@ class ExamTranscriptWidget(QWidget):
         if idx is None:
             return
             
-        self.table.blockSignals(True)
-        idx_item = self.table.item(idx, 3)
+        self.ui.table.blockSignals(True)
+        idx_item = self.ui.table.item(idx, 3)
         if idx_item:
             idx_item.setText(chunk.text)
-        end_item = self.table.item(idx, 2)
+        end_item = self.ui.table.item(idx, 2)
         if end_item:
             end_item.setText(f"{chunk.end_time:.3f}")
-        self.table.removeRow(idx + 1)
-        self.table.blockSignals(False)
+        self.ui.table.removeRow(idx + 1)
+        self.ui.table.blockSignals(False)
         self._mark_changed()
