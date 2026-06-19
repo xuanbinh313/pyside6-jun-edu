@@ -1,10 +1,12 @@
 import base64
 import binascii
 import json
+import os
+import tempfile
 from io import BytesIO
 
 import qtawesome as qta
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -110,11 +112,18 @@ class ImageDropArea(QLabel):
         if image.isNull():
             return False
 
-        ba = QByteArray()
-        buffer = QBuffer(ba)
-        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        image.save(buffer, b"PNG")
-        encoded = base64.b64encode(bytes(ba.data())).decode("ascii")
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            image.save(tmp_path)
+            with open(tmp_path, "rb") as f:
+                raw = f.read()
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        encoded = base64.b64encode(raw).decode("ascii")
         self.image_data_url = f"data:image/png;base64,{encoded}"
         self._show_preview(image)
         return True
@@ -648,13 +657,12 @@ class AddExamQuestionDialog(QDialog):
                     return
             else:
                 db_ctx = exam_model.ExamContext(exam_id=self.exam_id)
-                session.add(db_ctx)
-                session.flush()
-
             db_ctx.part = self.ui.part_spin.value()
             db_ctx.context_type = self.ui.context_type_combo.currentText()
             db_ctx.content = ctx_content
             db_ctx.index = self.ui.context_index_spin.value()
+            session.add(db_ctx)
+            session.flush()
 
             if self.removed_question_ids:
                 session.query(exam_model.ExamQuestion).filter(
