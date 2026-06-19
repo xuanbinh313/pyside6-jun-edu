@@ -33,13 +33,13 @@ class OptionQuestionItem(QWidget):
         self.exam_id = exam_id
         self.correct_answer = question.correct_answer   # e.g. "D"
         
-        # Lấy index gốc của câu trả lời đúng (Ví dụ: "A" -> 0, "D" -> 3)
+        # Get the original index of the correct answer (for example, "A" -> 0, "D" -> 3).
         try:
             self.orig_correct_idx = self.LETTER_MAP.index(self.correct_answer)
         except ValueError:
             self.orig_correct_idx = -1
             
-        self.display_correct_letter = "" # Sẽ lưu chữ cái hiển thị thực tế của đáp án đúng
+        self.display_correct_letter = "" # Stores the actual displayed letter for the correct answer.
         self._build(question)
 
     def _build(self, q):
@@ -111,7 +111,7 @@ class OptionQuestionItem(QWidget):
         for display_pos, (orig_idx, opt_text) in enumerate(indexed):
             display_letter = self.LETTER_MAP[display_pos] if display_pos < 4 else str(display_pos)
             
-            # NẾU index gốc trùng với index của đáp án đúng -> Lưu lại chữ cái hiển thị mới này
+            # If the original index matches the correct answer index, store the new displayed letter.
             if orig_idx == self.orig_correct_idx:
                 self.display_correct_letter = display_letter
 

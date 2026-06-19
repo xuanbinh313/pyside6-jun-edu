@@ -4,7 +4,7 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import QUrl, Qt, QTimer, QSize
 import os
 
-# Import thư viện quản lý icon
+# Import the icon management library.
 import qtawesome as qta
 
 from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
@@ -17,7 +17,7 @@ class TimeAdjustWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
         
-        # Thêm icon Minus (Dấu trừ) màu đỏ trầm
+        # Add a muted red minus icon.
         self.minus_btn = QPushButton()
         self.minus_btn.setFixedWidth(22)
         self.minus_btn.setIcon(qta.icon('fa5s.minus', color='#c53929'))
@@ -29,7 +29,7 @@ class TimeAdjustWidget(QWidget):
         self.val_edit.editingFinished.connect(self._text_changed)
         layout.addWidget(self.val_edit)
         
-        # Thêm icon Plus (Dấu cộng) màu xanh dương
+        # Add a blue plus icon.
         self.plus_btn = QPushButton()
         self.plus_btn.setFixedWidth(22)
         self.plus_btn.setIcon(qta.icon('fa5s.plus', color='#1a73e8'))
@@ -64,7 +64,7 @@ class ExamTranscriptWidget(QWidget):
         
         self.player.positionChanged.connect(self._on_position_changed)
         self.player.durationChanged.connect(self._on_duration_changed)
-        # Lắng nghe trạng thái media để cập nhật icon Play/Pause tự động
+        # Watch media state changes to update the Play/Pause icon automatically.
         self.player.playbackStateChanged.connect(self._update_play_pause_icon)
         
         self.play_until = None
@@ -78,9 +78,9 @@ class ExamTranscriptWidget(QWidget):
         self.ui = Ui_ExamTranscriptWidget()
         self.ui.setupUi(self)
         
-        # Cấu hình nút Play/Pause chính
+        # Configure the main Play/Pause button.
         self.ui.play_pause_btn.clicked.connect(self._toggle_play)
-        self._update_play_pause_icon() # Khởi tạo icon ban đầu
+        self._update_play_pause_icon() # Initialize the icon.
         
         
         self.ui.save_btn.setIcon(qta.icon('fa5s.save', color='white'))
@@ -120,13 +120,13 @@ class ExamTranscriptWidget(QWidget):
             self.player.play()
 
     def _update_play_pause_icon(self):
-        """Tự động thay đổi thiết kế nút Play/Pause bằng Python"""
+        """Update the Play/Pause button styling from Python."""
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.ui.play_pause_btn.setIcon(qta.icon('fa5s.pause', color='#d93025'))
-            self.ui.play_pause_btn.setText(" Tạm dừng")
+            self.ui.play_pause_btn.setText(" Pause")
         else:
             self.ui.play_pause_btn.setIcon(qta.icon('fa5s.play', color='#1e8e3e'))
-            self.ui.play_pause_btn.setText(" Phát nhạc")
+            self.ui.play_pause_btn.setText(" Play Audio")
         self.ui.play_pause_btn.setIconSize(QSize(16, 16))
             
     @staticmethod
@@ -227,13 +227,13 @@ class ExamTranscriptWidget(QWidget):
         text_item = QTableWidgetItem(chunk.text)
         self.ui.table.setItem(row, 3, text_item)
         
-        # --- THÊM BỘ ICON CHO CÁC NÚT THAO TÁC TRÊN TỪNG DÒNG ---
+        # --- Add icons for each row action button. ---
         action_widget = QWidget()
         action_layout = QHBoxLayout(action_widget)
         action_layout.setContentsMargins(4, 2, 4, 2)
         action_layout.setSpacing(4)
         
-        # 1. Nút Nghe Thử (Play Once) -> Màu xanh lá
+        # 1. Preview button (Play Once) -> green
         play_btn = QPushButton()
         play_btn.setFixedSize(16, 16)
         play_btn.setIcon(qta.icon('fa5s.play', color='#1e8e3e'))
@@ -241,7 +241,7 @@ class ExamTranscriptWidget(QWidget):
         play_btn.clicked.connect(lambda checked, c=chunk: self.play_range(c.start_time, c.end_time))
         action_layout.addWidget(play_btn)
         
-        # 2. Nút Lặp đoạn (Loop) -> Màu xanh dương
+        # 2. Loop segment button -> blue
         loop_btn = QPushButton()
         loop_btn.setFixedSize(16, 16)
         loop_btn.setIcon(qta.icon('fa5s.sync-alt', color='#1a73e8'))
@@ -249,7 +249,7 @@ class ExamTranscriptWidget(QWidget):
         loop_btn.clicked.connect(lambda checked, c=chunk: self._toggle_loop(c))
         action_layout.addWidget(loop_btn)
         
-        # 3. Nút Nhân đôi (Duplicate) -> Màu cam vàng
+        # 3. Duplicate button -> amber
         dup_btn = QPushButton()
         dup_btn.setFixedSize(16, 16)
         dup_btn.setIcon(qta.icon('fa5s.copy', color='#f9ab00'))
@@ -257,7 +257,7 @@ class ExamTranscriptWidget(QWidget):
         dup_btn.clicked.connect(lambda checked, c=chunk: self._duplicate_chunk(c))
         action_layout.addWidget(dup_btn)
         
-        # 4. Nút Gộp dòng (Merge Next) -> Màu xám đen
+        # 4. Merge next row button -> dark gray
         merge_btn = QPushButton()
         merge_btn.setFixedSize(16, 16)
         merge_btn.setIcon(qta.icon('fa5s.compress-arrows-alt', color='#5f6368'))

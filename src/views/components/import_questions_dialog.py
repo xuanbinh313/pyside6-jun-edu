@@ -397,7 +397,7 @@ EXAMPLE OUTPUT
                 '"contexts" and "questions".'
             )
 
-        # â”€â”€ Parse contexts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # Parse contexts.
         raw_contexts = data.get("contexts", [])
         if not isinstance(raw_contexts, list):
             raise ValueError('"contexts" must be a JSON array.')
@@ -441,7 +441,7 @@ EXAMPLE OUTPUT
                 }
             )
 
-        # â”€â”€ Parse questions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # Parse questions.
         raw_questions = data.get("questions", [])
         if not isinstance(raw_questions, list):
             raise ValueError('"questions" must be a JSON array.')

@@ -118,10 +118,10 @@ class MainWindow(QMainWindow):
         
         # Context Menu for Tray
         tray_menu = QMenu()
-        open_action = QAction("Mở ứng dụng", self)
+        open_action = QAction("Open Application", self)
         open_action.triggered.connect(self.showNormal)
         
-        exit_action = QAction("Thoát hoàn toàn", self)
+        exit_action = QAction("Exit Completely", self)
         exit_action.triggered.connect(QApplication.quit)
         
         tray_menu.addAction(open_action)
@@ -139,52 +139,52 @@ class MainWindow(QMainWindow):
             self.showNormal()
 
     def closeEvent(self, event):
-        """Kích hoạt bộ đếm giờ ngay khi user bấm nút X thoát app"""
+        """Start the reminder timer when the user closes the app window."""
         if self.tray_icon.isVisible():
-            # Hỏi người dùng muốn chạy ngầm hay thoát hoàn toàn
+            # Ask whether to keep running in the background or exit completely.
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle("Jun Edu")
-            msg_box.setText("Bạn muốn làm gì?")
+            msg_box.setText("What would you like to do?")
             msg_box.setInformativeText(
-                f"Chạy ngầm: Hẹn giờ {self.close_event_minutes} phút rồi nhắc học.\n"
-                "Thoát: Đóng hoàn toàn ứng dụng."
+                f"Run in background: set a {self.close_event_minutes}-minute study reminder.\n"
+                "Exit: close the application completely."
             )
             msg_box.setIcon(QMessageBox.Icon.Question)
 
-            btn_tray = msg_box.addButton("Chạy ngầm (System Tray)", QMessageBox.ButtonRole.AcceptRole)
-            msg_box.addButton("Thoát hoàn toàn", QMessageBox.ButtonRole.RejectRole)
+            btn_tray = msg_box.addButton("Run in Background (System Tray)", QMessageBox.ButtonRole.AcceptRole)
+            msg_box.addButton("Exit Completely", QMessageBox.ButtonRole.RejectRole)
             msg_box.setDefaultButton(btn_tray)
             msg_box.exec()
 
             if msg_box.clickedButton() == btn_tray:
                 minutes = self.close_event_minutes
 
-                # Ra lệnh cho bộ não bắt đầu đếm ngược ngầm với số phút tìm được
+                # Start the background countdown with the configured number of minutes.
                 self.reminder_viewmodel.start_countdown(minutes)
 
-                # Ẩn cửa sổ chính đi
+                # Hide the main window.
                 self.hide()
 
-                # Bắn thông báo hệ thống
+                # Show a system notification.
                 self.tray_icon.showMessage(
                     "Jun Edu",
-                    f"Đã tự động hẹn giờ {minutes} phút và chạy ngầm dưới khay hệ thống!",
+                    f"Set a {minutes}-minute reminder and continued running in the system tray.",
                     QSystemTrayIcon.MessageIcon.Information,
                     3000
                 )
 
-                # Ngăn không cho ứng dụng bị tắt hoàn toàn
+                # Prevent the application from exiting completely.
                 event.ignore()
             else:
-                # Thoát hoàn toàn
+                # Exit completely.
                 QApplication.quit()
 
     def wakeup_and_focus_app(self):
         """Force window into user focus and display study contents."""
         # 1. Trigger OS Notification
         self.tray_icon.showMessage(
-            "ĐẾN GIỜ HỌC RỒI!",
-            "Hãy vào làm bài tập ngay để không bị quên kiến thức nhé.",
+            "TIME TO STUDY!",
+            "Open your exercises now to keep the material fresh.",
             QSystemTrayIcon.MessageIcon.Warning,
             5000
         )
