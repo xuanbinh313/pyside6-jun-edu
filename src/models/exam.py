@@ -1,13 +1,17 @@
-from typing import List, Optional
 import datetime
 import uuid
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Float, JSON
+from typing import List, Optional
+
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.util.typing import TypedDict
 
 from src.models.database import Base
 
+
 def generate_uuid() -> str:
     return str(uuid.uuid4())
+
 
 class Exam(Base):
     __tablename__ = "exams"
@@ -19,14 +23,22 @@ class Exam(Base):
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     user_id: Mapped[str] = mapped_column(String, nullable=False, default="")
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
     updated_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), 
-        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc)
+        DateTime,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
 
-    srt_chunks: Mapped[List["ExamSrtChunk"]] = relationship("ExamSrtChunk", back_populates="exam", cascade="all, delete-orphan")
-    contexts: Mapped[List["ExamContext"]] = relationship("ExamContext", back_populates="exam", cascade="all, delete-orphan")
+    srt_chunks: Mapped[List["ExamSrtChunk"]] = relationship(
+        "ExamSrtChunk", back_populates="exam", cascade="all, delete-orphan"
+    )
+    contexts: Mapped[List["ExamContext"]] = relationship(
+        "ExamContext", back_populates="exam", cascade="all, delete-orphan"
+    )
+
 
 class ExamSrtChunk(Base):
     __tablename__ = "exam_srt_chunks"
@@ -41,43 +53,64 @@ class ExamSrtChunk(Base):
 
     exam: Mapped["Exam"] = relationship("Exam", back_populates="srt_chunks")
 
+
 class ExamContext(Base):
     __tablename__ = "exam_contexts"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
     exam_id: Mapped[str] = mapped_column(ForeignKey("exams.id"), nullable=False)
     part: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    context_type: Mapped[str] = mapped_column(String, nullable=False) 
-    content: Mapped[dict] = mapped_column(JSON, nullable=False) 
+    context_type: Mapped[str] = mapped_column(String, nullable=False)
+    content: Mapped[dict] = mapped_column(JSON, nullable=False)
     index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     exam: Mapped["Exam"] = relationship("Exam", back_populates="contexts")
-    questions: Mapped[List["ExamQuestion"]] = relationship("ExamQuestion", back_populates="context")
+    questions: Mapped[List["ExamQuestion"]] = relationship(
+        "ExamQuestion", back_populates="context"
+    )
+
+
+class AdditionalMeta(TypedDict):
+    audio_start: float
+    audio_end: float
+    note: str
+
 
 class ExamQuestion(Base):
     __tablename__ = "exam_questions"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
-    context_id: Mapped[str] = mapped_column(ForeignKey("exam_contexts.id"), nullable=False)
-    
+    context_id: Mapped[str] = mapped_column(
+        ForeignKey("exam_contexts.id"), nullable=False
+    )
+
     question_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    question_type: Mapped[str] = mapped_column(String, nullable=False, default="MULTIPLE_CHOICE") 
+    question_type: Mapped[str] = mapped_column(
+        String, nullable=False, default="MULTIPLE_CHOICE"
+    )
     content: Mapped[str] = mapped_column(String, nullable=False)
-    options: Mapped[list[str]] = mapped_column(JSON, default=[]) 
+    options: Mapped[list[str]] = mapped_column(JSON, default=[])
     correct_answer: Mapped[str] = mapped_column(String, nullable=False)
-    additional_meta: Mapped[dict] = mapped_column(
+    additional_meta: Mapped[AdditionalMeta] = mapped_column(
         JSON,
         default=lambda: {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
     )
 
-    context: Mapped[Optional["ExamContext"]] = relationship("ExamContext", back_populates="questions")
+    context: Mapped[Optional["ExamContext"]] = relationship(
+        "ExamContext", back_populates="questions"
+    )
+
 
 class UserQuestionTag(Base):
     __tablename__ = "user_question_tags"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    question_id: Mapped[str] = mapped_column(ForeignKey("exam_questions.id"), nullable=False)
+    question_id: Mapped[str] = mapped_column(
+        ForeignKey("exam_questions.id"), nullable=False
+    )
     tag_name: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
     dirty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

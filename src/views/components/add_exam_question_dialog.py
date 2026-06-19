@@ -1,22 +1,38 @@
 import base64
+import binascii
 import json
+from io import BytesIO
 
 import qtawesome as qta
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
 from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
-from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFormLayout,
-                               QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                               QMessageBox, QPushButton, QScrollArea,
-                               QSizePolicy, QSpinBox, QTextEdit, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSpinBox,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 import src.models.exam as exam_model
 from src.models.database import get_session
+from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_add_exam_question_dialog import Ui_AddExamQuestionDialog
 
 
 class ImageDropArea(QLabel):
-    """Drop/paste target that stores the selected image as a PNG data URL."""
+    """Drop/paste target that stores the selected image as a data URL."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -58,12 +74,20 @@ class ImageDropArea(QLabel):
             self.setText("Drop image here or press Ctrl+V")
             self.setPixmap(QPixmap())
             return
-        prefix = "data:image/png;base64,"
-        if not self.image_data_url.startswith(prefix):
+        image_bytes = self._decode_data_url(self.image_data_url)
+        if image_bytes is None:
             return
-        image = QImage.fromData(base64.b64decode(self.image_data_url[len(prefix):]), "PNG")
+        image = QImage.fromData(image_bytes)
         if not image.isNull():
             self._show_preview(image)
+
+    def _decode_data_url(self, data_url: str):
+        if not data_url.startswith("data:image/") or ";base64," not in data_url:
+            return None
+        try:
+            return base64.b64decode(data_url.split(";base64,", 1)[1])
+        except (binascii.Error, ValueError):
+            return None
 
     def _load_from_mime(self, mime) -> bool:
         image = QImage()
@@ -109,7 +133,7 @@ class ImageDropArea(QLabel):
 
 
 class AddExamQuestionDialog(QDialog):
-    CONTEXT_TYPES = ["READING_PASSAGE", "AUDIO_SRT", "IMAGE_DIAGRAM", "STANDALONE"]
+    CONTEXT_TYPES = ["READING_PASSAGE", "IMAGE_DIAGRAM", "STANDALONE"]
     QUESTION_TYPES = ["MULTIPLE_CHOICE", "FILL_IN_THE_BLANK", "ESSAY", "RECORDING"]
     LETTERS = ["", "A", "B", "C", "D"]
 
@@ -119,6 +143,8 @@ class AddExamQuestionDialog(QDialog):
         self.context = context
         self.created_question = None
         self.saved_context_id = getattr(context, "id", None)
+        self.context_audio_start = 0.0
+        self.context_audio_end = 0.0
         self._build_ui()
         self._populate()
 
@@ -132,10 +158,11 @@ class AddExamQuestionDialog(QDialog):
         self.ui.context_type_combo.addItems(self.CONTEXT_TYPES)
         self.ui.question_type_combo.addItems(self.QUESTION_TYPES)
         self.ui.answer_combo.addItems(self.LETTERS)
-        self.ui.paste_image_btn.setIcon(qta.icon('fa5s.paste', color='#1a73e8'))
-        self.ui.save_btn.setIcon(qta.icon('fa5s.plus', color='white'))
+        self.ui.paste_image_btn.setIcon(qta.icon("fa5s.paste", color="#1a73e8"))
+        self.ui.save_btn.setIcon(qta.icon("fa5s.plus", color="white"))
 
         self._wrap_content_in_scroll_area()
+        self._setup_context_audio_selector()
 
         layout = self.ui.image_page_layout
         idx = layout.indexOf(self.ui.image_drop_placeholder)
@@ -148,12 +175,47 @@ class AddExamQuestionDialog(QDialog):
         self.removed_question_ids = set()
         self._setup_question_forms()
 
-        self.ui.context_type_combo.currentIndexChanged.connect(self._on_context_type_changed)
+        self.ui.context_type_combo.currentIndexChanged.connect(
+            self._on_context_type_changed
+        )
         self.ui.paste_image_btn.clicked.connect(self._paste_image)
         self.ui.cancel_btn.clicked.connect(self.reject)
         self.ui.save_btn.clicked.connect(self._on_save)
         shortcut = QShortcut(QKeySequence.StandardKey.Paste, self)
         shortcut.activated.connect(self._paste_image)
+
+    def _icon_button_style(self):
+        return """
+            QPushButton {
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                background-color: #f1f3f4;
+                border-radius: 12px;
+            }
+        """
+
+    def _setup_context_audio_selector(self):
+        audio_row = QWidget(self.ui.context_group)
+        audio_layout = QHBoxLayout(audio_row)
+        audio_layout.setContentsMargins(0, 0, 0, 0)
+        audio_layout.setSpacing(8)
+
+        self.context_audio_label = QLabel("No segment selected", audio_row)
+        self.context_audio_label.setStyleSheet("color: #5f6368; font-size: 12px;")
+        self.context_audio_label.setTextFormat(Qt.TextFormat.PlainText)
+
+        self.context_audio_btn = QPushButton(audio_row)
+        self.context_audio_btn.setIcon(qta.icon("fa5s.music", color="#5f6368"))
+        self.context_audio_btn.setToolTip("Select audio segment from transcript")
+        self.context_audio_btn.setFixedSize(24, 24)
+        self.context_audio_btn.setStyleSheet(self._icon_button_style())
+        self.context_audio_btn.clicked.connect(self._on_select_context_audio_segment)
+
+        audio_layout.addWidget(self.context_audio_btn)
+        audio_layout.addWidget(self.context_audio_label, 1)
+        self.ui.context_form.insertRow(3, "Audio Segment:", audio_row)
 
     def _wrap_content_in_scroll_area(self):
         self.scroll_content = QWidget(self)
@@ -182,7 +244,7 @@ class AddExamQuestionDialog(QDialog):
         self.ui.question_form.addRow("Note:", self.note_edit)
 
         self.add_question_btn = QPushButton("Add Question")
-        self.add_question_btn.setIcon(qta.icon('fa5s.plus', color='#1a73e8'))
+        self.add_question_btn.setIcon(qta.icon("fa5s.plus", color="#1a73e8"))
         self.add_question_btn.clicked.connect(lambda: self._add_question_form())
         self.ui.question_form.addRow(self.add_question_btn)
 
@@ -201,8 +263,38 @@ class AddExamQuestionDialog(QDialog):
                 self.ui.option_d_edit,
             ],
             "delete_btn": None,
+            "audio_start": 0.0,
+            "audio_end": 0.0,
         }
+        self._add_question_audio_selector(
+            first_form, self.ui.question_form, 3, self.ui.question_group
+        )
         self.question_forms.append(first_form)
+
+    def _add_question_audio_selector(self, question_form, form_layout, row, parent):
+        audio_row = QWidget(parent)
+        audio_layout = QHBoxLayout(audio_row)
+        audio_layout.setContentsMargins(0, 0, 0, 0)
+        audio_layout.setSpacing(8)
+
+        select_btn = QPushButton(audio_row)
+        select_btn.setIcon(qta.icon("fa5s.music", color="#5f6368"))
+        select_btn.setToolTip("Select audio segment from transcript")
+        select_btn.setFixedSize(24, 24)
+        select_btn.setStyleSheet(self._icon_button_style())
+        select_btn.clicked.connect(
+            lambda: self._on_select_question_audio_segment(question_form)
+        )
+
+        audio_label = QLabel(self._format_audio_segment_text(0.0, 0.0), audio_row)
+        audio_label.setStyleSheet("color: #5f6368; font-size: 12px;")
+        audio_label.setTextFormat(Qt.TextFormat.PlainText)
+
+        audio_layout.addWidget(select_btn)
+        audio_layout.addWidget(audio_label, 1)
+        question_form["select_audio_btn"] = select_btn
+        question_form["audio_label"] = audio_label
+        form_layout.insertRow(row, "Audio Segment:", audio_row)
 
     def _add_question_form(self, question=None):
         group = QGroupBox()
@@ -215,7 +307,7 @@ class AddExamQuestionDialog(QDialog):
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.addStretch()
         delete_btn = QPushButton()
-        delete_btn.setIcon(qta.icon('fa5s.trash-alt', color='#ea4335'))
+        delete_btn.setIcon(qta.icon("fa5s.trash-alt", color="#ea4335"))
         delete_btn.setToolTip("Delete question")
         delete_btn.setFixedSize(28, 28)
         header_layout.addWidget(delete_btn)
@@ -253,10 +345,15 @@ class AddExamQuestionDialog(QDialog):
             "note": note_edit,
             "options": option_edits,
             "delete_btn": delete_btn,
+            "audio_start": 0.0,
+            "audio_end": 0.0,
         }
+        self._add_question_audio_selector(question_form, form, 4, group)
         self.question_forms.append(question_form)
         delete_btn.clicked.connect(lambda: self._remove_question_form(question_form))
-        self.scroll_content_layout.insertWidget(self.scroll_content_layout.count() - 1, group)
+        self.scroll_content_layout.insertWidget(
+            self.scroll_content_layout.count() - 1, group
+        )
         if question:
             self._populate_question_form(question_form, question)
         else:
@@ -279,9 +376,12 @@ class AddExamQuestionDialog(QDialog):
         for edit in question_form["options"]:
             edit.clear()
         question_form["answer"].setCurrentIndex(0)
+        self._set_question_audio_segment(question_form, 0.0, 0.0)
 
     def _renumber_new_question_form(self, question_form):
-        max_number = max((form["number"].value() for form in self.question_forms), default=0)
+        max_number = max(
+            (form["number"].value() for form in self.question_forms), default=0
+        )
         question_form["number"].setValue(max_number + 1)
 
     def _populate(self):
@@ -298,15 +398,22 @@ class AddExamQuestionDialog(QDialog):
     def _populate_defaults(self):
         session = get_session()
         try:
-            max_q = session.query(exam_model.ExamQuestion.question_number).join(
-                exam_model.ExamContext,
-                exam_model.ExamQuestion.context_id == exam_model.ExamContext.id,
-            ).filter(
-                exam_model.ExamContext.exam_id == self.exam_id
-            ).order_by(exam_model.ExamQuestion.question_number.desc()).first()
-            max_ctx = session.query(exam_model.ExamContext.index).filter(
-                exam_model.ExamContext.exam_id == self.exam_id
-            ).order_by(exam_model.ExamContext.index.desc()).first()
+            max_q = (
+                session.query(exam_model.ExamQuestion.question_number)
+                .join(
+                    exam_model.ExamContext,
+                    exam_model.ExamQuestion.context_id == exam_model.ExamContext.id,
+                )
+                .filter(exam_model.ExamContext.exam_id == self.exam_id)
+                .order_by(exam_model.ExamQuestion.question_number.desc())
+                .first()
+            )
+            max_ctx = (
+                session.query(exam_model.ExamContext.index)
+                .filter(exam_model.ExamContext.exam_id == self.exam_id)
+                .order_by(exam_model.ExamContext.index.desc())
+                .first()
+            )
             self.ui.question_number_spin.setValue((max_q[0] if max_q else 0) + 1)
             self.ui.context_index_spin.setValue((max_ctx[0] if max_ctx else -1) + 1)
             self.ui.part_spin.setValue(1)
@@ -320,16 +427,21 @@ class AddExamQuestionDialog(QDialog):
         self.ui.part_spin.setValue(ctx.part or 1)
         self.ui.context_index_spin.setValue(ctx.index or 0)
         content = ctx.content if isinstance(ctx.content, dict) else {}
+        self.context_audio_start = float(content.get("audio_start", 0.0) or 0.0)
+        self.context_audio_end = float(content.get("audio_end", 0.0) or 0.0)
+        self._refresh_context_audio_ui()
         self.ui.context_text_edit.setPlainText(content.get("text", ""))
-        self.ui.audio_context_edit.setPlainText(content.get("text", ""))
         self.ui.image_description_edit.setPlainText(content.get("text", ""))
         self.image_drop_area.set_data_url(content.get("image_data_url", ""))
 
         session = get_session()
         try:
-            questions = session.query(exam_model.ExamQuestion).filter(
-                exam_model.ExamQuestion.context_id == ctx.id
-            ).order_by(exam_model.ExamQuestion.question_number.asc()).all()
+            questions = (
+                session.query(exam_model.ExamQuestion)
+                .filter(exam_model.ExamQuestion.context_id == ctx.id)
+                .order_by(exam_model.ExamQuestion.question_number.asc())
+                .all()
+            )
             if not questions:
                 self._populate_defaults()
                 return
@@ -350,8 +462,17 @@ class AddExamQuestionDialog(QDialog):
         ans_idx = question_form["answer"].findText(question.correct_answer or "")
         question_form["answer"].setCurrentIndex(ans_idx if ans_idx >= 0 else 0)
         question_form["content"].setPlainText(question.content or "")
-        meta = question.additional_meta if isinstance(question.additional_meta, dict) else {}
+        meta = (
+            question.additional_meta
+            if isinstance(question.additional_meta, dict)
+            else {}
+        )
         question_form["note"].setPlainText(str(meta.get("note", "")))
+        self._set_question_audio_segment(
+            question_form,
+            float(meta.get("audio_start", 0.0) or 0.0),
+            float(meta.get("audio_end", 0.0) or 0.0),
+        )
         options = question.options or []
         if isinstance(options, str):
             options = json.loads(options)
@@ -360,9 +481,7 @@ class AddExamQuestionDialog(QDialog):
 
     def _on_context_type_changed(self, index):
         ctx_type = self.ui.context_type_combo.currentText()
-        if ctx_type == "AUDIO_SRT":
-            self.ui.context_stack.setCurrentWidget(self.ui.audio_page)
-        elif ctx_type == "IMAGE_DIAGRAM":
+        if ctx_type == "IMAGE_DIAGRAM":
             self.ui.context_stack.setCurrentWidget(self.ui.image_page)
         else:
             self.ui.context_stack.setCurrentWidget(self.ui.text_page)
@@ -371,52 +490,141 @@ class AddExamQuestionDialog(QDialog):
         if self.ui.context_type_combo.currentText() != "IMAGE_DIAGRAM":
             return
         if not self.image_drop_area.paste_from_clipboard():
-            QMessageBox.warning(self, "No Image", "Clipboard does not contain an image.")
+            QMessageBox.warning(
+                self, "No Image", "Clipboard does not contain an image."
+            )
 
     def _context_content(self):
         ctx_type = self.ui.context_type_combo.currentText()
-        if ctx_type == "AUDIO_SRT":
-            text = self.ui.audio_context_edit.toPlainText().strip()
-            if not text:
-                raise ValueError("Audio context cannot be empty.")
-            return {"text": text, "srt_lines": []}
+        audio_meta = {
+            "audio_start": self.context_audio_start,
+            "audio_end": self.context_audio_end,
+        }
         if ctx_type == "IMAGE_DIAGRAM":
             if not self.image_drop_area.image_data_url:
                 raise ValueError("Please drop or paste an image.")
             return {
                 "text": self.ui.image_description_edit.toPlainText().strip(),
-                "image_data_url": self.image_drop_area.image_data_url,
+                "image_data_url": self._optimized_webp_data_url(
+                    self.image_drop_area.image_data_url
+                ),
+                **audio_meta,
             }
         text = self.ui.context_text_edit.toPlainText().strip()
         if ctx_type != "STANDALONE" and not text:
             raise ValueError("Context text cannot be empty.")
-        return {"text": text}
+        return {"text": text, **audio_meta}
+
+    def _optimized_webp_data_url(self, data_url: str) -> str:
+        if not data_url.startswith("data:image/") or ";base64," not in data_url:
+            raise ValueError("Invalid image data.")
+        try:
+            from PIL import Image, ImageOps
+        except ImportError as exc:
+            raise ValueError(
+                "Pillow is required to optimize diagram images. Please install requirements.txt."
+            ) from exc
+
+        try:
+            raw = base64.b64decode(data_url.split(";base64,", 1)[1])
+            with Image.open(BytesIO(raw)) as image:
+                image = ImageOps.exif_transpose(image)
+                if max(image.size) > 1800:
+                    image.thumbnail((1800, 1800), Image.Resampling.LANCZOS)
+                if image.mode not in ("RGB", "RGBA"):
+                    image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+                output = BytesIO()
+                image.save(output, format="WEBP", quality=90, method=6)
+        except Exception as exc:
+            raise ValueError(f"Could not optimize image: {exc}") from exc
+        encoded = base64.b64encode(output.getvalue()).decode("ascii")
+        return f"data:image/webp;base64,{encoded}"
+
+    def _select_audio_segment(self):
+        dialog = SelectTranscriptDialog(self.exam_id, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_chunks:
+            first = dialog.selected_chunks[0]
+            last = dialog.selected_chunks[-1]
+            return float(first.start_time), float(last.end_time)
+        return None
+
+    def _format_audio_segment_text(self, start: float, end: float) -> str:
+        if end > 0.0:
+            return f"{start:.2f}s - {end:.2f}s"
+        return "No segment selected"
+
+    def _refresh_context_audio_ui(self):
+        self.context_audio_label.setText(
+            self._format_audio_segment_text(
+                self.context_audio_start, self.context_audio_end
+            )
+        )
+        color = "#1a73e8" if self.context_audio_end > 0.0 else "#5f6368"
+        self.context_audio_btn.setIcon(qta.icon("fa5s.music", color=color))
+
+    def _on_select_context_audio_segment(self):
+        segment = self._select_audio_segment()
+        if not segment:
+            return
+        self.context_audio_start, self.context_audio_end = segment
+        self._refresh_context_audio_ui()
+
+    def _set_question_audio_segment(self, question_form, start: float, end: float):
+        question_form["audio_start"] = start
+        question_form["audio_end"] = end
+        if "audio_label" in question_form:
+            question_form["audio_label"].setText(
+                self._format_audio_segment_text(start, end)
+            )
+        if "select_audio_btn" in question_form:
+            color = "#1a73e8" if end > 0.0 else "#5f6368"
+            question_form["select_audio_btn"].setIcon(
+                qta.icon("fa5s.music", color=color)
+            )
+
+    def _on_select_question_audio_segment(self, question_form):
+        segment = self._select_audio_segment()
+        if not segment:
+            return
+        self._set_question_audio_segment(question_form, segment[0], segment[1])
 
     def _on_save(self):
         question_values = []
         for form in self.question_forms:
             content = form["content"].toPlainText().strip()
             if not content:
-                QMessageBox.warning(self, "Validation", "Question content cannot be empty.")
+                QMessageBox.warning(
+                    self, "Validation", "Question content cannot be empty."
+                )
                 return
             q_type = form["type"].currentText()
             options = [edit.text().strip() for edit in form["options"]]
             if q_type == "MULTIPLE_CHOICE" and any(not opt for opt in options):
-                QMessageBox.warning(self, "Validation", "All four options are required for multiple choice.")
+                QMessageBox.warning(
+                    self,
+                    "Validation",
+                    "All four options are required for multiple choice.",
+                )
                 return
-            question_values.append({
-                "id": form["id"],
-                "question_number": form["number"].value(),
-                "question_type": q_type,
-                "content": content,
-                "note": form["note"].toPlainText().strip(),
-                "options": options,
-                "correct_answer": form["answer"].currentText(),
-            })
+            question_values.append(
+                {
+                    "id": form["id"],
+                    "question_number": form["number"].value(),
+                    "question_type": q_type,
+                    "content": content,
+                    "note": form["note"].toPlainText().strip(),
+                    "options": options,
+                    "correct_answer": form["answer"].currentText(),
+                    "audio_start": form["audio_start"],
+                    "audio_end": form["audio_end"],
+                }
+            )
 
         question_numbers = [item["question_number"] for item in question_values]
         if len(question_numbers) != len(set(question_numbers)):
-            QMessageBox.warning(self, "Validation", "Question numbers must be unique in this context.")
+            QMessageBox.warning(
+                self, "Validation", "Question numbers must be unique in this context."
+            )
             return
 
         try:
@@ -428,11 +636,15 @@ class AddExamQuestionDialog(QDialog):
         session = get_session()
         try:
             if self.saved_context_id:
-                db_ctx = session.query(exam_model.ExamContext).filter(
-                    exam_model.ExamContext.id == self.saved_context_id
-                ).first()
+                db_ctx = (
+                    session.query(exam_model.ExamContext)
+                    .filter(exam_model.ExamContext.id == self.saved_context_id)
+                    .first()
+                )
                 if not db_ctx:
-                    QMessageBox.critical(self, "Error", "Context not found in database.")
+                    QMessageBox.critical(
+                        self, "Error", "Context not found in database."
+                    )
                     return
             else:
                 db_ctx = exam_model.ExamContext(exam_id=self.exam_id)
@@ -453,9 +665,11 @@ class AddExamQuestionDialog(QDialog):
             for value in question_values:
                 db_q = None
                 if value["id"]:
-                    db_q = session.query(exam_model.ExamQuestion).filter(
-                        exam_model.ExamQuestion.id == value["id"]
-                    ).first()
+                    db_q = (
+                        session.query(exam_model.ExamQuestion)
+                        .filter(exam_model.ExamQuestion.id == value["id"])
+                        .first()
+                    )
                 if not db_q:
                     db_q = exam_model.ExamQuestion(context_id=db_ctx.id)
                     session.add(db_q)
@@ -466,11 +680,11 @@ class AddExamQuestionDialog(QDialog):
                 db_q.content = value["content"]
                 db_q.options = value["options"]
                 db_q.correct_answer = value["correct_answer"]
-                meta = dict(db_q.additional_meta or {})
-                meta.setdefault("audio_start", 0.0)
-                meta.setdefault("audio_end", 0.0)
-                meta["note"] = value["note"]
-                db_q.additional_meta = meta
+                db_q.additional_meta = exam_model.AdditionalMeta(
+                    audio_start=value["audio_start"],
+                    audio_end=value["audio_end"],
+                    note=value["note"],
+                )
                 saved_questions.append(db_q)
 
             session.commit()
@@ -485,7 +699,9 @@ class AddExamQuestionDialog(QDialog):
             self.created_question = saved_questions[0] if saved_questions else None
         except Exception as exc:
             session.rollback()
-            QMessageBox.critical(self, "Error Saving", f"Could not save question:\n{exc}")
+            QMessageBox.critical(
+                self, "Error Saving", f"Could not save question:\n{exc}"
+            )
             return
         finally:
             session.close()

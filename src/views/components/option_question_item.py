@@ -1,11 +1,11 @@
+import html
 import json
 import random
-import html
 
 import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtWidgets import (QButtonGroup, QDialog, QMessageBox, QPushButton,
-                               QLabel, QRadioButton, QWidget)
+from PySide6.QtWidgets import (QButtonGroup, QDialog, QLabel, QMessageBox,
+                               QPushButton, QRadioButton, QWidget)
 
 import src.models.exam as exam_model
 from src.models.database import get_session
@@ -13,7 +13,6 @@ from src.utils.helpers import get_audio_meta
 from src.views.components.select_transcript_dialog import \
     SelectTranscriptDialog
 from src.views.components.tag_menu_dialog import TagMenuDialog
-
 from ui_gen.ui_option_question_item import Ui_OptionQuestionItem
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -280,13 +279,10 @@ class OptionQuestionItem(QWidget):
                     exam_model.ExamQuestion.id == self.question.id
                 ).first()
                 if db_q:
-                    meta = dict(db_q.additional_meta or {})
-                    meta["audio_start"] = first.start_time
-                    meta["audio_end"] = last.end_time
-                    db_q.additional_meta = meta
+                    db_q.additional_meta = exam_model.AdditionalMeta(audio_start=first.start_time, audio_end=last.end_time, note="")
                     session.commit()
                     
-                    self.question.additional_meta = meta
+                    self.question.additional_meta = db_q.additional_meta
             except Exception as e:
                 session.rollback()
                 QMessageBox.critical(self, "Error Saving", f"Could not save segment to database:\n{e}")

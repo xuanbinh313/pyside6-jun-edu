@@ -39,7 +39,7 @@ class ExamDetailsViewModel(QObject):
         session.close()
         self.data_loaded.emit()
 
-    def save_exam(self, title, description, duration_minutes, is_published):
+    def save_exam(self, title, description, duration_minutes, is_published, full_audio_url=None):
         session = get_session()
         exam = None
         if self.exam_id:
@@ -53,6 +53,7 @@ class ExamDetailsViewModel(QObject):
         exam.description = description
         exam.duration_minutes = duration_minutes
         exam.is_published = is_published
+        exam.full_audio_url = full_audio_url
         
         session.commit()
         self.exam_id = exam.id

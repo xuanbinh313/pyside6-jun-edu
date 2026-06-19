@@ -1,5 +1,8 @@
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
+import os
 
+from PySide6.QtWidgets import QFileDialog, QLabel, QMessageBox, QPushButton, QTextEdit, QWidget
+
+from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
 from ui_gen.ui_exam_form_widget import Ui_ExamFormWidget
 
 
@@ -7,7 +10,10 @@ class ExamFormWidget(QWidget):
     def __init__(self, viewmodel, parent=None):
         super().__init__(parent)
         self.viewmodel = viewmodel
+        self.external_viewmodel = ExamAddExternalViewModel(target_exam_id=self.viewmodel.exam_id)
+        self._chunks_dirty = False
         self.setup_ui()
+        self._connect_external_viewmodel()
 
     def setup_ui(self):
         self.ui = Ui_ExamFormWidget()
@@ -23,10 +29,35 @@ class ExamFormWidget(QWidget):
         self.import_csv_btn = self.ui.import_csv_btn
         self.save_btn = self.ui.save_btn
 
+        self.analyze_audio_btn = QPushButton("Analyze Audio")
+        self.import_external_btn = QPushButton("Import Audio + Transcript")
+        self.import_external_btn.setEnabled(False)
+        self.ui.action_layout.addWidget(self.analyze_audio_btn)
+        self.ui.action_layout.addWidget(self.import_external_btn)
+
+        self.external_text_edit = QTextEdit(self)
+        self.external_text_edit.setMinimumHeight(120)
+        self.external_text_edit.setPlaceholderText("Extracted transcript text appears here. Edit before importing audio alignment.")
+        self.ui.main_layout.insertWidget(2, self.external_text_edit)
+
+        self.external_progress_label = QLabel("")
+        self.external_progress_label.setWordWrap(True)
+        self.external_progress_label.setStyleSheet("color: #5f6368; font-size: 12px;")
+        self.ui.main_layout.insertWidget(3, self.external_progress_label)
+
         self.upload_audio_btn.clicked.connect(self.on_upload_audio)
         self.attach_srt_btn.clicked.connect(self.on_attach_srt)
         self.import_csv_btn.clicked.connect(self.on_import_csv)
+        self.analyze_audio_btn.clicked.connect(self.on_analyze_audio)
+        self.import_external_btn.clicked.connect(self.on_import_external_audio)
+        self.external_text_edit.textChanged.connect(self.on_external_text_changed)
         self.save_btn.clicked.connect(self.on_save)
+
+    def _connect_external_viewmodel(self):
+        self.external_viewmodel.state_changed.connect(self.update_external_import_ui)
+        self.external_viewmodel.progress_message.connect(self.show_external_progress)
+        self.external_viewmodel.error_message.connect(self.show_external_error)
+        self.external_viewmodel.exam_saved.connect(self.on_external_exam_saved)
 
     def populate(self):
         if self.viewmodel.exam:
@@ -35,11 +66,13 @@ class ExamFormWidget(QWidget):
             self.audio_input.setText(self.viewmodel.exam.full_audio_url or "")
             self.duration_input.setValue(self.viewmodel.exam.duration_minutes or 0)
             self.published_checkbox.setChecked(bool(self.viewmodel.exam.is_published))
+        self.external_viewmodel.target_exam_id = self.viewmodel.exam_id
 
     def on_upload_audio(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Audio", "", "Audio (*.mp3 *.wav)")
         if file_path:
             self.audio_input.setText(file_path)
+            self.external_viewmodel.set_audio_file(file_path)
 
     def parse_srt(self, file_path):
         from src.models.exam import ExamSrtChunk
@@ -81,6 +114,7 @@ class ExamFormWidget(QWidget):
             chunks.append(current_chunk)
 
         self.viewmodel.srt_chunks = chunks
+        self._chunks_dirty = True
         QMessageBox.information(self, "Success", f"Parsed {len(chunks)} chunks from SRT.")
 
     def on_attach_srt(self):
@@ -107,15 +141,91 @@ class ExamFormWidget(QWidget):
                     )
                     chunks.append(chunk)
             self.viewmodel.srt_chunks = chunks
+            self._chunks_dirty = True
             QMessageBox.information(self, "Success", f"Parsed {len(chunks)} chunks from CSV.")
 
-    def on_save(self):
-        if self.viewmodel.exam:
-            self.viewmodel.exam.full_audio_url = self.audio_input.text()
+    def on_external_text_changed(self):
+        self.external_viewmodel.set_text(self.external_text_edit.toPlainText())
 
+    def on_analyze_audio(self):
+        audio_path = self.audio_input.text().strip()
+        if not audio_path or not os.path.exists(audio_path):
+            file_path, _ = QFileDialog.getOpenFileName(self, "Select Audio File", "", "Audio Files (*.mp3 *.wav)")
+            if not file_path:
+                return
+            audio_path = file_path
+            self.audio_input.setText(audio_path)
+        self.external_viewmodel.set_audio_file(audio_path)
+        self.external_viewmodel.analyze()
+
+    def on_import_external_audio(self):
+        if not self.external_viewmodel.is_analyzed:
+            QMessageBox.warning(self, "Analyze First", "Analyze an audio file before importing aligned transcript chunks.")
+            return
+        if not self._ensure_exam_saved():
+            return
+        self.external_viewmodel.target_exam_id = self.viewmodel.exam_id
+        self.external_viewmodel.set_text(self.external_text_edit.toPlainText())
+        self.external_viewmodel.add_or_update()
+
+    def update_external_import_ui(self):
+        text = self.external_viewmodel.text
+        if self.external_text_edit.toPlainText() != text:
+            self.external_text_edit.blockSignals(True)
+            self.external_text_edit.setPlainText(text)
+            self.external_text_edit.blockSignals(False)
+
+        is_loading = self.external_viewmodel.is_loading
+        self.upload_audio_btn.setDisabled(is_loading)
+        self.attach_srt_btn.setDisabled(is_loading)
+        self.import_csv_btn.setDisabled(is_loading)
+        self.analyze_audio_btn.setDisabled(is_loading)
+        self.import_external_btn.setDisabled(is_loading or not self.external_viewmodel.is_analyzed)
+
+        if is_loading:
+            self.analyze_audio_btn.setText("Loading...")
+        else:
+            self.analyze_audio_btn.setText("Analyze Audio")
+            if not self.external_progress_label.text().startswith("Imported"):
+                self.external_progress_label.setText("")
+
+    def show_external_progress(self, msg):
+        self.external_progress_label.setText(msg)
+
+    def show_external_error(self, msg):
+        QMessageBox.critical(self, "External Audio Import", msg)
+
+    def on_external_exam_saved(self, exam_id):
+        if self.external_viewmodel.imported_audio_path:
+            self.audio_input.setText(self.external_viewmodel.imported_audio_path)
+        count = self.external_viewmodel.imported_chunk_count
+        self.external_progress_label.setText(f"Imported audio and {count} transcript chunks.")
+        self.viewmodel.load_exam()
+        QMessageBox.information(self, "Success", f"Imported audio and {count} transcript chunks.")
+
+    def _ensure_exam_saved(self):
+        title = self.title_input.text().strip()
+        if not title:
+            QMessageBox.warning(self, "Validation", "Title is required before importing audio.")
+            return False
+        self.viewmodel.save_exam(
+            title,
+            self.description_input.toPlainText(),
+            self.duration_input.value(),
+            self.published_checkbox.isChecked(),
+            self.audio_input.text().strip(),
+        )
+        return bool(self.viewmodel.exam_id)
+
+    def on_save(self):
         self.viewmodel.save_exam(
             self.title_input.text(),
             self.description_input.toPlainText(),
             self.duration_input.value(),
-            self.published_checkbox.isChecked()
+            self.published_checkbox.isChecked(),
+            self.audio_input.text().strip(),
         )
+        if self._chunks_dirty:
+            self.viewmodel.save_chunks()
+            self._chunks_dirty = False
+        QMessageBox.information(self, "Saved", "Exam details saved.")

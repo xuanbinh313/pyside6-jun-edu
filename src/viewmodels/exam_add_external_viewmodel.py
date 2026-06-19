@@ -35,8 +35,9 @@ class ExamAddExternalViewModel(QObject):
     error_message = Signal(str)
     exam_saved = Signal(str) # Emits the new exam_id
 
-    def __init__(self):
+    def __init__(self, target_exam_id=None):
         super().__init__()
+        self.target_exam_id = target_exam_id
         self.audio_file_path = None
         self.audio_file_name = None
         self.text = ""
@@ -44,6 +45,8 @@ class ExamAddExternalViewModel(QObject):
         self.is_analyzed = False
         self.current_task_id = None
         self._worker = None
+        self.imported_audio_path = ""
+        self.imported_chunk_count = 0
 
     def set_audio_file(self, path):
         if path:
@@ -154,31 +157,45 @@ class ExamAddExternalViewModel(QObject):
                 # Save to DB
                 emit_progress("Saving exam to database...")
                 session = get_session()
-                exam = Exam(
-                    title=self.audio_file_name or "External Exam",
-                    description="Generated from external service",
-                    duration_minutes=120,
-                    full_audio_url=target_path,  # Storing absolute path for playback
-                    is_published=False,
-                    user_id="local_user"
-                )
-                session.add(exam)
-                session.commit()
-                
-                for idx, item in enumerate(content):
-                    chunk = ExamSrtChunk(
-                        exam_id=exam.id,
-                        index=idx,
-                        start_time=float(item.get("start", 0.0)),
-                        end_time=float(item.get("end", 0.0)),
-                        text=str(item.get("text", ""))
-                    )
-                    session.add(chunk)
-                session.commit()
-                exam_id = exam.id
-                session.close()
-                
-                return {"exam_id": exam_id}
+                try:
+                    if self.target_exam_id:
+                        exam = session.query(Exam).filter(Exam.id == self.target_exam_id).first()
+                        if not exam:
+                            raise Exception("Target exam not found.")
+                        exam.full_audio_url = target_path
+                        session.query(ExamSrtChunk).filter(
+                            ExamSrtChunk.exam_id == exam.id
+                        ).delete(synchronize_session="fetch")
+                    else:
+                        exam = Exam(
+                            title=self.audio_file_name or "External Exam",
+                            description="Generated from external service",
+                            duration_minutes=120,
+                            full_audio_url=target_path,  # Storing absolute path for playback
+                            is_published=False,
+                            user_id="local_user"
+                        )
+                        session.add(exam)
+                        session.flush()
+
+                    for idx, item in enumerate(content):
+                        chunk = ExamSrtChunk(
+                            exam_id=exam.id,
+                            index=idx,
+                            start_time=float(item.get("start", 0.0)),
+                            end_time=float(item.get("end", 0.0)),
+                            text=str(item.get("text", ""))
+                        )
+                        session.add(chunk)
+                    session.commit()
+                    exam_id = exam.id
+                    return {
+                        "exam_id": exam_id,
+                        "full_audio_url": target_path,
+                        "chunk_count": len(content),
+                    }
+                finally:
+                    session.close()
             else:
                 raise Exception("Failed to download audio.")
         else:
@@ -200,6 +217,8 @@ class ExamAddExternalViewModel(QObject):
 
     def _on_add_update_finished(self, result):
         self.is_loading = False
+        self.imported_audio_path = result.get("full_audio_url", "")
+        self.imported_chunk_count = int(result.get("chunk_count", 0) or 0)
         self.state_changed.emit()
         self.exam_saved.emit(result["exam_id"])
 
@@ -210,4 +229,6 @@ class ExamAddExternalViewModel(QObject):
         self.is_loading = False
         self.is_analyzed = False
         self.current_task_id = None
+        self.imported_audio_path = ""
+        self.imported_chunk_count = 0
         self.state_changed.emit()
