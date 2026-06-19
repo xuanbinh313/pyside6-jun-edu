@@ -1,6 +1,6 @@
 from PySide6.QtCore import QObject, Signal
 from src.models.database import get_session
-from src.models.exam import Exam, ExamSrtChunk
+from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
 
 class ExamDetailsViewModel(QObject):
     data_loaded = Signal()
@@ -11,6 +11,7 @@ class ExamDetailsViewModel(QObject):
         self.exam_id = exam_id
         self.exam = None
         self.srt_chunks = []
+        self.contexts = []
         self.questions = []
 
     def load_exam(self):
@@ -19,10 +20,19 @@ class ExamDetailsViewModel(QObject):
             self.exam = session.query(Exam).filter(Exam.id == self.exam_id).first()
             if self.exam:
                 self.srt_chunks = self.exam.srt_chunks
-                self.questions = self.exam.questions
+                self.contexts = session.query(ExamContext).filter(
+                    ExamContext.exam_id == self.exam_id
+                ).order_by(ExamContext.part.asc(), ExamContext.index.asc()).all()
+                self.questions = session.query(ExamQuestion).join(
+                    ExamContext,
+                    ExamQuestion.context_id == ExamContext.id,
+                ).filter(
+                    ExamContext.exam_id == self.exam_id
+                ).order_by(ExamQuestion.question_number.asc()).all()
         else:
             self.exam = Exam(title="")
             self.srt_chunks = []
+            self.contexts = []
             self.questions = []
         # Detach or map to simple DTO if needed, but for local desktop, we can use the object properties directly
         session.expunge_all()

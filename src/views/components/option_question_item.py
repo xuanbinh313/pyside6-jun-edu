@@ -1,15 +1,15 @@
 import json
 import random
+import html
 
 import qtawesome as qta
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import (QButtonGroup, QDialog, QMessageBox, QPushButton,
-                               QRadioButton, QWidget)
+                               QLabel, QRadioButton, QWidget)
 
 import src.models.exam as exam_model
 from src.models.database import get_session
 from src.utils.helpers import get_audio_meta
-from src.views.components.edit_question_dialog import EditQuestionDialog
 from src.views.components.select_transcript_dialog import \
     SelectTranscriptDialog
 from src.views.components.tag_menu_dialog import TagMenuDialog
@@ -28,9 +28,10 @@ class OptionQuestionItem(QWidget):
     """
     LETTER_MAP = ["A", "B", "C", "D"]   # original DB order
 
-    def __init__(self, question, parent=None):
+    def __init__(self, question, exam_id=None, parent=None):
         super().__init__(parent)
         self.question = question
+        self.exam_id = exam_id
         self.correct_answer = question.correct_answer   # e.g. "D"
         
         # Lấy index gốc của câu trả lời đúng (Ví dụ: "A" -> 0, "D" -> 3)
@@ -45,6 +46,19 @@ class OptionQuestionItem(QWidget):
     def _build(self, q):
         self.ui = Ui_OptionQuestionItem()
         self.ui.setupUi(self)
+
+        self.tags_label = QLabel(self)
+        self.tags_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.tags_label.setWordWrap(True)
+        self.tags_label.setStyleSheet("""
+            QLabel {
+                color: #1a73e8;
+                font-size: 11px;
+                font-weight: bold;
+                padding: 0 4px 2px 4px;
+            }
+        """)
+        self.ui.main_layout.insertWidget(0, self.tags_label)
 
         # Question stem text & stretch factor
         self.ui.stem.setText(f"<b>Q{q.question_number}.</b> {q.content}")
@@ -62,12 +76,7 @@ class OptionQuestionItem(QWidget):
             }
         """
 
-        # Edit question button setup
-        self.ui.edit_q_btn.setIcon(qta.icon('fa5s.edit', color='#1a73e8'))
-        self.ui.edit_q_btn.setToolTip("Edit this question")
-        self.ui.edit_q_btn.setFixedSize(24, 24)
-        self.ui.edit_q_btn.setStyleSheet(_icon_btn_style)
-        self.ui.edit_q_btn.clicked.connect(self._on_edit_question)
+        self.ui.edit_q_btn.setVisible(False)
 
         # Bookmark/Tag button setup
         self.ui.tag_btn.setIcon(qta.icon('fa5s.tags', color='#5f6368'))
@@ -75,6 +84,7 @@ class OptionQuestionItem(QWidget):
         self.ui.tag_btn.setFixedSize(24, 24)
         self.ui.tag_btn.setStyleSheet(_icon_btn_style)
         self.ui.tag_btn.clicked.connect(self._show_tag_menu)
+        self._refresh_tag_ui()
 
         # Select audio segment button setup
         self.ui.select_audio_btn.setIcon(qta.icon('fa5s.music', color='#5f6368'))
@@ -122,6 +132,7 @@ class OptionQuestionItem(QWidget):
 
         self._result_label = self.ui.result_label
         self._result_label.setStyleSheet("font-size: 12px; font-weight: bold; padding: 2px 6px;")
+        self._result_label.setWordWrap(True)
 
         self.ui.check_btn.setFixedWidth(130)
         self.ui.check_btn.setStyleSheet("""
@@ -136,22 +147,33 @@ class OptionQuestionItem(QWidget):
         """)
         self.ui.check_btn.clicked.connect(self._on_check)
 
+    def _feedback_text(self, summary: str) -> str:
+        note = self._answer_note()
+        if not note:
+            return html.escape(summary)
+        safe_note = html.escape(note).replace("\n", "<br>")
+        return (
+            f"{html.escape(summary)}<br>"
+            f"<span style=\"font-weight:normal; color:#3c4043;\">Note: {safe_note}</span>"
+        )
+
+    def _answer_note(self) -> str:
+        meta = self.question.additional_meta if isinstance(self.question.additional_meta, dict) else {}
+        return str(meta.get("note", "")).strip()
+
     def _on_check(self):
         selected = self.btn_group.checkedButton()
         if not selected:
-            self._result_label.setText("⚠ Please select an option first.")
+            self._result_label.setText("Please select an option first.")
             self._result_label.setStyleSheet("color: #f9ab00; font-weight: bold; font-size: 12px;")
             return
 
         orig_idx = selected.property("orig_idx")
-
-        # So sánh trực tiếp index gốc để chấm điểm chính xác tuyệt đối
         if orig_idx == self.orig_correct_idx:
-            self._result_label.setText("✅ Correct!")
+            self._result_label.setText(self._feedback_text("Correct!"))
             self._result_label.setStyleSheet("color: #34a853; font-weight: bold; font-size: 12px;")
         else:
-            # Khi sai, hiển thị chữ cái ĐANG XUẤT HIỆN trên màn hình (ví dụ: A) thay vì chữ cái trong DB (D)
-            self._result_label.setText(f"❌ Wrong. Correct answer: {self.display_correct_letter}")
+            self._result_label.setText(self._feedback_text(f"Wrong. Correct answer: {self.display_correct_letter}"))
             self._result_label.setStyleSheet("color: #ea4335; font-weight: bold; font-size: 12px;")
 
     def update_audio_ui(self):
@@ -202,30 +224,52 @@ class OptionQuestionItem(QWidget):
                 break
             parent_widget = parent_widget.parent()
 
-    def _on_edit_question(self):
-        dialog = EditQuestionDialog(self.question, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        # Refresh the stem label with updated content
-        updated_q = dialog.question
-        self.question = updated_q
-        self.ui.stem.setText(f"<b>Q{updated_q.question_number}.</b> {updated_q.content}")
-        # Notify parent to refresh list item label
-        parent_widget = self.parent()
-        while parent_widget:
-            if hasattr(parent_widget, 'on_question_edited'):
-                parent_widget.on_question_edited(updated_q)
-                break
-            parent_widget = parent_widget.parent()
-
     def _show_tag_menu(self):
         popup = TagMenuDialog(self.question, self)
         pos = self.ui.tag_btn.mapToGlobal(QPoint(0, self.ui.tag_btn.height()))
         popup.move(pos)
         popup.exec()
+        self._refresh_tag_ui()
+
+    def _tag_names(self):
+        session = get_session()
+        try:
+            rows = session.query(exam_model.UserQuestionTag.tag_name).filter(
+                exam_model.UserQuestionTag.user_id == "local_user",
+                exam_model.UserQuestionTag.question_id == self.question.id,
+            ).order_by(exam_model.UserQuestionTag.tag_name.asc()).all()
+            return [row[0] for row in rows]
+        finally:
+            session.close()
+
+    def _refresh_tag_ui(self):
+        tag_names = self._tag_names()
+        if tag_names:
+            self.ui.tag_btn.setIcon(qta.icon('fa5s.tags', color='#1a73e8'))
+            self.ui.tag_btn.setToolTip("Tagged: " + ", ".join(tag_names))
+            self.tags_label.setText("Tags: " + ", ".join(tag_names))
+            self.tags_label.setVisible(True)
+        else:
+            self.ui.tag_btn.setIcon(qta.icon('fa5s.tags', color='#5f6368'))
+            self.ui.tag_btn.setToolTip("Manage tags for this question")
+            self.tags_label.clear()
+            self.tags_label.setVisible(False)
 
     def _on_select_audio_segment(self):
-        dialog = SelectTranscriptDialog(self.question.exam_id, self)
+        exam_id = self.exam_id
+        if not exam_id and self.question.context_id:
+            session = get_session()
+            try:
+                ctx = session.query(exam_model.ExamContext).filter(
+                    exam_model.ExamContext.id == self.question.context_id
+                ).first()
+                exam_id = ctx.exam_id if ctx else None
+            finally:
+                session.close()
+        if not exam_id:
+            QMessageBox.warning(self, "No Exam", "Could not determine the exam for this question.")
+            return
+        dialog = SelectTranscriptDialog(exam_id, self)
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_chunks:
             first = dialog.selected_chunks[0]
             last = dialog.selected_chunks[-1]

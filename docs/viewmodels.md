@@ -137,6 +137,35 @@ Emits `progress(str)`, `finished(dict)`, or `error(str)`.
 
 ---
 
+## `SyncViewModel`
+
+**File:** [`src/viewmodels/sync_viewmodel.py`](../src/viewmodels/sync_viewmodel.py)
+
+Runs SQLite-to-Supabase sync on a background thread and reports progress back to the main window.
+
+### Signals
+
+| Signal | Payload | Emitted When |
+|---|---|---|
+| `sync_started` | - | Sync worker starts |
+| `sync_finished` | `list[TableSyncResult]` | All configured tables finish syncing |
+| `sync_failed` | `str` | Sync raises an error |
+
+### State
+
+| Attribute | Type | Description |
+|---|---|---|
+| `is_syncing` | `bool` | Prevents overlapping sync runs |
+| `_worker` | `SyncWorker \| None` | Active background thread |
+
+### Methods
+
+| Method | Description |
+|---|---|
+| `sync_to_supabase()` | Starts a `SyncWorker` unless sync is already running |
+
+---
+
 ## `ExamTranscriptViewModel`
 
 **File:** [`src/viewmodels/exam_transcript_viewmodel.py`](../src/viewmodels/exam_transcript_viewmodel.py)

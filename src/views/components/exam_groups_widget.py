@@ -1,3 +1,4 @@
+import html
 import json
 import os
 import re
@@ -6,16 +7,14 @@ import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt, QUrl
 from PySide6.QtGui import QCursor
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
-from PySide6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout,
-                               QListWidgetItem, QMenu, QMessageBox,
-                               QPushButton, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QDialog, QListWidgetItem,
+                               QMenu, QMessageBox, QPushButton, QWidget)
 
 import src.models.exam as exam_model
 from src.models.database import get_session
 from src.utils.helpers import get_audio_meta
 from src.utils.qt import clear_layout
-from src.views.components.edit_context_dialog import EditContextDialog
-from src.views.components.edit_question_dialog import EditQuestionDialog
+from src.views.components.add_exam_question_dialog import AddExamQuestionDialog
 from src.views.components.import_questions_dialog import ImportQuestionsDialog
 from src.views.components.option_question_item import OptionQuestionItem
 from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
@@ -51,10 +50,17 @@ class ExamGroupsWidget(QWidget):
         # Wire up references to widgets inside the loaded UI
 
         # Setup icons
+        self.add_q_btn = QPushButton(self)
+        self.add_q_btn.setIcon(qta.icon('fa5s.plus', color='#1a73e8'))
+        self.add_q_btn.setToolTip("Add exam question")
+        self.add_q_btn.setMinimumSize(28, 28)
+        self.add_q_btn.setMaximumSize(28, 28)
+        self.ui.q_label_layout.insertWidget(self.ui.q_label_layout.count() - 1, self.add_q_btn)
         self.ui.import_q_btn.setIcon(qta.icon('fa5s.file-import', color='#34a853'))
         self.ui.listen_btn.setIcon(qta.icon('fa5s.play', color='white'))
 
         # Setup connections
+        self.add_q_btn.clicked.connect(self._on_add_question_clicked)
         self.ui.import_q_btn.clicked.connect(self._on_import_questions_clicked)
         self.ui.tag_filter_list.itemChanged.connect(self._on_filter_changed)
         self.ui.q_list.currentItemChanged.connect(self._on_question_selected)
@@ -91,8 +97,8 @@ class ExamGroupsWidget(QWidget):
             elif path.startswith("http"):
                 self.player.setSource(QUrl(path))
 
-        questions = getattr(self.viewmodel, 'questions', [])
-        self._populate_q_list(questions)
+        contexts = getattr(self.viewmodel, 'contexts', [])
+        self._populate_q_list(contexts)
 
     # ─────────────────────────────────────────────────────────────────────────
     # q_list population helper — groups by ExamContext
@@ -188,13 +194,18 @@ class ExamGroupsWidget(QWidget):
             ctx = current.data(Qt.ItemDataRole.UserRole)
             self._current_ctx = ctx
             type_label = ctx.context_type.replace("_", " ").title()
-            self.ui.title_label.setText(f"{type_label} (idx {ctx.index})")
+            self.ui.title_label.setText(f"Part {ctx.part} - {type_label} (idx {ctx.index})")
 
             # ── ExamContext rendering ──────────────────────────────────────────
             if ctx.context_type == "READING_PASSAGE":
                 self._render_reading_passage(ctx)
             elif ctx.context_type == "AUDIO_SRT":
                 self._render_audio_srt_context(ctx)
+            elif ctx.context_type == "IMAGE_DIAGRAM":
+                self._render_image_diagram_context(ctx)
+            elif isinstance(ctx.content, dict) and ctx.content.get("text"):
+                self.ui.passage_browser.setPlainText(ctx.content.get("text", ""))
+                self.ui.passage_browser.setVisible(True)
 
             # Retrieve all questions for this context
             session = get_session()
@@ -218,7 +229,7 @@ class ExamGroupsWidget(QWidget):
             group = [q]
 
         for gq in group:
-            opt_w = OptionQuestionItem(gq)
+            opt_w = OptionQuestionItem(gq, exam_id=self.viewmodel.exam_id)
             self._question_widgets[gq.question_number] = opt_w
             # Insert before the trailing stretch
             count = self.ui.options_layout.count()
@@ -290,7 +301,7 @@ class ExamGroupsWidget(QWidget):
 
         selected_items = [
             it for it in self.ui.q_list.selectedItems()
-            if it.data(Qt.ItemDataRole.UserRole + 1) in ("context", "standalone_question")
+            if it.data(Qt.ItemDataRole.UserRole + 1) == "context"
         ]
         if clicked_item not in selected_items:
             self.ui.q_list.clearSelection()
@@ -323,8 +334,6 @@ class ExamGroupsWidget(QWidget):
         if n == 1:
             if item_kind == "context":
                 edit_action = menu.addAction(qta.icon('fa5s.edit', color='#1a73e8'), "Edit Context")
-            elif item_kind == "standalone_question":
-                edit_action = menu.addAction(qta.icon('fa5s.edit', color='#1a73e8'), "Edit Question")
             menu.addSeparator()
 
         delete_label = f"Delete {n} Items" if n > 1 else "Delete Item"
@@ -335,34 +344,13 @@ class ExamGroupsWidget(QWidget):
         if edit_action and action == edit_action:
             if item_kind == "context":
                 self._on_edit_context()
-            elif item_kind == "standalone_question":
-                self._on_edit_question(clicked_item)
         elif action == delete_action:
             self._on_delete_items(selected_items)
 
-    def _on_edit_question(self, item: QListWidgetItem):
+    def _legacy_question_edit_removed(self, item: QListWidgetItem):
         """Open EditQuestionDialog for the given list item."""
-        q = item.data(Qt.ItemDataRole.UserRole)
-        dialog = EditQuestionDialog(q, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        # Update list item label to reflect new content
-        updated_q = dialog.question
-        label = (
-            f"Q{updated_q.question_number}  [Part {updated_q.part}]  "
-            f"{updated_q.content[:60]}…"
-            if len(updated_q.content) > 60
-            else f"Q{updated_q.question_number}  [Part {updated_q.part}]  {updated_q.content}"
-        )
-        item.setText(label)
-        item.setData(Qt.ItemDataRole.UserRole, updated_q)
-
-        # If this item is currently selected, refresh the detail panel
-        if self.ui.q_list.currentItem() is item:
-            self._on_question_selected(item, None)
-
-        QMessageBox.information(self, "Saved", "Question updated successfully.")
+        item.data(Qt.ItemDataRole.UserRole)
+        return
 
     def _on_delete_items(self, items: list):
         """Confirm and delete selected contexts or standalone questions.
@@ -431,6 +419,24 @@ class ExamGroupsWidget(QWidget):
         # Re-populate / refresh UI
         self._on_filter_changed()
 
+    def _on_add_question_clicked(self):
+        dialog = AddExamQuestionDialog(self.viewmodel.exam_id, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self.viewmodel.load_exam()
+        self.populate()
+        saved_context_id = dialog.saved_context_id
+        if saved_context_id:
+            for i in range(self.ui.q_list.count()):
+                item = self.ui.q_list.item(i)
+                kind = item.data(Qt.ItemDataRole.UserRole + 1)
+                obj = item.data(Qt.ItemDataRole.UserRole)
+                if kind == "context" and obj and obj.id == saved_context_id:
+                    self.ui.q_list.setCurrentItem(item)
+                    break
+        QMessageBox.information(self, "Created", "Question created successfully.")
+
     def _on_import_questions_clicked(self):
         dialog = ImportQuestionsDialog(self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -449,6 +455,7 @@ class ExamGroupsWidget(QWidget):
                 llm_id = ctx_data.get("llm_id", "")
                 new_ctx = exam_model.ExamContext(
                     exam_id=self.viewmodel.exam_id,
+                    part=int(ctx_data.get("part", 1)),
                     context_type=ctx_data.get("context_type", "READING_PASSAGE"),
                     content=ctx_data.get("content", {}),
                     index=ctx_data.get("index", 0),
@@ -463,17 +470,28 @@ class ExamGroupsWidget(QWidget):
                 # Resolve the LLM's temporary context reference to the real DB uuid
                 llm_ctx_id = q_data.get("llm_context_id")
                 real_ctx_id = llm_to_real_id.get(llm_ctx_id) if llm_ctx_id else None
+                if not real_ctx_id:
+                    new_ctx = exam_model.ExamContext(
+                        exam_id=self.viewmodel.exam_id,
+                        part=1,
+                        context_type="STANDALONE",
+                        content={"text": ""},
+                        index=idx,
+                    )
+                    session.add(new_ctx)
+                    session.flush()
+                    real_ctx_id = new_ctx.id
 
                 # additional_meta is already a dict from the parser
                 additional_meta = q_data.get("additional_meta") or {
                     "audio_start": 0.0,
                     "audio_end":   0.0,
+                    "note":        "",
                 }
+                additional_meta.setdefault("note", "")
 
                 new_q = exam_model.ExamQuestion(
-                    exam_id=self.viewmodel.exam_id,
                     context_id=real_ctx_id,
-                    part=int(q_data.get("part", 1)),
                     question_number=int(q_data.get("question_number", idx + 1)),
                     question_type=q_data.get("question_type", "MULTIPLE_CHOICE"),
                     content=q_data["content"],
@@ -558,6 +576,60 @@ class ExamGroupsWidget(QWidget):
             self.ui.transcript_browser.setVisible(True)
 
     # ─────────────────────────────────────────────────────────────────────────
+    def _render_audio_srt_context(self, ctx):
+        """Display AUDIO_SRT context as a readable transcript."""
+        try:
+            content = ctx.content
+            if isinstance(content, str):
+                content = json.loads(content)
+            if isinstance(content, dict):
+                entries = content.get("srt_lines") or []
+                if not entries and content.get("text"):
+                    self.ui.transcript_browser.setText(content.get("text", ""))
+                    self.ui.transcript_label.setVisible(True)
+                    self.ui.transcript_browser.setVisible(True)
+                    return
+            else:
+                entries = content or []
+
+            lines = []
+            for entry in entries:
+                if isinstance(entry, dict):
+                    lines.append(
+                        f"[{entry.get('start', 0):.2f}s - {entry.get('end', 0):.2f}s]  {entry.get('text', '')}"
+                    )
+                else:
+                    lines.append(str(entry))
+            self.ui.transcript_browser.setText("\n".join(lines))
+            self.ui.transcript_label.setVisible(True)
+            self.ui.transcript_browser.setVisible(True)
+        except Exception as exc:
+            self.ui.transcript_browser.setText(f"Error reading audio context: {exc}")
+            self.ui.transcript_browser.setVisible(True)
+
+    def _render_image_diagram_context(self, ctx):
+        """Display IMAGE_DIAGRAM context image and optional description."""
+        content = ctx.content if isinstance(ctx.content, dict) else {}
+        image_data_url = content.get("image_data_url", "")
+        text = content.get("text", "")
+
+        if image_data_url:
+            htmlraw = (
+                '<div style="font-family: Arial, sans-serif; color:#202124;">'
+                f'<img src="{image_data_url}" style="max-width:100%; height:auto; margin-bottom:10px;" />'
+            )
+            if text:
+                htmlraw += (
+                    '<div style="font-size:13px; line-height:1.6; color:#3c4043;">'
+                    f'{html.escape(text)}'
+                    '</div>'
+                )
+            htmlraw += '</div>'
+            self.ui.passage_browser.setHtml(htmlraw)
+        else:
+            self.ui.passage_browser.setPlainText(text or "No diagram image saved.")
+        self.ui.passage_browser.setVisible(True)
+
     # Context edit row helper
     # ─────────────────────────────────────────────────────────────────────────
     def _create_ctx_edit_row(self) -> QPushButton:
@@ -583,13 +655,18 @@ class ExamGroupsWidget(QWidget):
         ctx = getattr(self, '_current_ctx', None)
         if not ctx:
             return
-        dialog = EditContextDialog(ctx, self)
+        dialog = AddExamQuestionDialog(self.viewmodel.exam_id, context=ctx, parent=self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        # Re-render the passage with updated content
-        self._render_reading_passage(ctx)
-        # Also refresh the header item text in q_list
-        self._refresh_ctx_header_item(ctx)
+        self.viewmodel.load_exam()
+        self.populate()
+        saved_context_id = dialog.saved_context_id
+        for i in range(self.ui.q_list.count()):
+            item = self.ui.q_list.item(i)
+            stored = item.data(Qt.ItemDataRole.UserRole)
+            if item.data(Qt.ItemDataRole.UserRole + 1) == "context" and stored and stored.id == saved_context_id:
+                self.ui.q_list.setCurrentItem(item)
+                break
 
     def _refresh_ctx_header_item(self, ctx):
         """Find and update the q_list header item for the given context."""
@@ -629,6 +706,48 @@ class ExamGroupsWidget(QWidget):
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers
     # ─────────────────────────────────────────────────────────────────────────
+    def _populate_q_list(self, contexts):
+        """Fill q_list with all ExamContext rows, grouped under Part headers."""
+        current_part = None
+        for ctx in sorted(contexts, key=lambda c: (c.part or 0, c.index or 0)):
+            if ctx.part != current_part:
+                current_part = ctx.part
+                part_item = QListWidgetItem(f"Part {current_part}")
+                part_item.setFlags(Qt.ItemFlag.NoItemFlags | Qt.ItemFlag.ItemIsEnabled)
+                part_item.setData(Qt.ItemDataRole.UserRole + 1, "separator")
+                font = part_item.font()
+                font.setBold(True)
+                part_item.setFont(font)
+                part_item.setForeground(Qt.GlobalColor.darkGray)
+                self.ui.q_list.addItem(part_item)
+
+            item = QListWidgetItem(self._context_item_label(ctx))
+            item.setData(Qt.ItemDataRole.UserRole, ctx)
+            item.setData(Qt.ItemDataRole.UserRole + 1, "context")
+            font = item.font()
+            font.setBold(True)
+            item.setFont(font)
+            item.setForeground(Qt.GlobalColor.darkBlue)
+            self.ui.q_list.addItem(item)
+
+    def _context_item_label(self, ctx):
+        session = get_session()
+        try:
+            numbers = [
+                row[0] for row in session.query(exam_model.ExamQuestion.question_number).filter(
+                    exam_model.ExamQuestion.context_id == ctx.id
+                ).order_by(exam_model.ExamQuestion.question_number.asc()).all()
+            ]
+        finally:
+            session.close()
+
+        type_label = ctx.context_type.replace("_", " ").title()
+        if not numbers:
+            return f"{type_label} (idx {ctx.index})"
+        if len(numbers) == 1:
+            return f"Question {numbers[0]} - {type_label}"
+        return f"Questions {numbers[0]}-{numbers[-1]} - {type_label}"
+
     def _clear_options(self):
         """Remove all OptionQuestionItem children from the scrollable layout."""
         clear_layout(self.ui.options_layout, keep_tail=1)
@@ -678,22 +797,31 @@ class ExamGroupsWidget(QWidget):
         session = get_session()
         try:
             if not selected_tags:
-                questions = session.query(exam_model.ExamQuestion).filter(
-                    exam_model.ExamQuestion.exam_id == self.viewmodel.exam_id
-                ).order_by(exam_model.ExamQuestion.question_number.asc()).all()
+                contexts = session.query(exam_model.ExamContext).filter(
+                    exam_model.ExamContext.exam_id == self.viewmodel.exam_id
+                ).order_by(
+                    exam_model.ExamContext.part.asc(),
+                    exam_model.ExamContext.index.asc(),
+                ).all()
             else:
-                questions = session.query(exam_model.ExamQuestion).join(
+                contexts = session.query(exam_model.ExamContext).join(
+                    exam_model.ExamQuestion,
+                    exam_model.ExamQuestion.context_id == exam_model.ExamContext.id,
+                ).join(
                     exam_model.UserQuestionTag,
                     exam_model.ExamQuestion.id == exam_model.UserQuestionTag.question_id
                 ).filter(
-                    exam_model.ExamQuestion.exam_id == self.viewmodel.exam_id,
+                    exam_model.ExamContext.exam_id == self.viewmodel.exam_id,
                     exam_model.UserQuestionTag.user_id == "local_user",
                     exam_model.UserQuestionTag.tag_name.in_(selected_tags)
-                ).distinct().order_by(exam_model.ExamQuestion.question_number.asc()).all()
+                ).distinct().order_by(
+                    exam_model.ExamContext.part.asc(),
+                    exam_model.ExamContext.index.asc(),
+                ).all()
 
-            for q in questions:
-                session.expunge(q)
-            self._populate_q_list(questions)
+            for ctx in contexts:
+                session.expunge(ctx)
+            self._populate_q_list(contexts)
         finally:
             session.close()
 
@@ -707,11 +835,7 @@ class ExamGroupsWidget(QWidget):
     def on_question_audio_changed(self, question):
         current_item = self.ui.q_list.currentItem()
         if current_item:
-            q = current_item.data(Qt.ItemDataRole.UserRole)
-            if q.id == question.id:
-                q.additional_meta = question.additional_meta
-                current_item.setData(Qt.ItemDataRole.UserRole, q)
-                self._on_question_selected(current_item, None)
+            self._on_question_selected(current_item, None)
 
 
     def closeEvent(self, event):

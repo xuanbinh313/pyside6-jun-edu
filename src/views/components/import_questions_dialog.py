@@ -1,5 +1,6 @@
-﻿import json
+import json
 
+from json_repair import repair_json
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ui_gen.ui_import_questions_dialog import Ui_ImportQuestionsDialog
@@ -8,16 +9,16 @@ from ui_gen.ui_import_questions_dialog import Ui_ImportQuestionsDialog
 class ImportQuestionsDialog(QDialog):
     """
     Two-step import dialog:
-      Step 1 â€” Copy a structured LLM prompt, send it to Gemini/ChatGPT with the exam image.
-      Step 2 â€” Paste the returned JSON object and click Import.
+      Step 1  Copy a structured LLM prompt, send it to Gemini/ChatGPT with the exam image.
+      Step 2  Paste the returned JSON object and click Import.
 
     The JSON response contains two arrays that map directly to DB models:
-      - "contexts"  â†’ ExamContext  (context_type, content, index)
-      - "questions" â†’ ExamQuestion (context_id, content, options, correct_answer,
-                                    part, question_number, question_type, additional_meta)
+      - "contexts"   ExamContext  (part, context_type, content, index)
+      - "questions"  ExamQuestion (context_id, content, options, correct_answer,
+                                    question_number, question_type, additional_meta)
     """
 
-    # â”€â”€ LLM prompt template â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # LLM prompt template
     PROMPT_TEXT = (
 r'''
 Analyze the attached exam image and extract all content into a structured JSON object
@@ -27,17 +28,20 @@ OBJECTIVE
 
 - Identify if questions share a common context (reading passage, listening block,
   diagram, etc.).
-- If they do, create ONE context entry and link all related questions to it via
+- Always create at least ONE context entry for every question and link all
+  questions to a context via
   "context_id".
-- If a question is standalone (e.g. TOEIC Part 5), set "context_id" to null and
-  do NOT create a context entry.
+- If a question is standalone (e.g. TOEIC Part 5), create a context entry with
+  context_type "STANDALONE" and content { "text": "" }, then link that question
+  to it. NEVER use null context_id.
 
-OUTPUT FORMAT  (output ONLY raw JSON â€” no markdown, no code fences, no explanation)
+OUTPUT FORMAT  (output ONLY raw JSON  no markdown, no code fences, no explanation)
 
 {
   "contexts": [
     {
       "id": "<unique_string_id_you_create>",
+      "part": <integer>,
       "context_type": "READING_PASSAGE",
       "content": { "text": "<full passage text with [[question_number]] placeholders>" },
       "index": 0
@@ -45,42 +49,47 @@ OUTPUT FORMAT  (output ONLY raw JSON â€” no markdown, no code fences, no ex
   ],
   "questions": [
     {
-      "context_id": "<must match an id from contexts array, or null>",
+      "context_id": "<must match an id from contexts array>",
       "content": "<question stem exactly as shown>",
       "options": ["<option text>", "..."],
       "correct_answer": "",
-      "part": <integer>,
       "question_number": <integer>,
       "question_type": "MULTIPLE_CHOICE",
-      "additional_meta": { "audio_start": 0.0, "audio_end": 0.0 }
+      "additional_meta": { "audio_start": 0.0, "audio_end": 0.0, "note": "<why the correct answer is correct>" }
     }
   ]
 }
 
-FIELD RULES â€” contexts
+FIELD RULES  contexts
 
 id
   * A short unique string you invent (e.g. "ctx_1", "ctx_2").
   * Must be referenced exactly by questions that belong to this context.
 
-context_type  â€” choose ONE:
-  * "READING_PASSAGE"  â€” paragraphs, articles, emails, letters
-  * "AUDIO_SRT"        â€” listening transcripts / subtitles with timestamps
-  * "IMAGE_DIAGRAM"    â€” charts, maps, graphs, floor plans
+context_type   choose ONE:
+  * "READING_PASSAGE"   paragraphs, articles, emails, letters
+  * "AUDIO_SRT"         listening transcripts / subtitles with timestamps
+  * "IMAGE_DIAGRAM"     charts, maps, graphs, floor plans
+  * "STANDALONE"        independent questions with no shared passage/audio/diagram
 
-content  â€” shape depends on context_type:
-  * READING_PASSAGE  â†’ { "text": "<full passage text, replacing each blank '-------' or blank question indicator with [[question_number]] matching the corresponding question (e.g. [[131]])>" }
-  * AUDIO_SRT        â†’ { "srt_lines": [ {"start": 0.0, "end": 2.5, "text": "..."}, ... ] }
-  * IMAGE_DIAGRAM    â†’ { "text": "<describe the diagram briefly>" }
+part
+  * TOEIC part (1â€“7) or IELTS section as an integer.
+  * Store part ONLY on the context, never on questions.
+
+content   shape depends on context_type:
+  * READING_PASSAGE   { "text": "<full passage text, replacing each blank '-------' or blank question indicator with [[question_number]] matching the corresponding question (e.g. [[131]])>" }
+  * AUDIO_SRT         { "srt_lines": [ {"start": 0.0, "end": 2.5, "text": "..."}, ... ] }
+  * IMAGE_DIAGRAM     { "text": "<describe the diagram briefly>" }
+  * STANDALONE        { "text": "" }
 
 index
   * Integer order in which this context appears in the image (0-based).
 
-FIELD RULES â€” questions
+FIELD RULES  questions
 
 context_id
   * Must match the "id" value of a context in the "contexts" array above.
-  * Set to null if the question is independent (no shared context).
+  * Must NEVER be null. Standalone questions must reference a STANDALONE context.
 
 content
   * Exact question stem as printed. For reading passage fill-in-the-blanks, you can set the stem to something simple or the question sentence if printed separately.
@@ -93,37 +102,44 @@ options
   * Example: ["Home", "Work", "Travel", "School"]
 
 correct_answer
-  * Leave as "" unless an answer key or marked answer is explicitly visible.
-  * Never infer the answer.
-
-part
-  * TOEIC part (1â€“7) or IELTS section as an integer.
+  * REQUIRED. Must contain the answer choice label: "A", "B", "C", "D", etc.
+  * If an answer key or marked answer is visible, use it.
+  * If no answer key is visible, solve the question from the visible content and choose the best answer.
+  * Never leave correct_answer empty.
+  * If the image is too unclear to determine an answer, use "UNKNOWN" only as a last resort.
 
 question_number
   * Printed question number as an integer.
 
-question_type  â€” choose ONE:
+question_type   choose ONE:
   * "MULTIPLE_CHOICE"
   * "FILL_IN_THE_BLANK"
   * "ESSAY"
   * "RECORDING"
 
 additional_meta
-  * Always include { "audio_start": 0.0, "audio_end": 0.0 }.
+  * Always include { "audio_start": 0.0, "audio_end": 0.0, "note": "<explanation>" }.
   * Fill in real timestamps only if shown in the image.
+  * The note value is REQUIRED. Explain why correct_answer is correct using the
+    visible context, question, grammar, vocabulary, or diagram evidence.
 
 CONSTRAINTS
-* Output ONLY the raw JSON object â€” no code blocks, no explanation, no markdown.
+* Output ONLY the raw JSON object  no code blocks, no explanation, no markdown.
 * Every question in the image must appear in the output.
-* If no context exists (e.g. Part 5 grammar), set context_id to null and leave
-  "contexts" as an empty array [].
+* Every question must have a matching context_id.
+* Every question must have correct_answer filled with the best answer label.
+* Every question must have additional_meta.note explaining why the answer is correct.
+* Do not leave correct_answer as "".
+* If no shared context exists (e.g. Part 5 grammar), create a STANDALONE context
+  for each standalone question or a group of standalone questions in the same part.
 
-EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
+EXAMPLE OUTPUT (Part 6  reading passage + 2 questions)
 
 {
   "contexts": [
     {
       "id": "ctx_1",
+      "part": 6,
       "context_type": "READING_PASSAGE",
       "content": { "text": "Dear Mr. Smith,\nThank you for applying. We are pleased to inform you that [[131]] has been approved. Please contact us if you have [[132]] questions." },
       "index": 0
@@ -134,34 +150,32 @@ EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
       "context_id": "ctx_1",
       "content": "-------",
       "options": ["your application", "apply", "applicant", "applicable"],
-      "correct_answer": "",
-      "part": 6,
+      "correct_answer": "A",
       "question_number": 131,
       "question_type": "MULTIPLE_CHOICE",
-      "additional_meta": { "audio_start": 0.0, "audio_end": 0.0 }
+      "additional_meta": { "audio_start": 0.0, "audio_end": 0.0, "note": "The phrase 'has been approved' needs a noun phrase subject, so 'your application' is correct." }
     },
     {
       "context_id": "ctx_1",
       "content": "-------",
       "options": ["any", "some", "few", "no"],
-      "correct_answer": "",
-      "part": 6,
+      "correct_answer": "A",
       "question_number": 132,
       "question_type": "MULTIPLE_CHOICE",
-      "additional_meta": { "audio_start": 0.0, "audio_end": 0.0 }
+      "additional_meta": { "audio_start": 0.0, "audio_end": 0.0, "note": "The plural noun 'questions' is used in an open condition, so 'any' is the natural determiner." }
     }
   ]
 }
 '''
     )
 
-    VALID_CONTEXT_TYPES = {"READING_PASSAGE", "AUDIO_SRT", "IMAGE_DIAGRAM"}
+    VALID_CONTEXT_TYPES = {"READING_PASSAGE", "AUDIO_SRT", "IMAGE_DIAGRAM", "STANDALONE"}
     VALID_QUESTION_TYPES = {"MULTIPLE_CHOICE", "FILL_IN_THE_BLANK", "ESSAY", "RECORDING"}
     DEFAULT_QUESTION_TYPE = "MULTIPLE_CHOICE"
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Import Questions â€” LLM JSON Import")
+        self.setWindowTitle("Import Questions  LLM JSON Import")
         self.resize(720, 600)
         self.result_contexts: list[dict] = []
         self.result_questions: list[dict] = []
@@ -181,6 +195,7 @@ EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
             '  "contexts": [\n'
             '    {\n'
             '      "id": "ctx_1",\n'
+            '      "part": 6,\n'
             '      "context_type": "READING_PASSAGE",\n'
             '      "content": { "text": "..." },\n'
             '      "index": 0\n'
@@ -192,10 +207,9 @@ EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
             '      "content": "What is the topic?",\n'
             '      "options": ["Home", "Work", "Travel", "School"],\n'
             '      "correct_answer": "",\n'
-            '      "part": 6,\n'
             '      "question_number": 131,\n'
             '      "question_type": "MULTIPLE_CHOICE",\n'
-            '      "additional_meta": { "audio_start": 0.0, "audio_end": 0.0 }\n'
+            '      "additional_meta": { "audio_start": 0.0, "audio_end": 0.0, "note": "Explain why the selected answer is correct." }\n'
             '    }\n'
             '  ]\n'
             '}'
@@ -243,20 +257,25 @@ EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
         -------
         contexts : list[dict]
             Dicts ready to be passed to ExamContext constructor:
-                context_type, content (dict/JSON), index
+                part, context_type, content (dict/JSON), index
             The caller must supply exam_id before persisting.
             The 'llm_id' key carries the LLM-generated id so that the caller
-            can build the mapping llm_id â†’ real DB uuid.
+            can build the mapping llm_id  real DB uuid.
 
         questions : list[dict]
             Dicts ready to be passed to ExamQuestion constructor:
-                context_id (real DB uuid or None â€” resolved by caller),
+                context_id (real DB uuid  resolved by caller),
                 content, options (JSON string), correct_answer,
-                part, question_number, question_type, additional_meta (dict)
+                question_number, question_type, additional_meta (dict)
             The 'llm_context_id' key carries the raw LLM reference before resolution.
             The caller must supply exam_id before persisting.
         """
-        data = json.loads(raw_text)
+        try:
+            data = json.loads(raw_text)
+        except json.JSONDecodeError:
+            # LLM output sometimes contains unescaped quotes or other minor
+            # JSON violations – attempt an automatic repair before giving up.
+            data = json.loads(repair_json(raw_text))
         if not isinstance(data, dict):
             raise ValueError(
                 "Expected a JSON object at the top level with keys "
@@ -281,6 +300,11 @@ EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
             if ctx_type not in self.VALID_CONTEXT_TYPES:
                 ctx_type = "READING_PASSAGE"
 
+            try:
+                part = int(ctx.get("part") or 1)
+            except (TypeError, ValueError):
+                part = 1
+
             content = ctx.get("content", {})
             if not isinstance(content, dict):
                 # If a plain string was returned, normalise it
@@ -294,6 +318,7 @@ EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
 
             contexts.append({
                 "llm_id":       llm_id,      # temporary reference key
+                "part":         part,
                 "context_type": ctx_type,
                 "content":      content,
                 "index":        index,
@@ -330,10 +355,11 @@ EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
             else:
                 options_list = []
 
-            # additional_meta (audio timestamps + any future fields)
+            # additional_meta (audio timestamps + answer explanation)
             meta_raw = q.get("additional_meta", {})
             if not isinstance(meta_raw, dict):
                 meta_raw = {}
+            note = str(meta_raw.get("note") or q.get("note") or "").strip()
             try:
                 audio_start = float(meta_raw.get("audio_start", 0.0))
             except (TypeError, ValueError):
@@ -342,13 +368,18 @@ EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
                 audio_end = float(meta_raw.get("audio_end", 0.0))
             except (TypeError, ValueError):
                 audio_end = 0.0
-            additional_meta = {**meta_raw, "audio_start": audio_start, "audio_end": audio_end}
+            additional_meta = {
+                **meta_raw,
+                "audio_start": audio_start,
+                "audio_end": audio_end,
+                "note": note,
+            }
 
-            # part & question_number
+            # question_number
             try:
-                part = int(q.get("part") or 1)
+                legacy_part = int(q.get("part") or 1)
             except (TypeError, ValueError):
-                part = 1
+                legacy_part = 1
             try:
                 question_number = int(q.get("question_number") or 0)
             except (TypeError, ValueError):
@@ -361,20 +392,43 @@ EXAMPLE OUTPUT (Part 6 â€” reading passage + 2 questions)
 
             correct_answer = str(q.get("correct_answer") or "").strip().upper()
 
-            # context_id â€” stored as llm reference; caller resolves to real uuid
+            # context_id  stored as llm reference; caller resolves to real uuid
             llm_ctx_id = q.get("context_id")
             if llm_ctx_id is not None:
                 llm_ctx_id = str(llm_ctx_id).strip() or None
 
             questions.append({
                 "llm_context_id":  llm_ctx_id,   # resolved by caller after DB insert of contexts
+                "_legacy_part":    legacy_part,
                 "content":         content,
                 "options":         json.dumps(options_list, ensure_ascii=False),
                 "correct_answer":  correct_answer,
-                "part":            part,
                 "question_number": question_number,
                 "question_type":   q_type,
                 "additional_meta": additional_meta,
             })
+
+        context_ids = {ctx["llm_id"] for ctx in contexts}
+        next_index = len(contexts)
+        for q in questions:
+            if q["llm_context_id"] in context_ids:
+                continue
+            standalone_id = f"standalone_{q['question_number'] or next_index}"
+            while standalone_id in context_ids:
+                standalone_id = f"standalone_{next_index}"
+                next_index += 1
+            contexts.append({
+                "llm_id": standalone_id,
+                "part": q.pop("_legacy_part", 1),
+                "context_type": "STANDALONE",
+                "content": {"text": ""},
+                "index": next_index,
+            })
+            context_ids.add(standalone_id)
+            q["llm_context_id"] = standalone_id
+            next_index += 1
+
+        for q in questions:
+            q.pop("_legacy_part", None)
 
         return contexts, questions

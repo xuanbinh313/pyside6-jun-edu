@@ -32,6 +32,34 @@ finally:
 
 ---
 
+## `src/models/sync.py`
+
+Supabase sync module. Called by `SyncViewModel` when the user chooses **Sync to Supabase** from the main menu.
+
+### Environment
+
+Create or update `.env` in the project root:
+
+| Variable | Required | Description |
+|---|---|---|
+| `SUPABASE_URL` | Yes | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Recommended | Service role key for trusted desktop sync writes |
+| `SUPABASE_KEY` | Fallback | Used only when `SUPABASE_SERVICE_ROLE_KEY` is not set |
+| `SUPABASE_SCHEMA` | No | Supabase schema, defaults to `public` |
+
+### Behavior
+
+| Symbol | Type | Description |
+|---|---|---|
+| `SYNC_MODELS` | `tuple[type]` | Ordered ORM models synced to Supabase |
+| `TableSyncResult` | dataclass | Contains `table_name` and `row_count` for UI summary |
+| `SupabaseSyncError` | exception | Raised when required `.env` settings are missing |
+| `sync_sqlite_to_supabase()` | function | Reads all SQLite rows and upserts them into matching Supabase tables via the `supabase` client library |
+
+Supabase table names and columns must match the SQLAlchemy table names and column keys. Rows are upserted by primary key `id`, so matching remote rows are updated and missing rows are inserted.
+
+---
+
 ## `src/models/exam.py`
 
 ORM model definitions.

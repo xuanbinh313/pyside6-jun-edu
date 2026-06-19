@@ -15,6 +15,7 @@ from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from src.viewmodels.exam_list_viewmodel import ExamListViewModel
 from src.viewmodels.reminder_viewmodel import ReminderViewModel
+from src.viewmodels.sync_viewmodel import SyncViewModel
 from src.views.exam_add_external_view import ExamAddExternalView
 from src.views.exam_details_view import ExamDetailsView
 from src.views.exam_list_view import ExamListView
@@ -28,6 +29,7 @@ class MainWindow(QMainWindow):
         self.ui.setupUi(self)
         
         self.reminder_viewmodel = ReminderViewModel()
+        self.sync_viewmodel = SyncViewModel()
         
         self.stacked_widget = self.ui.stacked_widget
         
@@ -66,7 +68,36 @@ class MainWindow(QMainWindow):
             widget.deleteLater()
 
     def setup_menu_bar(self):
+        self.sync_action = QAction("Sync to Supabase", self)
+        self.sync_action.triggered.connect(self.sync_viewmodel.sync_to_supabase)
+        self.ui.menu_main.insertAction(self.ui.action_settings, self.sync_action)
+        self.ui.menu_main.insertSeparator(self.ui.action_settings)
         self.ui.action_settings.triggered.connect(self.show_settings_modal)
+
+    def _on_sync_started(self):
+        self.sync_action.setEnabled(False)
+        self.statusBar().showMessage("Syncing SQLite data to Supabase...")
+
+    def _on_sync_finished(self, results):
+        self.sync_action.setEnabled(True)
+        summary = ", ".join(
+            f"{result.table_name}: {result.row_count}" for result in results
+        )
+        self.statusBar().showMessage("Sync complete", 5000)
+        QMessageBox.information(
+            self,
+            "Supabase Sync",
+            f"SQLite data synced to Supabase.\n\n{summary}",
+        )
+
+    def _on_sync_failed(self, message):
+        self.sync_action.setEnabled(True)
+        self.statusBar().showMessage("Sync failed", 5000)
+        QMessageBox.critical(
+            self,
+            "Supabase Sync Failed",
+            message,
+        )
 
     def show_settings_modal(self):
         minutes, ok = QInputDialog.getInt(self, "Settings", "Set time closeEvent (minutes):", self.close_event_minutes, 1, 1440, 1)
@@ -76,6 +107,9 @@ class MainWindow(QMainWindow):
     def setup_mvvm_connections(self):
         """Bind ViewModel signals to View slots."""
         self.reminder_viewmodel.show_study_window.connect(self.wakeup_and_focus_app)
+        self.sync_viewmodel.sync_started.connect(self._on_sync_started)
+        self.sync_viewmodel.sync_finished.connect(self._on_sync_finished)
+        self.sync_viewmodel.sync_failed.connect(self._on_sync_failed)
 
     def setup_system_tray(self):
         """Configure background execution via System Tray."""

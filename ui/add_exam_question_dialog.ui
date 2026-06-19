@@ -1,0 +1,410 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AddExamQuestionDialog</class>
+ <widget class="QDialog" name="AddExamQuestionDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>720</width>
+    <height>760</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Add Exam Question</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QDialog { background-color: #f8f9fa; }
+QLabel { font-size: 12px; color: #3c4043; }
+QLineEdit, QTextEdit, QComboBox, QSpinBox {
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12px;
+    background-color: white;
+}
+QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: #1a73e8; }
+QGroupBox {
+    font-weight: bold;
+    font-size: 12px;
+    color: #1a73e8;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    margin-top: 8px;
+    padding-top: 10px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+}
+QPushButton#save_btn {
+    background-color: #1a73e8;
+    color: white;
+    font-weight: bold;
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-size: 12px;
+}
+QPushButton#save_btn:hover { background-color: #1558b0; }
+QPushButton#cancel_btn, QPushButton#paste_image_btn {
+    background-color: white;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12px;
+}
+QPushButton#cancel_btn:hover, QPushButton#paste_image_btn:hover { background-color: #f1f3f4; }</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>12</number>
+   </property>
+   <property name="leftMargin">
+    <number>20</number>
+   </property>
+   <property name="topMargin">
+    <number>20</number>
+   </property>
+   <property name="rightMargin">
+    <number>20</number>
+   </property>
+   <property name="bottomMargin">
+    <number>20</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="header_label">
+     <property name="styleSheet">
+      <string notr="true">font-size: 15px; font-weight: bold; color: #202124;</string>
+     </property>
+     <property name="text">
+      <string>Create Context and Question</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="context_group">
+     <property name="title">
+      <string>Context</string>
+     </property>
+     <layout class="QFormLayout" name="context_form">
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="part_label">
+        <property name="text">
+         <string>Part:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QSpinBox" name="part_spin">
+        <property name="minimum">
+         <number>1</number>
+        </property>
+        <property name="maximum">
+         <number>9</number>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="context_type_label">
+        <property name="text">
+         <string>Type:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="context_type_combo"/>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="context_index_label">
+        <property name="text">
+         <string>Index:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QSpinBox" name="context_index_spin">
+        <property name="maximum">
+         <number>9999</number>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <widget class="QStackedWidget" name="context_stack">
+        <widget class="QWidget" name="text_page">
+         <layout class="QVBoxLayout" name="text_page_layout">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QTextEdit" name="context_text_edit">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>110</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>Context text or reading passage...</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="audio_page">
+         <layout class="QVBoxLayout" name="audio_page_layout">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QTextEdit" name="audio_context_edit">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>110</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>Transcript text or SRT-style lines...</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="image_page">
+         <layout class="QVBoxLayout" name="image_page_layout">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QTextEdit" name="image_description_edit">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>70</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>Brief diagram description or source text...</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="image_drop_placeholder">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>180</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">border: 2px dashed #9aa0a6; border-radius: 6px; background: #f8f9fa; color: #5f6368; padding: 16px;</string>
+            </property>
+            <property name="text">
+             <string>Drop image here or press Ctrl+V</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignmentFlag::AlignCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="image_button_layout">
+            <item>
+             <widget class="QPushButton" name="paste_image_btn">
+              <property name="text">
+               <string>Paste Image</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="image_button_spacer">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="question_group">
+     <property name="title">
+      <string>Question</string>
+     </property>
+     <layout class="QFormLayout" name="question_form">
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="question_number_label">
+        <property name="text">
+         <string>Question No.:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QSpinBox" name="question_number_spin">
+        <property name="minimum">
+         <number>1</number>
+        </property>
+        <property name="maximum">
+         <number>9999</number>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="question_type_label">
+        <property name="text">
+         <string>Type:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="question_type_combo"/>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="answer_label">
+        <property name="text">
+         <string>Correct Answer:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="answer_combo"/>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <widget class="QTextEdit" name="content_edit">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>80</height>
+         </size>
+        </property>
+        <property name="placeholderText">
+         <string>Question stem...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="option_a_label">
+        <property name="text">
+         <string>A:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QLineEdit" name="option_a_edit"/>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="option_b_label">
+        <property name="text">
+         <string>B:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QLineEdit" name="option_b_edit"/>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="option_c_label">
+        <property name="text">
+         <string>C:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QLineEdit" name="option_c_edit"/>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="option_d_label">
+        <property name="text">
+         <string>D:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QLineEdit" name="option_d_edit"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="button_layout">
+     <item>
+      <spacer name="button_spacer">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancel_btn">
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="save_btn">
+       <property name="text">
+        <string>Create</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
