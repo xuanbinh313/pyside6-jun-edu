@@ -82,6 +82,7 @@ ORM model definitions.
 
 **Relationships:**
 - `srt_chunks` → `List[ExamSrtChunk]` (cascade: `all, delete-orphan`)
+- `attempts` → `List[ExamAttempt]` (cascade: `all, delete-orphan`)
 
 ---
 
@@ -109,3 +110,40 @@ Represents a single subtitle segment (word/phrase) with audio timestamps.
 ### `generate_uuid()`
 
 Helper returning `str(uuid.uuid4())` — used as the `default` for all primary key columns.
+
+---
+
+### `ExamAttempt`
+
+**Table:** `exam_attempts`
+
+Stores one completed learner run for an exam.
+
+| Column | Type | Nullable | Description |
+|---|---|---|---|
+| `id` | `String` (PK) | No | UUID primary key |
+| `user_id` | `String` | No | User identifier, indexed |
+| `exam_id` | `String` (FK → `exams.id`) | No | Parent exam |
+| `total_correct` | `Integer` | No | Correct answer count |
+| `total_questions` | `Integer` | No | Number of submitted questions |
+| `final_score` | `Float` | Yes | Percent score |
+| `duration_seconds` | `Integer` | No | Elapsed attempt duration |
+| `created_at` | `DateTime` | No | UTC creation timestamp |
+| `dirty` | `Boolean` | No | Future sync/review marker |
+
+---
+
+### `UserAnswer`
+
+**Table:** `user_answers`
+
+Stores the per-question history for an attempt. `user_choice` stores the canonical unshuffled option letter (`A`-`D`), not the shuffled display label.
+
+| Column | Type | Nullable | Description |
+|---|---|---|---|
+| `id` | `String` (PK) | No | UUID primary key |
+| `attempt_id` | `String` (FK → `exam_attempts.id`) | No | Parent attempt; cascades on attempt delete |
+| `question_id` | `String` (FK → `exam_questions.id`) | No | Answered question |
+| `user_choice` | `String` | Yes | Canonical selected letter, or null when unanswered |
+| `is_correct` | `Boolean` | No | Correctness flag, indexed |
+| `dirty` | `Boolean` | No | Future sync/review marker |

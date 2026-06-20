@@ -32,6 +32,7 @@ jun-edu/
     │   └── qt.py
     ├── viewmodels/
     │   ├── exam_list_viewmodel.py
+    │   ├── exam_take_viewmodel.py
     │   ├── exam_details_viewmodel.py
     │   ├── exam_add_external_viewmodel.py
     │   ├── exam_transcript_viewmodel.py
@@ -39,6 +40,7 @@ jun-edu/
     └── views/
         ├── main_window.py
         ├── exam_list_view.py
+        ├── exam_take_view.py
         ├── exam_details_view.py
         ├── exam_add_external_view.py
         └── components/

@@ -38,6 +38,9 @@ class Exam(Base):
     contexts: Mapped[List["ExamContext"]] = relationship(
         "ExamContext", back_populates="exam", cascade="all, delete-orphan"
     )
+    attempts: Mapped[List["ExamAttempt"]] = relationship(
+        "ExamAttempt", back_populates="exam", cascade="all, delete-orphan"
+    )
 
 
 class ExamSrtChunk(Base):
@@ -99,6 +102,9 @@ class ExamQuestion(Base):
     context: Mapped[Optional["ExamContext"]] = relationship(
         "ExamContext", back_populates="questions"
     )
+    answers: Mapped[List["UserAnswer"]] = relationship(
+        "UserAnswer", back_populates="question"
+    )
 
 
 class UserQuestionTag(Base):
@@ -114,3 +120,42 @@ class UserQuestionTag(Base):
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
     dirty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class ExamAttempt(Base):
+    __tablename__ = "exam_attempts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    exam_id: Mapped[str] = mapped_column(ForeignKey("exams.id"), nullable=False)
+    total_correct: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_questions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    final_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    exam: Mapped["Exam"] = relationship("Exam", back_populates="attempts")
+    answers: Mapped[List["UserAnswer"]] = relationship(
+        "UserAnswer", back_populates="attempt", cascade="all, delete-orphan"
+    )
+
+
+class UserAnswer(Base):
+    __tablename__ = "user_answers"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    attempt_id: Mapped[str] = mapped_column(
+        ForeignKey("exam_attempts.id", ondelete="CASCADE"), nullable=False
+    )
+    question_id: Mapped[str] = mapped_column(
+        ForeignKey("exam_questions.id"), nullable=False
+    )
+    user_choice: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    is_correct: Mapped[bool] = mapped_column(Boolean, nullable=False, index=True)
+    dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    attempt: Mapped["ExamAttempt"] = relationship("ExamAttempt", back_populates="answers")
+    question: Mapped["ExamQuestion"] = relationship("ExamQuestion", back_populates="answers")

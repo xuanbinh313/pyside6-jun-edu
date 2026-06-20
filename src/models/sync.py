@@ -10,9 +10,11 @@ from supabase import Client, create_client
 from src.models.database import get_session
 from src.models.exam import (
     Exam,
+    ExamAttempt,
     ExamContext,
     ExamQuestion,
     ExamSrtChunk,
+    UserAnswer,
     UserQuestionTag,
 )
 
@@ -24,6 +26,8 @@ SYNC_MODELS = (
     ExamContext,
     ExamQuestion,
     UserQuestionTag,
+    ExamAttempt,
+    UserAnswer,
 )
 
 

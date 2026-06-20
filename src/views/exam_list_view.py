@@ -4,10 +4,11 @@ from ui_gen.ui_exam_list_view import Ui_ExamListView
 
 
 class ExamListView(QWidget):
-    def __init__(self, viewmodel, navigate_to_details_callback):
+    def __init__(self, viewmodel, navigate_to_details_callback, navigate_to_take_callback):
         super().__init__()
         self.viewmodel = viewmodel
         self.navigate_to_details = navigate_to_details_callback
+        self.navigate_to_take = navigate_to_take_callback
 
         self.setup_ui()
         self.viewmodel.data_changed.connect(self.on_data_changed)
@@ -36,6 +37,11 @@ class ExamListView(QWidget):
             self.table.setItem(row, 1, QTableWidgetItem(str(exam.duration_minutes)))
             self.table.setItem(row, 2, QTableWidgetItem("Yes" if exam.is_published else "No"))
 
+            start_btn = QPushButton("Start")
+            start_btn.setStyleSheet("background-color: #1a73e8; color: white; font-weight: bold;")
+            start_btn.clicked.connect(lambda checked, e_id=exam.id: self.navigate_to_take(e_id))
+            self.table.setCellWidget(row, 3, start_btn)
+
             actions_widget = QWidget()
             actions_layout = QHBoxLayout(actions_widget)
             actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -49,4 +55,4 @@ class ExamListView(QWidget):
             delete_btn.clicked.connect(lambda checked, e_id=exam.id: self.viewmodel.delete_exam(e_id))
             actions_layout.addWidget(delete_btn)
 
-            self.table.setCellWidget(row, 3, actions_widget)
+            self.table.setCellWidget(row, 4, actions_widget)

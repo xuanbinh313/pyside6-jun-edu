@@ -14,11 +14,13 @@ from src.models.database import init_db
 from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from src.viewmodels.exam_list_viewmodel import ExamListViewModel
+from src.viewmodels.exam_take_viewmodel import ExamTakeViewModel
 from src.viewmodels.reminder_viewmodel import ReminderViewModel
 from src.viewmodels.sync_viewmodel import SyncViewModel
 from src.views.exam_add_external_view import ExamAddExternalView
 from src.views.exam_details_view import ExamDetailsView
 from src.views.exam_list_view import ExamListView
+from src.views.exam_take_view import ExamTakeView
 from ui_gen.ui_main_window import Ui_MainWindow
 
 
@@ -34,7 +36,11 @@ class MainWindow(QMainWindow):
         self.stacked_widget = self.ui.stacked_widget
         
         self.list_viewmodel = ExamListViewModel()
-        self.list_view = ExamListView(self.list_viewmodel, self.navigate_to_details)
+        self.list_view = ExamListView(
+            self.list_viewmodel,
+            self.navigate_to_details,
+            self.navigate_to_take_exam,
+        )
         
         self.stacked_widget.addWidget(self.list_view)
         
@@ -55,6 +61,12 @@ class MainWindow(QMainWindow):
             self.details_view = ExamDetailsView(self.details_viewmodel, self.navigate_to_list)
             self.stacked_widget.addWidget(self.details_view)
             self.stacked_widget.setCurrentWidget(self.details_view)
+
+    def navigate_to_take_exam(self, exam_id):
+        self.take_viewmodel = ExamTakeViewModel(exam_id)
+        self.take_view = ExamTakeView(self.take_viewmodel, self.navigate_to_list)
+        self.stacked_widget.addWidget(self.take_view)
+        self.stacked_widget.setCurrentWidget(self.take_view)
         
     def navigate_to_list(self):
         # Refresh list and switch back

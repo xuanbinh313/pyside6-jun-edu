@@ -11,7 +11,7 @@
 **File:** [`src/views/exam_list_view.py`](../src/views/exam_list_view.py)  
 **ViewModel:** `ExamListViewModel`
 
-The home screen. Displays all exams in a table with search, add, and per-row edit/delete actions.
+The home screen. Displays all exams in a table with search, add, learner start, and per-row edit/delete actions.
 
 ### Constructor
 
@@ -33,10 +33,11 @@ ExamListView(viewmodel: ExamListViewModel, navigate_to_details_callback: Callabl
 | `QLineEdit` | `search_input` | Live search — calls `viewmodel.set_search_query()` on `textChanged` |
 | `QPushButton` | "Add Exam" | Navigates to details with `None` (new exam) |
 | `QPushButton` | "Add External" | Navigates to details with `"EXTERNAL"` |
-| `QTableWidget` | `table` | 4 columns: Title, Duration, Published, Actions |
+| `QTableWidget` | `table` | 5 columns: Title, Duration, Published, Start, Manage |
 
 ### Table Actions (per row)
 
+- **Start** — `navigate_to_take(exam.id)`
 - **Edit** — `navigate_to_details(exam.id)`
 - **Delete** — `viewmodel.delete_exam(exam.id)`
 
@@ -70,6 +71,43 @@ Immediately calls `viewmodel.load_exam()` on construction.
 | "Exam Details" | `ExamFormWidget` | Metadata form (title, description, audio, duration, published) |
 | "Groups & Questions" | `ExamGroupsWidget` | Full question list with tag filtering, answer checking, and audio segment playback |
 | "Transcript" | `ExamTranscriptWidget` | SRT chunk editor with audio player |
+
+---
+
+## `ExamTakeView`
+
+**File:** [`src/views/exam_take_view.py`](../src/views/exam_take_view.py)  
+**ViewModel:** `ExamTakeViewModel`
+
+Learner-facing exam screen reached from the exam list Start action. It uses [`ui/exam_take_view.ui`](../ui/exam_take_view.ui) and [`ui_gen/ui_exam_take_view.py`](../ui_gen/ui_exam_take_view.py) for the shell, then builds overview, test, and result pages dynamically.
+
+### Constructor
+
+```python
+ExamTakeView(viewmodel: ExamTakeViewModel, go_back_callback: Callable[[], None])
+```
+
+### Signal Connections
+
+| ViewModel Signal | View Slot | Effect |
+|---|---|---|
+| `data_loaded` | `_render_overview()` | Shows exam metadata, history table, and mode tabs |
+| `test_started` | `_render_test()` | Renders shuffled question cards |
+| `result_ready` | `_render_result()` | Shows score and per-question canonical answer breakdown |
+| `error_message` | `_show_error(msg)` | Shows a warning dialog |
+
+### Pages
+
+| Page | Description |
+|---|---|
+| Overview | Title, description, duration, part count, question count, previous attempts, Practice and Real Test tabs |
+| Test | Scrollable question cards with shuffled options; Practice mode includes per-question Skip |
+| Result | Score/total plus per-question question text, user's canonical letter, correct canonical letter, and correct text |
+| Attempt Analytics | KPI cards, part/overall category breakdowns, answer-sheet tiles, question detail dialogs, and Retake Wrong Answers |
+
+The View submits only the selected shuffled display index. `ExamTakeViewModel` maps it back to the canonical `A`-`D` answer before grading and persistence.
+
+The previous-attempts table View action navigates to the Attempt Analytics page. Badge buttons and answer-sheet Details buttons open a modal with the context, question, user choice, and correct answer. Retake Wrong Answers starts a filtered practice session containing the attempt's incorrect or skipped questions.
 
 ---
 

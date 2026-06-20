@@ -55,8 +55,8 @@ class Ui_ExamListView(object):
         self.main_layout.addLayout(self.header_layout)
 
         self.table = QTableWidget(ExamListView)
-        if (self.table.columnCount() < 4):
-            self.table.setColumnCount(4)
+        if (self.table.columnCount() < 5):
+            self.table.setColumnCount(5)
         __qtablewidgetitem = QTableWidgetItem()
         self.table.setHorizontalHeaderItem(0, __qtablewidgetitem)
         __qtablewidgetitem1 = QTableWidgetItem()
@@ -65,6 +65,8 @@ class Ui_ExamListView(object):
         self.table.setHorizontalHeaderItem(2, __qtablewidgetitem2)
         __qtablewidgetitem3 = QTableWidgetItem()
         self.table.setHorizontalHeaderItem(3, __qtablewidgetitem3)
+        __qtablewidgetitem4 = QTableWidgetItem()
+        self.table.setHorizontalHeaderItem(4, __qtablewidgetitem4)
         self.table.setObjectName(u"table")
 
         self.main_layout.addWidget(self.table)
@@ -82,16 +84,14 @@ class Ui_ExamListView(object):
         self.add_btn.setText(QCoreApplication.translate("ExamListView", u"Add Exam", None))
         self.add_ext_btn.setText(QCoreApplication.translate("ExamListView", u"Add External", None))
         ___qtablewidgetitem = self.table.horizontalHeaderItem(0)
-        if ___qtablewidgetitem:
-            ___qtablewidgetitem.setText(QCoreApplication.translate("ExamListView", u"Title", None))
+        ___qtablewidgetitem.setText(QCoreApplication.translate("ExamListView", u"Title", None))
         ___qtablewidgetitem1 = self.table.horizontalHeaderItem(1)
-        if ___qtablewidgetitem1:
-            ___qtablewidgetitem1.setText(QCoreApplication.translate("ExamListView", u"Duration (mins)", None))
+        ___qtablewidgetitem1.setText(QCoreApplication.translate("ExamListView", u"Duration (mins)", None))
         ___qtablewidgetitem2 = self.table.horizontalHeaderItem(2)
-        if ___qtablewidgetitem2:
-            ___qtablewidgetitem2.setText(QCoreApplication.translate("ExamListView", u"Published", None))
+        ___qtablewidgetitem2.setText(QCoreApplication.translate("ExamListView", u"Published", None))
         ___qtablewidgetitem3 = self.table.horizontalHeaderItem(3)
-        if ___qtablewidgetitem3:
-            ___qtablewidgetitem3.setText(QCoreApplication.translate("ExamListView", u"Actions", None))
+        ___qtablewidgetitem3.setText(QCoreApplication.translate("ExamListView", u"Start", None))
+        ___qtablewidgetitem4 = self.table.horizontalHeaderItem(4)
+        ___qtablewidgetitem4.setText(QCoreApplication.translate("ExamListView", u"Manage", None))
     # retranslateUi
 

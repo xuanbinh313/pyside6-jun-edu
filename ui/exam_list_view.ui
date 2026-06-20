@@ -74,7 +74,12 @@
      </column>
      <column>
       <property name="text">
-       <string>Actions</string>
+       <string>Start</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Manage</string>
       </property>
      </column>
     </widget>

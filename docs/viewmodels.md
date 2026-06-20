@@ -70,6 +70,45 @@ Manages a single exam's metadata and its SRT chunk list. Used by both **new exam
 
 ---
 
+## `ExamTakeViewModel`
+
+**File:** [`src/viewmodels/exam_take_viewmodel.py`](../src/viewmodels/exam_take_viewmodel.py)
+
+Manages the learner-facing exam flow: exam summary, previous attempts, practice filters, real-test sessions, shuffled option mapping, grading, and atomic result persistence.
+
+### Signals
+
+| Signal | Payload | Emitted When |
+|---|---|---|
+| `data_loaded` | — | Exam metadata, questions, tags, and history are loaded |
+| `test_started` | — | A practice or real-test session is generated |
+| `result_ready` | — | Attempt and per-question answers are saved |
+| `error_message` | `str` | Load, filter, or persistence errors occur |
+
+### State
+
+| Attribute | Type | Description |
+|---|---|---|
+| `exam` | `Exam \| None` | Loaded exam metadata |
+| `contexts` | `List[ExamContext]` | Exam contexts ordered by part/index |
+| `questions` | `List[ExamQuestion]` | Exam questions ordered by question number |
+| `attempts` | `List[AttemptSummary]` | Previous attempts for `local_user` |
+| `active_questions` | `List[QuestionSession]` | Current test questions with shuffled option mapping |
+
+### Answer Mapping
+
+`QuestionSession.options` stores both shuffled display information and canonical option letters. Views submit a shuffled `display_index`; the ViewModel converts that to the canonical `A`-`D` letter and stores only the canonical letter in `user_answers.user_choice`.
+
+### Persistence
+
+`complete_test()` creates one `ExamAttempt` plus one `UserAnswer` per active question in a single SQLAlchemy transaction. Unanswered questions are stored with `user_choice=None` and `is_correct=False`.
+
+### Attempt Analytics
+
+`load_attempt_analytics(attempt_id)` joins `exam_attempts`, `user_answers`, `exam_questions`, and `exam_contexts` to produce KPI totals, part-specific category breakdowns, an overall category breakdown, and per-question answer details. `start_review_questions(question_ids)` starts a filtered practice session for retaking incorrect or skipped answers.
+
+---
+
 ## `ExamAddExternalViewModel`
 
 **File:** [`src/viewmodels/exam_add_external_viewmodel.py`](../src/viewmodels/exam_add_external_viewmodel.py)

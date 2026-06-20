@@ -40,6 +40,10 @@ Inside `MainWindow.__init__`:
 | `str` (UUID) | Creates `ExamDetailsViewModel(exam_id)` + `ExamDetailsView`, pushes to stack slot 1 |
 | `None` | Creates `ExamDetailsViewModel(None)` + `ExamDetailsView` (new exam), pushes to slot 1 |
 
+### `navigate_to_take_exam(exam_id)`
+
+Creates `ExamTakeViewModel(exam_id)` + `ExamTakeView`, pushes it to stack slot 1, and shows the learner-facing overview/history/mode selection screen.
+
 ### `navigate_to_list()`
 
 1. Calls `list_viewmodel.load_exams()` to refresh data
