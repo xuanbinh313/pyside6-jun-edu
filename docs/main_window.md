@@ -20,6 +20,10 @@ widget.show()
 app.exec()
 ```
 
+`MainWindow` opens immediately. It owns `AuthViewModel`, checks for a saved
+Supabase session in the background, and opens `AuthView` as a modal account
+dialog only when the user chooses Login / Register from the menu.
+
 Inside `MainWindow.__init__`:
 1. `ReminderViewModel` created (owns the countdown timer)
 2. `QStackedWidget` set as central widget
@@ -54,11 +58,14 @@ Creates `ExamTakeViewModel(exam_id)` + `ExamTakeView`, pushes it to stack slot 1
 
 ## Menu Bar
 
-Single "Menu" entry with one action:
+Single "Menu" entry with these actions:
 
 | Action | Handler | Description |
 |---|---|---|
+| "Login / Register" | `show_auth_modal()` | Opens the auth modal without leaving the current app view |
+| "Sync to Supabase" | `sync_viewmodel.sync_to_supabase()` | Uploads local SQLite data to Supabase |
 | "Settings" | `show_settings_modal()` | `QInputDialog.getInt` to set `close_event_minutes` (1–1440) |
+| "Logout" | `auth_viewmodel.sign_out()` | Signs out and clears saved tokens while staying in the main app |
 
 `close_event_minutes` controls how many minutes the reminder countdown runs when the user closes the window.
 

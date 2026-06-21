@@ -12,6 +12,33 @@
 
 Manages the list of exams with real-time search filtering and deletion.
 
+---
+
+## `AuthViewModel`
+
+**File:** [`src/viewmodels/auth_viewmodel.py`](../src/viewmodels/auth_viewmodel.py)
+
+Manages optional login/register/logout state and saved-session restore. Supabase calls run on `AuthWorker(QThread)` so network I/O does not block the UI thread.
+
+### Signals
+
+| Signal | Payload | Emitted When |
+|---|---|---|
+| `state_changed` | - | Mode, status text, or loading state changes |
+| `authenticated` | `str` email | Login or saved-session restore succeeds |
+| `info_message` | `str` | Registration succeeds but email confirmation may be needed |
+| `error_message` | `str` | Validation or Supabase auth fails |
+| `logged_out` | - | Logout completes and local tokens are cleared |
+
+### Methods
+
+| Method | Description |
+|---|---|
+| `check_saved_session()` | Restores account state from local saved tokens without blocking access to the app |
+| `login(email, password)` | Validates fields and signs in with Supabase |
+| `register(email, password, confirm_password)` | Validates fields and creates a Supabase account |
+| `sign_out()` | Signs out from Supabase and clears local tokens |
+
 ### Signals
 
 | Signal | Payload | Emitted When |

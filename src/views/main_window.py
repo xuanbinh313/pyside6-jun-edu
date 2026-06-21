@@ -11,12 +11,14 @@ from PySide6.QtWidgets import (QApplication, QInputDialog, QMainWindow, QMenu,
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from src.models.database import init_db
+from src.viewmodels.auth_viewmodel import AuthViewModel
 from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from src.viewmodels.exam_list_viewmodel import ExamListViewModel
 from src.viewmodels.exam_take_viewmodel import ExamTakeViewModel
 from src.viewmodels.reminder_viewmodel import ReminderViewModel
 from src.viewmodels.sync_viewmodel import SyncViewModel
+from src.views.auth_view import AuthView
 from src.views.exam_add_external_view import ExamAddExternalView
 from src.views.exam_details_view import ExamDetailsView
 from src.views.exam_list_view import ExamListView
@@ -30,8 +32,10 @@ class MainWindow(QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         
+        self.auth_viewmodel = AuthViewModel()
         self.reminder_viewmodel = ReminderViewModel()
         self.sync_viewmodel = SyncViewModel()
+        self.auth_dialog = None
         
         self.stacked_widget = self.ui.stacked_widget
         
@@ -49,6 +53,7 @@ class MainWindow(QMainWindow):
         
         self.setup_system_tray()
         self.setup_mvvm_connections()
+        self.auth_viewmodel.check_saved_session()
         
     def navigate_to_details(self, exam_id):
         if exam_id == "EXTERNAL":
@@ -80,11 +85,20 @@ class MainWindow(QMainWindow):
             widget.deleteLater()
 
     def setup_menu_bar(self):
+        self.auth_action = QAction("Login / Register", self)
+        self.auth_action.triggered.connect(self.show_auth_modal)
+        self.ui.menu_main.insertAction(self.ui.action_settings, self.auth_action)
+        self.ui.menu_main.insertSeparator(self.ui.action_settings)
         self.sync_action = QAction("Sync to Supabase", self)
         self.sync_action.triggered.connect(self.sync_viewmodel.sync_to_supabase)
         self.ui.menu_main.insertAction(self.ui.action_settings, self.sync_action)
         self.ui.menu_main.insertSeparator(self.ui.action_settings)
+        self.logout_action = QAction("Logout", self)
+        self.logout_action.triggered.connect(self.auth_viewmodel.sign_out)
+        self.ui.menu_main.addSeparator()
+        self.ui.menu_main.addAction(self.logout_action)
         self.ui.action_settings.triggered.connect(self.show_settings_modal)
+        self._update_auth_actions()
 
     def _on_sync_started(self):
         self.sync_action.setEnabled(False)
@@ -116,8 +130,41 @@ class MainWindow(QMainWindow):
         if ok:
             self.close_event_minutes = minutes
 
+    def show_auth_modal(self):
+        if self.auth_dialog is not None and self.auth_dialog.isVisible():
+            self.auth_dialog.raise_()
+            self.auth_dialog.activateWindow()
+            return
+
+        self.auth_dialog = AuthView(self.auth_viewmodel, self)
+        self.auth_dialog.finished.connect(self._on_auth_dialog_finished)
+        self.auth_dialog.show()
+
+    def _on_auth_dialog_finished(self):
+        dialog = self.sender()
+        if dialog is not None:
+            dialog.deleteLater()
+        self.auth_dialog = None
+
+    def _on_authenticated(self, email):
+        self.statusBar().showMessage(f"Signed in as {email}", 5000)
+        self._update_auth_actions()
+
+    def _on_logged_out(self):
+        self.statusBar().showMessage("Signed out", 5000)
+        self._update_auth_actions()
+
+    def _update_auth_actions(self):
+        is_loading = self.auth_viewmodel.is_loading
+        is_signed_in = bool(self.auth_viewmodel.current_user_email)
+        self.auth_action.setEnabled(not is_loading and not is_signed_in)
+        self.logout_action.setEnabled(not is_loading and is_signed_in)
+
     def setup_mvvm_connections(self):
         """Bind ViewModel signals to View slots."""
+        self.auth_viewmodel.state_changed.connect(self._update_auth_actions)
+        self.auth_viewmodel.authenticated.connect(self._on_authenticated)
+        self.auth_viewmodel.logged_out.connect(self._on_logged_out)
         self.reminder_viewmodel.show_study_window.connect(self.wakeup_and_focus_app)
         self.sync_viewmodel.sync_started.connect(self._on_sync_started)
         self.sync_viewmodel.sync_finished.connect(self._on_sync_finished)

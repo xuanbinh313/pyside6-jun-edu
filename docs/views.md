@@ -13,6 +13,27 @@
 
 The home screen. Displays all exams in a table with search, add, learner start, and per-row edit/delete actions.
 
+---
+
+## `AuthView`
+
+**File:** [`src/views/auth_view.py`](../src/views/auth_view.py)  
+**ViewModel:** `AuthViewModel`
+
+Login/register modal opened from the main menu. It uses [`ui/auth_view.ui`](../ui/auth_view.ui) and [`ui_gen/ui_auth_view.py`](../ui_gen/ui_auth_view.py). The main exam views remain accessible without signing in.
+
+### UI Elements
+
+| Widget | ID | Description |
+|---|---|---|
+| `QLineEdit` | `email_input` | Email input with clear button |
+| `QLineEdit` | `password_input` | Masked password input |
+| `QLineEdit` | `confirm_password_input` | Masked confirmation input, visible only in register mode |
+| `QPushButton` | `primary_button` | Login or Register action |
+| `QPushButton` | `toggle_button` | Switches between login and register modes |
+| `QProgressBar` | `loading_bar` | Indeterminate loading indicator during Supabase calls |
+| `QLabel` | `message_label` | Inline validation or status text |
+
 ### Constructor
 
 ```python

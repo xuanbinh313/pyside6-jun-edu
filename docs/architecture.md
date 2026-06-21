@@ -25,12 +25,15 @@ jun-edu/
 │   └── ...
 └── src/
     ├── models/
+    │   ├── auth.py
     │   ├── database.py
-    │   └── exam.py
+    │   ├── exam.py
+    │   └── supabase_client.py
     ├── utils/
     │   ├── helpers.py
     │   └── qt.py
     ├── viewmodels/
+    │   ├── auth_viewmodel.py
     │   ├── exam_list_viewmodel.py
     │   ├── exam_take_viewmodel.py
     │   ├── exam_details_viewmodel.py
@@ -38,6 +41,7 @@ jun-edu/
     │   ├── exam_transcript_viewmodel.py
     │   └── reminder_viewmodel.py
     └── views/
+        ├── auth_view.py
         ├── main_window.py
         ├── exam_list_view.py
         ├── exam_take_view.py
@@ -90,7 +94,9 @@ View <──signals────── ViewModel
 
 ## Navigation
 
-`MainWindow` owns the `QStackedWidget`:
+`main.py` opens `MainWindow` directly so the local exam tools remain available without logging in. `MainWindow` owns account state and opens `AuthView` as a modal login/register dialog from the menu. A valid saved Supabase session restores the signed-in menu state in the background.
+
+`MainWindow` owns the exam `QStackedWidget`:
 
 - Slot 0 is always `ExamListView`.
 - Slot 1 is either `ExamDetailsView` or `ExamAddExternalView`.
