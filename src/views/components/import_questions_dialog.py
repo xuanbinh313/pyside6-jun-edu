@@ -1,7 +1,20 @@
+import base64
 import json
+import mimetypes
+from io import BytesIO
+from pathlib import Path
 
 from json_repair import repair_json
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QDialog,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+)
 
 from ui_gen.ui_import_questions_dialog import Ui_ImportQuestionsDialog
 
@@ -89,6 +102,7 @@ STRICT ARCHITECTURE RULES:
         self.resize(720, 600)
         self.result_contexts: list[dict] = []
         self.result_questions: list[dict] = []
+        self.selected_image_paths: list[str] = []
         self._setup_ui()
 
     # UI
@@ -99,6 +113,7 @@ STRICT ARCHITECTURE RULES:
         self.prompt_edit = self.ui.prompt_edit
         self.json_edit = self.ui.json_edit
         self.prompt_edit.setText(self.PROMPT_TEXT)
+        self._setup_image_picker()
 
         placeholder = (
             "{\n"
@@ -131,13 +146,56 @@ STRICT ARCHITECTURE RULES:
         self.ui.cancel_btn.clicked.connect(self.reject)
         self.ui.import_btn.clicked.connect(self._on_import)
 
+    def _setup_image_picker(self):
+        image_row = QHBoxLayout()
+        self.pick_images_btn = QPushButton("Select Diagram Images")
+        self.pick_images_btn.setStyleSheet(
+            "padding: 6px 12px; border: 1px solid #dadce0; border-radius: 4px;"
+        )
+        self.pick_images_btn.clicked.connect(self._pick_images)
+        image_row.addWidget(self.pick_images_btn)
+
+        self.image_count_label = QLabel("No images selected")
+        self.image_count_label.setStyleSheet("color: #5f6368; font-size: 12px;")
+        image_row.addWidget(self.image_count_label, 1)
+        self.ui.main_layout.insertLayout(4, image_row)
+
+        numbers_row = QHBoxLayout()
+        numbers_label = QLabel("Question numbers:")
+        numbers_label.setStyleSheet("color: #3c4043; font-size: 12px;")
+        numbers_row.addWidget(numbers_label)
+
+        self.question_numbers_input = QLineEdit()
+        self.question_numbers_input.setPlaceholderText(
+            "Auto-filled from selected images, e.g. 1,2,3"
+        )
+        self.question_numbers_input.setStyleSheet(
+            "padding: 5px 8px; border: 1px solid #dadce0; border-radius: 4px;"
+        )
+        numbers_row.addWidget(self.question_numbers_input, 1)
+        self.ui.main_layout.insertLayout(5, numbers_row)
+
     def _copy_prompt(self):
         QApplication.clipboard().setText(self.PROMPT_TEXT)
         QMessageBox.information(self, "Copied", "Prompt copied to clipboard!")
 
+    def _pick_images(self):
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select IMAGE_DIAGRAM files",
+            "",
+            "Images (*.png *.jpg *.jpeg *.webp *.bmp);;All Files (*)",
+        )
+        if not files:
+            return
+        self.selected_image_paths = files
+        self.image_count_label.setText(f"{len(files)} image(s) selected")
+        default_numbers = ",".join(str(i) for i in range(1, len(files) + 1))
+        self.question_numbers_input.setText(default_numbers)
+
     def _on_import(self):
         raw = self.json_edit.toPlainText().strip()
-        if not raw:
+        if not raw and not self.selected_image_paths:
             QMessageBox.warning(self, "Warning", "Please paste the JSON data first.")
             return
 
@@ -185,7 +243,7 @@ STRICT ARCHITECTURE RULES:
             The caller must supply exam_id before persisting.
         """
         try:
-            data = json.loads(raw_text)
+            data = self._parse_json_object(raw_text)
         except json.JSONDecodeError:
             # LLM output sometimes contains unescaped quotes or other minor
             # JSON violations – attempt an automatic repair before giving up.
@@ -264,7 +322,7 @@ STRICT ARCHITECTURE RULES:
         if not isinstance(raw_questions, list):
             raise ValueError('"questions" must be a JSON array.')
 
-        if not raw_questions:
+        if not raw_questions and not self.selected_image_paths:
             raise ValueError('The "questions" array is empty.')
 
         questions: list[dict] = []
@@ -408,4 +466,150 @@ STRICT ARCHITECTURE RULES:
             q.pop("_temp_audio_start", None)
             q.pop("_temp_audio_end", None)
 
-        return contexts, questions
+        return self._merge_image_diagrams(contexts, questions)
+
+    def _parse_question_numbers(self) -> list[int]:
+        if not self.selected_image_paths:
+            return []
+        raw = self.question_numbers_input.text().strip()
+        if not raw:
+            return list(range(1, len(self.selected_image_paths) + 1))
+
+        numbers: list[int] = []
+        for token in raw.replace("\n", ",").split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                number = int(token)
+            except ValueError as exc:
+                raise ValueError(f"Invalid question number: {token}") from exc
+            if number <= 0:
+                raise ValueError("Question numbers must be greater than zero.")
+            numbers.append(number)
+
+        if len(numbers) > len(self.selected_image_paths):
+            raise ValueError(
+                "Question number count cannot be greater than selected image count."
+            )
+        return numbers or list(range(1, len(self.selected_image_paths) + 1))
+
+    def _parse_json_object(self, raw_text: str) -> dict:
+        if not raw_text:
+            return {"contexts": [], "questions": []}
+        try:
+            data = json.loads(raw_text)
+        except json.JSONDecodeError:
+            data = json.loads(repair_json(raw_text))
+        if not isinstance(data, dict):
+            raise ValueError(
+                "Expected a JSON object at the top level with keys "
+                '"contexts" and "questions".'
+            )
+        return data
+
+    def _image_file_to_data_url(self, file_path: str) -> str:
+        path = Path(file_path)
+        raw = path.read_bytes()
+
+        try:
+            from PIL import Image, ImageOps
+
+            with Image.open(BytesIO(raw)) as image:
+                image = ImageOps.exif_transpose(image)
+                if max(image.size) > 1800:
+                    image.thumbnail((1800, 1800), Image.Resampling.LANCZOS)
+                if image.mode not in ("RGB", "RGBA"):
+                    image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+                output = BytesIO()
+                image.save(output, format="WEBP", quality=90, method=6)
+            encoded = base64.b64encode(output.getvalue()).decode("ascii")
+            return f"data:image/webp;base64,{encoded}"
+        except Exception:
+            mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+            encoded = base64.b64encode(raw).decode("ascii")
+            return f"data:{mime_type};base64,{encoded}"
+
+    def _default_question(self, question_number: int, llm_context_id: str) -> dict:
+        return {
+            "llm_context_id": llm_context_id,
+            "content": "",
+            "options": json.dumps(["", "", "", ""], ensure_ascii=False),
+            "correct_answer": "",
+            "question_number": question_number,
+            "question_type": self.DEFAULT_QUESTION_TYPE,
+            "additional_meta": {"note": ""},
+            "user_id": "None",
+        }
+
+    def _merge_image_diagrams(
+        self, contexts: list[dict], questions: list[dict]
+    ) -> tuple[list[dict], list[dict]]:
+        if not self.selected_image_paths:
+            return contexts, questions
+
+        question_numbers = self._parse_question_numbers()
+        question_by_number = {
+            int(q.get("question_number", 0)): q
+            for q in questions
+            if int(q.get("question_number", 0) or 0) > 0
+        }
+
+        image_contexts: list[dict] = []
+        image_questions: list[dict] = []
+        for index, image_path in enumerate(self.selected_image_paths):
+            llm_id = f"image_ctx_{index + 1}"
+            image_contexts.append(
+                {
+                    "llm_id": llm_id,
+                    "part": 1,
+                    "context_type": "IMAGE_DIAGRAM",
+                    "content": {
+                        "text": Path(image_path).stem,
+                        "image_data_url": self._image_file_to_data_url(image_path),
+                    },
+                    "index": index,
+                    "additional_meta": {
+                        "audio_start": 0.0,
+                        "audio_end": 0.0,
+                        "note": "",
+                    },
+                    "user_id": "None",
+                }
+            )
+
+            if index >= len(question_numbers):
+                continue
+            question_number = question_numbers[index]
+            question = dict(
+                question_by_number.get(
+                    question_number, self._default_question(question_number, llm_id)
+                )
+            )
+            question["llm_context_id"] = llm_id
+            question["question_number"] = question_number
+            options = question.get("options", "[]")
+            if isinstance(options, str):
+                try:
+                    options_list = json.loads(options)
+                except Exception:
+                    options_list = []
+            elif isinstance(options, list):
+                options_list = options
+            else:
+                options_list = []
+            options_list = [str(option) for option in options_list[:4]]
+            options_list.extend([""] * (4 - len(options_list)))
+            question["options"] = json.dumps(options_list, ensure_ascii=False)
+            question["content"] = str(question.get("content", ""))
+            question["correct_answer"] = str(question.get("correct_answer", ""))
+            question["question_type"] = question.get(
+                "question_type", self.DEFAULT_QUESTION_TYPE
+            )
+            meta = question.get("additional_meta") or {"note": ""}
+            if not isinstance(meta, dict):
+                meta = {"note": ""}
+            question["additional_meta"] = {"note": str(meta.get("note", ""))}
+            image_questions.append(question)
+
+        return image_contexts, image_questions
