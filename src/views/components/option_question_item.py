@@ -1,6 +1,5 @@
 ﻿import html
 import json
-import random
 
 import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt
@@ -18,7 +17,7 @@ from src.repositories.sqlite import orm_models as exam_model
 
 
 class OptionQuestionItem(QWidget):
-    """Renders shuffled multiple-choice options for one ExamQuestion."""
+    """Renders multiple-choice options for one ExamQuestion."""
 
     LETTER_MAP = ["A", "B", "C", "D"]
 
@@ -89,8 +88,6 @@ class OptionQuestionItem(QWidget):
             raw_opts = []
 
         indexed = list(enumerate(raw_opts))
-        random.shuffle(indexed)
-
         self.btn_group = QButtonGroup(self)
         self.btn_group.setExclusive(True)
 

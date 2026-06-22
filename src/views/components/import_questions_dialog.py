@@ -215,6 +215,16 @@ STRICT ARCHITECTURE RULES:
                 self, "No Data", "No questions found in the pasted JSON."
             )
             return
+        duplicate_numbers = self._duplicate_question_numbers(questions)
+        if duplicate_numbers:
+            duplicate_text = ", ".join(f"Q{number}" for number in duplicate_numbers)
+            QMessageBox.warning(
+                self,
+                "Duplicate Question Numbers",
+                f"The import data contains duplicate question number(s): {duplicate_text}.\n"
+                "Please keep each question number unique in the import JSON.",
+            )
+            return
 
         self.result_contexts = contexts
         self.result_questions = questions
@@ -467,6 +477,21 @@ STRICT ARCHITECTURE RULES:
             q.pop("_temp_audio_end", None)
 
         return self._merge_image_diagrams(contexts, questions)
+
+    def _duplicate_question_numbers(self, questions: list[dict]) -> list[int]:
+        seen: set[int] = set()
+        duplicates: set[int] = set()
+        for question in questions:
+            try:
+                number = int(question.get("question_number", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if number <= 0:
+                continue
+            if number in seen:
+                duplicates.add(number)
+            seen.add(number)
+        return sorted(duplicates)
 
     def _parse_question_numbers(self) -> list[int]:
         if not self.selected_image_paths:

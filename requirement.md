@@ -1,75 +1,65 @@
-# Migration of Audio Segment Metadata from ExamQuestion to ExamContext
+TARGET_LANG = "Vietnamese (vn)"
 
-This plan outlines the changes needed to move the audio timestamp metadata (`audio_start` and `audio_end`) from individual questions (`ExamQuestion`) to their shared contexts (`ExamContext`).
+LISTENING_PROMPT_TEXT = r"""
+Analyze the attached listening transcript text and extract all content into a raw JSON object. 
+OUTPUT CONSTRAINT: Output ONLY the raw JSON. No markdown, no ```json code fences, no explanations.
+TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
 
-## User Review Required
+{
+    "contexts": [
+        {
+            "id": "Unique string ID (e.g., 'ctx_l1_1', 'ctx_l3_32')",
+            "part": 2, // Integer (TOEIC part 1, 2, 3, or 4). Store ONLY in context, NEVER in questions.
+            "context_type": "AUDIO_SRT | STANDALONE",
+            "content": {
+                // AUDIO_SRT: For Part 3 & 4. Put the full conversation/talk transcript text here.
+                // STANDALONE: For Part 1 & 2. Must be exactly {"text": ""}
+                "text": "string"
+            },
+            "index": 0, // 0-based order of appearance in the transcript
+            "additional_meta": { 
+                "audio_start": 0.0, 
+                "audio_end": 0.0, 
+                "note": "REQUIRED. Provide the exact full translation of 'content.text' into {TARGET_LANG}. If STANDALONE, leave as empty string." 
+            }
+        }
+    ],
+    "questions": [
+        {
+            "context_id": "Must match a valid context id. NEVER null.",
+            "question_number": 11, // Printed or spoken question number as integer
+            "question_type": "MULTIPLE_CHOICE",
+            "content": "Question stem text. Follow the LISTENING PART RULES below.",
+            "options": ["Flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order."],
+            "correct_answer": "Required choice label ('A', 'B', 'C', or 'D').",
+            "additional_meta": {
+                "note": "REQUIRED. Strictly format this field exactly as follows:\n[Translation of the question content stem into {TARGET_LANG}]\n[Translation of option 1 into {TARGET_LANG}]\n[Translation of option 2 into {TARGET_LANG}]\n[Translation of option 3 into {TARGET_LANG}]\n[Translation of option 4 into {TARGET_LANG} (if applicable)]\n\n[Detailed grammatical/contextual explanation in {TARGET_LANG} explaining why the correct_answer is right based on keywords from the transcript.]"
+            }
+        }
+    ]
+}
 
-> [!IMPORTANT]
-> The database schema changes require updates to SQLAlchemy model configurations. If an existing local SQLite database exists, it will need to have the `additional_meta` column added to the `exam_contexts` table. We should handle this gracefully in `src/models/database.py` via schema checks, or inform you how to recreate it.
+LISTENING PART RULES:
+1. PART 1 (Photographs):
+   - context_type: "STANDALONE" (content.text = "")
+   - questions.content: Set to exactly "Look at the picture and choose the statement that best describes it."
+   - questions.options: Put the 4 transcript descriptions (A, B, C, D) here.
 
-## Proposed Changes
+2. PART 2 (Question-Response):
+   - context_type: "STANDALONE" (content.text = "")
+   - questions.content: Put the spoken Question/Statement here (e.g., "Where is the meeting room?").
+   - questions.options: Put the 3 spoken response choices (A, B, C) here.
 
----
+3. PART 3 & 4 (Conversations & Talks):
+   - context_type: "AUDIO_SRT"
+   - contexts.content.text: Put the entire spoken dialogue or monologue transcript block here.
+   - questions.content: Put the printed question stem here.
+   - questions.options: Put the 4 printed multiple-choice options here.
 
-### [Models]
-
-#### [MODIFY] [exam.py](file:///d:/my-project/workspace-anki/jun-edu/src/models/exam.py)
-- Define a new `QuestionAdditionalMeta` TypedDict containing only `note`.
-- Keep `AdditionalMeta` TypedDict as is (containing `audio_start`, `audio_end`, and `note`).
-- Update `ExamContext` model to add `additional_meta: Mapped[AdditionalMeta] = mapped_column(JSON, default=lambda: {"audio_start": 0.0, "audio_end": 0.0, "note": ""})`.
-- Update `ExamQuestion` model to change type of `additional_meta` to `QuestionAdditionalMeta` and default to `lambda: {"note": ""}`.
-
-#### [MODIFY] [database.py](file:///d:/my-project/workspace-anki/jun-edu/src/models/database.py)
-- Update `_ensure_schema_columns()` to automatically check and add `additional_meta` to `exam_contexts` if it is missing, making sure existing SQLite databases do not crash.
-
----
-
-### [Helpers]
-
-#### [MODIFY] [helpers.py](file:///d:/my-project/workspace-anki/jun-edu/src/utils/helpers.py)
-- Update `get_audio_meta(question)` to retrieve the audio timestamps from `question.context.additional_meta` if `question.context` is available, falling back to `question.additional_meta` (for backward compatibility).
-
----
-
-### [Views & Components]
-
-#### [MODIFY] [add_exam_question_dialog.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/components/add_exam_question_dialog.py)
-- Remove question-level audio start/end fields and selectors from `_setup_question_forms()`, `_add_question_form()`, `_populate_question_form()`, and saving methods.
-- Update `_populate_from_context()` to read `audio_start` and `audio_end` from `context.additional_meta` instead of `context.content`.
-- Update `_context_content()` to exclude `audio_start` and `audio_end` from the content dictionary.
-- In `_on_save()`, save `audio_start` and `audio_end` to `db_ctx.additional_meta`.
-- Clean up `_add_question_audio_selector`, `_on_select_question_audio_segment`, `_set_question_audio_segment` since audio selection is now handled strictly at the context level.
-
-#### [MODIFY] [exam_groups_widget.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/components/exam_groups_widget.py)
-- Update `_on_listen_clicked` to play audio using the context's `additional_meta` (retrieving it via `ctx.additional_meta` or fallback).
-- In `_questions_for_context()`, eager load the `context` relation using `joinedload` so that `question.context` is loaded before expunging.
-- In `_on_import_questions_clicked`, pass `additional_meta` (containing audio segment info) when creating the `ExamContext` row.
-
-#### [MODIFY] [import_questions_dialog.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/components/import_questions_dialog.py)
-- Update `PROMPT_TEXT` template to instruct the LLM to output `additional_meta` on `contexts` instead of `questions` (the prompt will guide the LLM to output `audio_start`/`audio_end` in the context's metadata, and only `note` in the question's metadata).
-- Update `_parse_json` to parse `additional_meta` from the LLM context entries.
-- Add fallback logic in `_parse_json` that if the LLM output places `audio_start` or `audio_end` on questions instead of contexts, it copies those values to the context's `additional_meta` and strips them from the question.
-
-#### [MODIFY] [option_question_item.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/components/option_question_item.py)
-- Update `_on_select_audio_segment` to save selected transcript timestamps to `db_q.context.additional_meta` instead of `db_q.additional_meta`.
-
----
-
-### [Documentation]
-
-#### [MODIFY] [models.md](file:///d:/my-project/workspace-anki/jun-edu/docs/models.md)
-- Update documentation schema tables to reflect the new structure.
-
-## Verification Plan
-
-### Automated Tests
-- Run Python syntax compile check:
-  ```powershell
-  .\.venv\Scripts\python.exe -B -c "import pathlib; [compile(path.read_text(encoding='utf-8-sig'), str(path), 'exec') for root in ('src','ui_gen') for path in pathlib.Path(root).rglob('*.py')]; print('syntax ok')"
-  ```
-
-### Manual Verification
-- Open the application and create/edit an exam.
-- Add questions and context to verify context-level audio segment selection works.
-- Verify playback of context audio segments works as expected.
-- Verify prompt copy and paste JSON import works, checking both new and legacy formats.
+STRICT ARCHITECTURE RULES:
+1. Every question must link to a context. Never use null context_id.
+2. For Part 1 and Part 2, every single question MUST have its own unique, dedicated "STANDALONE" context. Do NOT group multiple Part 1 or Part 2 questions into one context.
+3. For Part 3 and Part 4, all questions belonging to the same conversation/talk (usually sets of 3) must reference the exact same shared "AUDIO_SRT" context ID.
+4. Extract every question provided in the transcript. Never leave correct_answer or additional_meta.note empty.
+5. In 'questions.additional_meta.note', ensure there is a clear new line separating the translations (question + options) and the final explanation.
+""".replace("{TARGET_LANG}", TARGET_LANG)

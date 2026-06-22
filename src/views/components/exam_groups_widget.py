@@ -447,32 +447,92 @@ class ExamGroupsWidget(QWidget):
 
         session = get_session()
         try:
-            # â”€â”€ Step 1: Insert ExamContext rows & build llm_id â†’ real DB uuid map â”€â”€
+            question_numbers = [
+                int(q_data.get("question_number", idx + 1))
+                for idx, q_data in enumerate(questions_data)
+            ]
+            import_duplicates = sorted(
+                {
+                    number
+                    for number in question_numbers
+                    if number and question_numbers.count(number) > 1
+                }
+            )
+            if import_duplicates:
+                duplicate_text = ", ".join(
+                    f"Q{number}" for number in import_duplicates
+                )
+                QMessageBox.warning(
+                    self,
+                    "Duplicate Question Numbers",
+                    f"The import data contains duplicate question number(s): {duplicate_text}.\n"
+                    "Please keep each question number unique in the import JSON.",
+                )
+                return
+
+            existing_questions = (
+                session.query(exam_model.ExamQuestion)
+                .join(
+                    exam_model.ExamContext,
+                    exam_model.ExamQuestion.context_id == exam_model.ExamContext.id,
+                )
+                .filter(exam_model.ExamContext.exam_id == self.viewmodel.exam_id)
+                .all()
+            )
+            existing_by_number = {
+                int(question.question_number): question
+                for question in existing_questions
+            }
+
+            # Prefer the existing context for imported groups that contain a duplicate
+            # question number, so the import updates that group instead of adding a copy.
             llm_to_real_id: dict[str, str] = {}
+            for q_data in questions_data:
+                llm_ctx_id = q_data.get("llm_context_id")
+                question_number = int(q_data.get("question_number", 0) or 0)
+                existing_q = existing_by_number.get(question_number)
+                if llm_ctx_id and existing_q:
+                    llm_to_real_id[str(llm_ctx_id)] = str(existing_q.context_id)
+
+            # Step 1: Insert or update ExamContext rows & build llm_id -> real DB uuid map.
             for ctx_data in contexts_data:
                 llm_id = ctx_data.get("llm_id", "")
-                new_ctx = exam_model.ExamContext(
-                    exam_id=self.viewmodel.exam_id,
-                    part=int(ctx_data.get("part", 1)),
-                    context_type=ctx_data.get("context_type", "READING_PASSAGE"),
-                    content=ctx_data.get("content", {}),
-                    index=ctx_data.get("index", 0),
-                    additional_meta=ctx_data.get(
-                        "additional_meta",
-                        {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
-                    ),
-                    user_id=ctx_data.get("user_id"),
+                real_ctx_id = llm_to_real_id.get(str(llm_id)) if llm_id else None
+                if real_ctx_id:
+                    new_ctx = (
+                        session.query(exam_model.ExamContext)
+                        .filter(exam_model.ExamContext.id == real_ctx_id)
+                        .first()
+                    )
+                    if not new_ctx:
+                        real_ctx_id = None
+
+                if not real_ctx_id:
+                    new_ctx = exam_model.ExamContext(exam_id=self.viewmodel.exam_id)
+                    session.add(new_ctx)
+
+                new_ctx.part = int(ctx_data.get("part", 1))
+                new_ctx.context_type = ctx_data.get("context_type", "READING_PASSAGE")
+                new_ctx.content = ctx_data.get("content", {})
+                new_ctx.index = ctx_data.get("index", 0)
+                new_ctx.additional_meta = ctx_data.get(
+                    "additional_meta",
+                    {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
                 )
-                session.add(new_ctx)
+                new_ctx.user_id = ctx_data.get("user_id")
                 session.flush()  # populate new_ctx.id without full commit
                 if llm_id:
                     llm_to_real_id[llm_id] = str(new_ctx.id)
 
-            # â”€â”€ Step 2: Insert ExamQuestion rows with resolved context_id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # Step 2: Insert or update ExamQuestion rows with resolved context_id.
+            updated_numbers: list[int] = []
+            created_count = 0
             for idx, q_data in enumerate(questions_data):
                 # Resolve the LLM's temporary context reference to the real DB uuid
                 llm_ctx_id = q_data.get("llm_context_id")
-                real_ctx_id = llm_to_real_id.get(llm_ctx_id) if llm_ctx_id else None
+                real_ctx_id = (
+                    llm_to_real_id.get(str(llm_ctx_id)) if llm_ctx_id else None
+                )
                 if not real_ctx_id:
                     new_ctx = exam_model.ExamContext(
                         exam_id=self.viewmodel.exam_id,
@@ -496,26 +556,39 @@ class ExamGroupsWidget(QWidget):
                     "note": "",
                 }
                 additional_meta = {"note": str(additional_meta.get("note", ""))}
+                question_number = int(q_data.get("question_number", idx + 1))
 
-                new_q = exam_model.ExamQuestion(
-                    context_id=real_ctx_id,
-                    question_number=int(q_data.get("question_number", idx + 1)),
-                    question_type=q_data.get("question_type", "MULTIPLE_CHOICE"),
-                    content=q_data["content"],
-                    options=q_data["options"],
-                    correct_answer=q_data.get("correct_answer", ""),
-                    additional_meta=additional_meta,
-                    user_id=q_data.get("user_id"),
-                )
-                session.add(new_q)
+                db_q = existing_by_number.get(question_number)
+                if db_q:
+                    updated_numbers.append(question_number)
+                else:
+                    db_q = exam_model.ExamQuestion()
+                    session.add(db_q)
+                    created_count += 1
+
+                db_q.context_id = real_ctx_id
+                db_q.question_number = question_number
+                db_q.question_type = q_data.get("question_type", "MULTIPLE_CHOICE")
+                db_q.content = q_data["content"]
+                db_q.options = q_data["options"]
+                db_q.correct_answer = q_data.get("correct_answer", "")
+                db_q.additional_meta = additional_meta
+                db_q.user_id = q_data.get("user_id")
 
             session.commit()
             n_ctx = len(contexts_data)
-            n_q = len(questions_data)
+            updated_text = ""
+            if updated_numbers:
+                duplicate_text = ", ".join(f"Q{number}" for number in updated_numbers)
+                updated_text = (
+                    f"\nUpdated existing duplicate number(s): {duplicate_text}."
+                )
             QMessageBox.information(
                 self,
                 "Import Successful",
-                f"Imported {n_ctx} context(s) and {n_q} question(s) successfully!",
+                f"Imported {n_ctx} context(s).\n"
+                f"Created {created_count} question(s), updated {len(updated_numbers)} question(s)."
+                f"{updated_text}",
             )
             self.viewmodel.load_exam()
             self.populate()
@@ -530,16 +603,12 @@ class ExamGroupsWidget(QWidget):
         finally:
             session.close()
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Context renderers
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _render_reading_passage(self, ctx):
         """
         Parse READING_PASSAGE content and render double-bracket placeholders
         [[131]] â†’ clickable anchor tags, per spec Â§4.
         Also attaches an edit icon button next to the passage_label.
         """
-        # â”€â”€ Store current context reference for the edit button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self._current_ctx = ctx
 
         if isinstance(ctx.content, dict):
@@ -564,7 +633,7 @@ class ExamGroupsWidget(QWidget):
         # self.ui.passage_label.setVisible(True)
         self.ui.passage_browser.setVisible(True)
 
-        # â”€â”€ Show the edit-context button row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # Show the edit-context button row
         if not hasattr(self, "_ctx_edit_row") or self._ctx_edit_row is None:
             self._ctx_edit_row = self._create_ctx_edit_row()
         else:
@@ -598,7 +667,6 @@ class ExamGroupsWidget(QWidget):
             self.ui.transcript_browser.setText(f"Error reading audio context: {exc}")
             self.ui.transcript_browser.setVisible(True)
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _render_audio_srt_context(self, ctx):
         """Display AUDIO_SRT context as a readable transcript."""
         try:
@@ -654,7 +722,6 @@ class ExamGroupsWidget(QWidget):
         self.ui.passage_browser.setVisible(True)
 
     # Context edit row helper
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _create_ctx_edit_row(self) -> QPushButton:
         """Create (once) a small QWidget with an edit icon button and insert it
         into right_outer_layout directly after passage_label."""

@@ -258,7 +258,7 @@ Named widgets from `.ui` file:
 - **`SelectTranscriptDialog`** — dialog to select one or more SRT chunks to set the audio segment timestamps on a question.
 - **`EditQuestionDialog`** — form dialog to edit question fields: Part, Correct Answer, Content, and Options A–D.
 - **`EditContextDialog`** — inline editor dialog for editing `ExamContext` text content.
-- **`OptionWidget`** — renders shuffled ABCD radio buttons for a single question. Options are shuffled per session for anti-cheat purposes; the correct answer is validated by original DB index, not display position.
+- **`OptionWidget`** — renders ABCD radio buttons for a single question in the saved option order. The correct answer is validated by original DB index.
 
 #### Key Methods
 
