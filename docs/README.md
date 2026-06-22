@@ -1,9 +1,11 @@
 # Jun Edu Developer Guide
 
-Jun Edu is a PySide6 desktop app that uses an MVVM-style structure:
+Jun Edu is a PySide6 desktop app that uses an MVVM-style structure with a
+repository boundary between ViewModels and database implementations:
 
-- `src/models/`: SQLAlchemy models and database setup.
-- `src/viewmodels/`: application state, database work, background tasks, and QtCore signals.
+- `src/models/`: pure Python dataclasses shared by repositories, ViewModels, and Views.
+- `src/repositories/`: repository interfaces plus SQLite/Supabase implementations.
+- `src/viewmodels/`: application state, repository calls, background tasks, and QtCore signals.
 - `src/views/`: hand-written Qt widgets/windows. Put signal wiring, slots, validation, and styling here.
 - `ui/`: Qt Designer `.ui` source files.
 - `ui_gen/`: generated `ui_*.py` files from `pyside6-uic`. Treat this directory as read-only.
@@ -16,7 +18,7 @@ Start with these docs:
 |---|---|
 | [architecture.md](./architecture.md) | Project map, MVVM boundaries, and UI generation rules |
 | [main_window.md](./main_window.md) | Navigation, system tray, and reminder flow |
-| [models.md](./models.md) | ORM tables and database session usage |
+| [models.md](./models.md) | Pure entities, repository interfaces, and database implementations |
 | [viewmodels.md](./viewmodels.md) | ViewModel state, signals, and persistence behavior |
 | [views.md](./views.md) | View classes, generated UI modules, and major widgets |
 
@@ -32,12 +34,14 @@ Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (or `SUPABASE_KEY`) in `.env` for log
 ## Agent Checklist
 
 1. Read `requirement.md` before making structural changes.
-2. Edit behavior in `src/views/`, `src/viewmodels/`, `src/models/`, or `src/utils/`.
+2. Edit behavior in `src/views/`, `src/viewmodels/`, `src/repositories/`, `src/models/`, or `src/utils/`.
 3. Edit layout in `ui/*.ui`, then regenerate the matching `ui_gen/ui_*.py`.
 4. Do not manually edit `ui_gen/`.
 5. Keep ViewModels free of `PySide6.QtWidgets`; use `PySide6.QtCore` only for signals, timers, and QObject behavior.
-6. Use `blockSignals(True)` around programmatic UI updates that would otherwise retrigger slots.
-7. Use `src.utils.qt.clear_layout()` when clearing dynamic Qt layouts.
+6. Keep SQLAlchemy imports isolated to `src/repositories/sqlite/`.
+7. Pass repository interfaces into ViewModels instead of importing concrete database sessions there.
+8. Use `blockSignals(True)` around programmatic UI updates that would otherwise retrigger slots.
+9. Use `src.utils.qt.clear_layout()` when clearing dynamic Qt layouts.
 
 ## Regenerating UI
 

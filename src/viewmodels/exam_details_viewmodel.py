@@ -1,125 +1,57 @@
-from src.models.exam import ExamSrtChunk
-from dataclasses import dataclass
+﻿from __future__ import annotations
+
 from typing import Optional
-from typing import List
+
 from PySide6.QtCore import QObject, Signal
-from src.models.database import get_session
-from src.models.exam import Exam, ExamContext, ExamQuestion
 
-
-@dataclass
-class SrtChunkDTO:
-    id: str
-    exam_id: str
-    index: int
-    start_time: float
-    end_time: float
-    text: str
-    hint: Optional[str] = None
+from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
+from src.repositories.base_repo import IExamRepository
+from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
 
 
 class ExamDetailsViewModel(QObject):
     data_loaded = Signal()
     data_saved = Signal()
 
-    def __init__(self, exam_id=None):
+    def __init__(self, exam_id=None, repo: IExamRepository | None = None):
         super().__init__()
+        self.repo = repo or SQLiteExamRepository()
         self.exam_id = exam_id
         self.exam: Optional[Exam] = None
-        self.srt_chunks: List[SrtChunkDTO] = []
-        self.contexts: List[ExamContext] = []
-        self.questions: List[ExamQuestion] = []
+        self.srt_chunks: list[ExamSrtChunk] = []
+        self.contexts: list[ExamContext] = []
+        self.questions: list[ExamQuestion] = []
 
     def load_exam(self):
-        session = get_session()
         if self.exam_id:
-            self.exam = session.query(Exam).filter(Exam.id == self.exam_id).first()
-            if self.exam:
-                self.srt_chunks = [
-                    SrtChunkDTO(
-                        id=chunk.id,
-                        exam_id=chunk.exam_id,
-                        index=chunk.index,
-                        start_time=chunk.start_time,
-                        end_time=chunk.end_time,
-                        text=chunk.text,
-                        hint=chunk.hint,
-                    )
-                    for chunk in self.exam.srt_chunks
-                ]
-                self.contexts = (
-                    session.query(ExamContext)
-                    .filter(ExamContext.exam_id == self.exam_id)
-                    .order_by(ExamContext.part.asc(), ExamContext.index.asc())
-                    .all()
-                )
-                self.questions = (
-                    session.query(ExamQuestion)
-                    .join(
-                        ExamContext,
-                        ExamQuestion.context_id == ExamContext.id,
-                    )
-                    .filter(ExamContext.exam_id == self.exam_id)
-                    .order_by(ExamQuestion.question_number.asc())
-                    .all()
-                )
+            self.exam, self.srt_chunks, self.contexts, self.questions = (
+                self.repo.get_exam_details(self.exam_id)
+            )
         else:
             self.exam = Exam(title="")
             self.srt_chunks = []
             self.contexts = []
             self.questions = []
-        # Detach or map to simple DTO if needed, but for local desktop, we can use the object properties directly
-        session.expunge_all()
-        session.close()
         self.data_loaded.emit()
 
     def save_exam(
         self, title, description, duration_minutes, is_published, full_audio_url=None
     ):
-        session = get_session()
-        exam = None
-        if self.exam_id:
-            exam = session.query(Exam).filter(Exam.id == self.exam_id).first()
-
-        if not exam:
-            exam = Exam()
-            session.add(exam)
-
-        exam.title = title
-        exam.description = description
-        exam.duration_minutes = duration_minutes
-        exam.is_published = is_published
-        exam.full_audio_url = full_audio_url
-
-        session.commit()
-        self.exam_id = exam.id
-        session.close()
+        self.exam_id = self.repo.save_exam(
+            exam_id=self.exam_id,
+            title=title,
+            description=description,
+            duration_minutes=duration_minutes,
+            is_published=is_published,
+            full_audio_url=full_audio_url,
+        )
         self.data_saved.emit()
 
     def save_chunks(self):
-        """Persist all current srt_chunks to SQLite, replacing previous ones for this exam."""
         if not self.exam_id:
             return
 
-        session = get_session()
-        try:
-            session.query(ExamSrtChunk).filter(
-                ExamSrtChunk.exam_id == self.exam_id
-            ).delete()
-
-            for chunk in self.srt_chunks:
-                new_chunk = ExamSrtChunk(
-                    exam_id=self.exam_id,
-                    index=chunk.index,
-                    start_time=chunk.start_time,
-                    end_time=chunk.end_time,
-                    text=chunk.text,
-                    hint=getattr(chunk, "hint", None),
-                )
-                session.add(new_chunk)
-            session.commit()
-        finally:
-            session.close()
+        self.repo.replace_srt_chunks(self.exam_id, self.srt_chunks)
 
     def duplicate_chunk(self, chunk):
         list_idx = self.srt_chunks.index(chunk)
@@ -131,6 +63,7 @@ class ExamDetailsViewModel(QObject):
             start_time=chunk.start_time,
             end_time=chunk.end_time,
             text=chunk.text,
+            hint=getattr(chunk, "hint", None),
         )
         self.srt_chunks.insert(list_idx + 1, new_chunk)
         return list_idx + 1, new_chunk
@@ -141,7 +74,6 @@ class ExamDetailsViewModel(QObject):
             return None, None
 
         next_chunk = self.srt_chunks[list_idx + 1]
-
         chunk.text = f"{chunk.text} {next_chunk.text}"
         chunk.end_time = next_chunk.end_time
 

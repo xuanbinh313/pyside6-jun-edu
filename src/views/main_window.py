@@ -1,4 +1,4 @@
-# Add current directory to path if needed, but normally running from jun-edu is fine.
+﻿# Add current directory to path if needed, but normally running from jun-edu is fine.
 import os
 import sys
 
@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QApplication, QInputDialog, QMainWindow, QMenu,
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.models.database import init_db
+from src.repositories.sqlite.database import init_db
 from src.viewmodels.auth_viewmodel import AuthViewModel
 from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel

@@ -10,7 +10,9 @@
 
 **File:** [`src/viewmodels/exam_list_viewmodel.py`](../src/viewmodels/exam_list_viewmodel.py)
 
-Manages the list of exams with real-time search filtering and deletion.
+Manages the list of exams with real-time search filtering and deletion. It
+receives an `IExamRepository` through constructor injection and defaults to
+`SQLiteExamRepository`.
 
 ---
 
@@ -66,7 +68,7 @@ Manages optional login/register/logout state and saved-session restore. Supabase
 
 **File:** [`src/viewmodels/exam_details_viewmodel.py`](../src/viewmodels/exam_details_viewmodel.py)
 
-Manages a single exam's metadata and its SRT chunk list. Used by both **new exam creation** (no `exam_id`) and **editing** (existing `exam_id`).
+Manages a single exam's metadata and its SRT chunk list. Used by both **new exam creation** (no `exam_id`) and **editing** (existing `exam_id`). It receives an `IExamRepository` through constructor injection and stores pure dataclasses from `src.models.exam`.
 
 ### Signals
 

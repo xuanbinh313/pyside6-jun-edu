@@ -1,4 +1,4 @@
-import datetime
+﻿import datetime
 import os
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 from sqlalchemy.inspection import inspect
 from supabase import Client, create_client
 
-from src.models.database import get_session
-from src.models.exam import (
+from src.repositories.sqlite.database import get_session
+from src.repositories.sqlite.orm_models import (
     Exam,
     ExamAttempt,
     ExamContext,

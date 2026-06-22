@@ -1,4 +1,4 @@
-import base64
+﻿import base64
 import binascii
 import json
 import os
@@ -6,7 +6,7 @@ import tempfile
 from io import BytesIO
 
 import qtawesome as qta
-import src.models.exam as exam_model
+from src.repositories.sqlite import orm_models as exam_model
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
@@ -27,8 +27,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from src.models.database import get_session
-from src.models.exam import ExamContext
+from src.repositories.sqlite.database import get_session
+from src.repositories.sqlite.orm_models import ExamContext
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_add_exam_question_dialog import Ui_AddExamQuestionDialog
 

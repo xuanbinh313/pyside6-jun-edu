@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from src.models.supabase_client import get_supabase_client
+from src.repositories.supabase.client import get_supabase_client
 
 SESSION_FILE = Path.home() / ".jun_edu" / "auth_session.json"
 

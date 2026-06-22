@@ -1,4 +1,4 @@
-import html
+﻿import html
 import json
 import random
 
@@ -11,10 +11,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.models.database import get_session
+from src.repositories.sqlite.database import get_session
 from src.views.components.tag_menu_dialog import TagMenuDialog
 from ui_gen.ui_option_question_item import Ui_OptionQuestionItem
-from src.models import exam as exam_model
+from src.repositories.sqlite import orm_models as exam_model
 
 
 class OptionQuestionItem(QWidget):

@@ -1,8 +1,8 @@
-from PySide6.QtCore import Qt
+﻿from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QListWidgetItem, QMessageBox
 
-import src.models.exam as exam_model
-from src.models.database import get_session
+from src.repositories.sqlite import orm_models as exam_model
+from src.repositories.sqlite.database import get_session
 from ui_gen.ui_select_transcript_dialog import Ui_SelectTranscriptDialog
 
 

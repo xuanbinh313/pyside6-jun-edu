@@ -1,6 +1,6 @@
 from PySide6.QtCore import QObject, QThread, Signal
 
-from src.models.sync import sync_sqlite_to_supabase
+from src.repositories.supabase.sync import sync_sqlite_to_supabase
 
 
 class SyncWorker(QThread):

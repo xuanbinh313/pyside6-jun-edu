@@ -1,4 +1,4 @@
-import datetime
+﻿import datetime
 import json
 import random
 import time
@@ -7,8 +7,8 @@ from typing import List, Optional
 
 from PySide6.QtCore import QObject, Signal
 
-from src.models.database import get_session
-from src.models.exam import (
+from src.repositories.sqlite.database import get_session
+from src.repositories.sqlite.orm_models import (
     Exam,
     ExamAttempt,
     ExamContext,

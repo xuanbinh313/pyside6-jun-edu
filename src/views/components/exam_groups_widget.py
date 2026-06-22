@@ -1,4 +1,4 @@
-import html
+﻿import html
 import json
 import os
 import re
@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-import src.models.exam as exam_model
-from src.models.database import get_session
+from src.repositories.sqlite import orm_models as exam_model
+from src.repositories.sqlite.database import get_session
 from src.utils.helpers import get_audio_meta
 from src.utils.qt import clear_layout
 from src.views.components.add_exam_question_dialog import AddExamQuestionDialog
@@ -32,9 +32,9 @@ from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ExamGroupsWidget — main Groups & Questions tab
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ExamGroupsWidget â€” main Groups & Questions tab
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class ExamGroupsWidget(QWidget):
     def __init__(self, viewmodel, parent=None):
         super().__init__(parent)
@@ -48,15 +48,15 @@ class ExamGroupsWidget(QWidget):
         self.player.positionChanged.connect(self._on_position_changed)
 
         self._audio_end_ms = 0  # current clip end in ms
-        self._question_widgets = {}  # question_number → OptionQuestionItem (for scroll navigation)
+        self._question_widgets = {}  # question_number â†’ OptionQuestionItem (for scroll navigation)
 
         self._context_widgets = {}
         self._context_note_labels = {}
         self.setup_ui()
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # UI construction
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def setup_ui(self):
         self.ui = Ui_ExamGroupsWidget()
         self.ui.setupUi(self)
@@ -92,9 +92,9 @@ class ExamGroupsWidget(QWidget):
         self.ui.q_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.ui.q_list.customContextMenuRequested.connect(self._on_q_list_context_menu)
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Public: populate from viewmodel
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def populate(self):
         self.player.stop()
         self.populate_tags()
@@ -118,9 +118,9 @@ class ExamGroupsWidget(QWidget):
         self._populate_q_list(contexts)
         self._render_question_page(contexts)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # q_list population helper — groups by ExamContext
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # q_list population helper â€” groups by ExamContext
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _populate_q_list(self, questions):
         """Fill q_list with selectable ExamContext items and standalone questions."""
         # Gather distinct context IDs in order of first appearance
@@ -150,7 +150,7 @@ class ExamGroupsWidget(QWidget):
             if (
                 seen_ctx_ids
             ):  # add a separator header only when there are also context groups
-                sep_item = QListWidgetItem("── Standalone Questions ──")
+                sep_item = QListWidgetItem("â”€â”€ Standalone Questions â”€â”€")
                 sep_item.setFlags(Qt.ItemFlag.NoItemFlags | Qt.ItemFlag.ItemIsEnabled)
                 sep_item.setData(Qt.ItemDataRole.UserRole + 1, "separator")
                 font = sep_item.font()
@@ -161,7 +161,7 @@ class ExamGroupsWidget(QWidget):
 
             for q in standalone:
                 label = (
-                    f"Question {q.question_number}  [Part {q.part}]  {q.content[:60]}…"
+                    f"Question {q.question_number}  [Part {q.part}]  {q.content[:60]}â€¦"
                     if len(q.content) > 60
                     else f"Question {q.question_number}  [Part {q.part}]  {q.content}"
                 )
@@ -192,9 +192,9 @@ class ExamGroupsWidget(QWidget):
                 item.setForeground(Qt.GlobalColor.darkBlue)
                 self.ui.q_list.addItem(item)
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Slots
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _on_question_selected(self, current, previous):
         self.player.stop()
 
@@ -269,9 +269,9 @@ class ExamGroupsWidget(QWidget):
             menu.addAction(f"Question {q_num} not in current view")
             menu.exec(QCursor.pos())
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Edit / Delete question
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _on_q_list_context_menu(self, pos: QPoint):
         """Show Edit / Delete context menu for the right-clicked list item."""
         clicked_item = self.ui.q_list.itemAt(pos)
@@ -447,7 +447,7 @@ class ExamGroupsWidget(QWidget):
 
         session = get_session()
         try:
-            # ── Step 1: Insert ExamContext rows & build llm_id → real DB uuid map ──
+            # â”€â”€ Step 1: Insert ExamContext rows & build llm_id â†’ real DB uuid map â”€â”€
             llm_to_real_id: dict[str, str] = {}
             for ctx_data in contexts_data:
                 llm_id = ctx_data.get("llm_id", "")
@@ -468,7 +468,7 @@ class ExamGroupsWidget(QWidget):
                 if llm_id:
                     llm_to_real_id[llm_id] = str(new_ctx.id)
 
-            # ── Step 2: Insert ExamQuestion rows with resolved context_id ──────────
+            # â”€â”€ Step 2: Insert ExamQuestion rows with resolved context_id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             for idx, q_data in enumerate(questions_data):
                 # Resolve the LLM's temporary context reference to the real DB uuid
                 llm_ctx_id = q_data.get("llm_context_id")
@@ -530,16 +530,16 @@ class ExamGroupsWidget(QWidget):
         finally:
             session.close()
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Context renderers
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _render_reading_passage(self, ctx):
         """
         Parse READING_PASSAGE content and render double-bracket placeholders
-        [[131]] → clickable anchor tags, per spec §4.
+        [[131]] â†’ clickable anchor tags, per spec Â§4.
         Also attaches an edit icon button next to the passage_label.
         """
-        # ── Store current context reference for the edit button ──────────────
+        # â”€â”€ Store current context reference for the edit button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self._current_ctx = ctx
 
         if isinstance(ctx.content, dict):
@@ -564,7 +564,7 @@ class ExamGroupsWidget(QWidget):
         # self.ui.passage_label.setVisible(True)
         self.ui.passage_browser.setVisible(True)
 
-        # ── Show the edit-context button row ────────────────────────────────
+        # â”€â”€ Show the edit-context button row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if not hasattr(self, "_ctx_edit_row") or self._ctx_edit_row is None:
             self._ctx_edit_row = self._create_ctx_edit_row()
         else:
@@ -588,7 +588,7 @@ class ExamGroupsWidget(QWidget):
                 else json.loads(ctx.content)
             )
             lines = [
-                f"[{e.get('start', 0):.2f}s – {e.get('end', 0):.2f}s]  {e.get('text', '')}"
+                f"[{e.get('start', 0):.2f}s â€“ {e.get('end', 0):.2f}s]  {e.get('text', '')}"
                 for e in entries
             ]
             self.ui.transcript_browser.setText("\n".join(lines))
@@ -598,7 +598,7 @@ class ExamGroupsWidget(QWidget):
             self.ui.transcript_browser.setText(f"Error reading audio context: {exc}")
             self.ui.transcript_browser.setVisible(True)
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _render_audio_srt_context(self, ctx):
         """Display AUDIO_SRT context as a readable transcript."""
         try:
@@ -654,7 +654,7 @@ class ExamGroupsWidget(QWidget):
         self.ui.passage_browser.setVisible(True)
 
     # Context edit row helper
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _create_ctx_edit_row(self) -> QPushButton:
         """Create (once) a small QWidget with an edit icon button and insert it
         into right_outer_layout directly after passage_label."""
@@ -735,9 +735,9 @@ class ExamGroupsWidget(QWidget):
                     else:
                         preview = str(ctx.content or "")[:60]
                     header_text = (
-                        f"📄  {type_label} (idx {ctx.index})  — {preview}…"
+                        f"ðŸ“„  {type_label} (idx {ctx.index})  â€” {preview}â€¦"
                         if preview
-                        else f"📄  {type_label} (idx {ctx.index})"
+                        else f"ðŸ“„  {type_label} (idx {ctx.index})"
                     )
                     item.setText(header_text)
                     item.setData(Qt.ItemDataRole.UserRole, ctx)
@@ -752,7 +752,7 @@ class ExamGroupsWidget(QWidget):
                 q = item.data(Qt.ItemDataRole.UserRole)
                 if q and q.id == updated_q.id:
                     label = (
-                        f"Q{updated_q.question_number}  [Part {updated_q.part}]  {updated_q.content[:60]}…"
+                        f"Q{updated_q.question_number}  [Part {updated_q.part}]  {updated_q.content[:60]}â€¦"
                         if len(updated_q.content) > 60
                         else f"Q{updated_q.question_number}  [Part {updated_q.part}]  {updated_q.content}"
                     )
@@ -760,9 +760,9 @@ class ExamGroupsWidget(QWidget):
                     item.setData(Qt.ItemDataRole.UserRole, updated_q)
                     break
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Helpers
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def on_question_checked(self, question):
         context_id = getattr(question, "context_id", None)
         if not context_id:

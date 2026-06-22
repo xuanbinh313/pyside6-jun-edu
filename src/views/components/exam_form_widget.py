@@ -1,4 +1,4 @@
-import os
+﻿import os
 
 from PySide6.QtWidgets import QFileDialog, QLabel, QMessageBox, QPushButton, QTextEdit, QWidget
 
@@ -75,7 +75,7 @@ class ExamFormWidget(QWidget):
             self.external_viewmodel.set_audio_file(file_path)
 
     def parse_srt(self, file_path):
-        from src.models.exam import ExamSrtChunk
+        from src.repositories.sqlite.orm_models import ExamSrtChunk
 
         chunks = []
         with open(file_path, "r", encoding="utf-8") as f:
@@ -125,7 +125,7 @@ class ExamFormWidget(QWidget):
     def on_import_csv(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select CSV", "", "CSV (*.csv)")
         if file_path:
-            from src.models.exam import ExamSrtChunk
+            from src.repositories.sqlite.orm_models import ExamSrtChunk
 
             chunks = []
             with open(file_path, "r", encoding="utf-8") as f:
