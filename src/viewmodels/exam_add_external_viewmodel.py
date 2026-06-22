@@ -11,6 +11,7 @@ from src.models.exam import Exam, ExamSrtChunk
 load_dotenv()
 TTS_AGENT_URL = os.getenv("TTS_AGENT_URL", "https://api.jun-edu.shop")
 
+
 class Worker(QThread):
     progress = Signal(str)
     finished = Signal(dict)
@@ -29,11 +30,12 @@ class Worker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
+
 class ExamAddExternalViewModel(QObject):
     state_changed = Signal()
     progress_message = Signal(str)
     error_message = Signal(str)
-    exam_saved = Signal(str) # Emits the new exam_id
+    exam_saved = Signal(str)  # Emits the new exam_id
 
     def __init__(self, target_exam_id=None):
         super().__init__()
@@ -79,16 +81,20 @@ class ExamAddExternalViewModel(QObject):
     def _analyze_task(self, emit_progress):
         url = f"{TTS_AGENT_URL}/api/extract-text"
         emit_progress("Uploading audio for extraction...")
+        if not self.audio_file_path:
+            raise Exception("Audio file path is not set.")
+        if not os.path.exists(self.audio_file_path):
+            raise Exception("Audio file does not exist.")
         with open(self.audio_file_path, "rb") as f:
             files = {"audio": f}
             response = requests.post(url, files=files)
-        
+
         if response.status_code == 200:
             data = response.json()
             task_id = data.get("task_id")
             if not task_id:
                 raise Exception("No task_id returned from server")
-            
+
             self.current_task_id = task_id
             return self.poll_task_status(task_id, emit_progress)
         else:
@@ -122,44 +128,47 @@ class ExamAddExternalViewModel(QObject):
     def _add_update_task(self, emit_progress):
         url = f"{TTS_AGENT_URL}/api/align-audio"
         emit_progress("Sending text for alignment...")
-        data = {
-            "task_id": self.current_task_id,
-            "text": self.text
-        }
+        data = {"task_id": self.current_task_id, "text": self.text}
         response = requests.post(url, data=data)
-        
+
         if response.status_code == 200:
             resp_data = response.json()
             task_id = resp_data.get("task_id")
             result = self.poll_task_status(task_id, emit_progress)
-            
+
             content = result.get("content", [])
             url_audio = result.get("url_audio", "")
-            
+
             # Download audio
-            full_audio_url = url_audio if url_audio.startswith("http") else f"{TTS_AGENT_URL}{url_audio}"
+            full_audio_url = (
+                url_audio
+                if url_audio.startswith("http")
+                else f"{TTS_AGENT_URL}{url_audio}"
+            )
             emit_progress("Downloading aligned audio...")
             audio_resp = requests.get(full_audio_url)
             if audio_resp.status_code == 200:
-                name_file = os.path.splitext(self.audio_file_name)[0] if self.audio_file_name else "audio"
-                file_name = f"{name_file}.wav"
                 temp_dir = tempfile.gettempdir()
                 media_dir = os.path.join(temp_dir, "jun_edu_media")
                 os.makedirs(media_dir, exist_ok=True)
-                
+
                 timestamp = int(time_module.time() * 1000)
-                unique_file_name = f"{timestamp}_{file_name}"
+                unique_file_name = f"{timestamp}_{self.audio_file_name}"
                 target_path = os.path.join(media_dir, unique_file_name)
-                
+
                 with open(target_path, "wb") as f:
                     f.write(audio_resp.content)
-                    
+
                 # Save to DB
                 emit_progress("Saving exam to database...")
                 session = get_session()
                 try:
                     if self.target_exam_id:
-                        exam = session.query(Exam).filter(Exam.id == self.target_exam_id).first()
+                        exam = (
+                            session.query(Exam)
+                            .filter(Exam.id == self.target_exam_id)
+                            .first()
+                        )
                         if not exam:
                             raise Exception("Target exam not found.")
                         exam.full_audio_url = target_path
@@ -173,7 +182,6 @@ class ExamAddExternalViewModel(QObject):
                             duration_minutes=120,
                             full_audio_url=target_path,  # Storing absolute path for playback
                             is_published=False,
-                            user_id="local_user"
                         )
                         session.add(exam)
                         session.flush()
@@ -184,7 +192,7 @@ class ExamAddExternalViewModel(QObject):
                             index=idx,
                             start_time=float(item.get("start", 0.0)),
                             end_time=float(item.get("end", 0.0)),
-                            text=str(item.get("text", ""))
+                            text=str(item.get("text", "")),
                         )
                         session.add(chunk)
                     session.commit()

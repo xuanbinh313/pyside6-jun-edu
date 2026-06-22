@@ -9,9 +9,10 @@ from ui_gen.ui_tag_menu_dialog import Ui_TagMenuDialog
 
 class TagMenuDialog(QDialog):
     def __init__(self, question, parent=None):
-        super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        super().__init__(
+            parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
+        )
         self.question = question
-        self.user_id = "local_user"
         self.setFixedWidth(200)
         self._build_ui()
 
@@ -30,22 +31,27 @@ class TagMenuDialog(QDialog):
 
         session = get_session()
         try:
-            all_tags_rows = session.query(exam_model.UserQuestionTag.tag_name).filter(
-                exam_model.UserQuestionTag.user_id == self.user_id
-            ).distinct().all()
+            all_tags_rows = (
+                session.query(exam_model.UserQuestionTag.tag_name).distinct().all()
+            )
             all_tags = [r[0] for r in all_tags_rows]
 
-            current_tags_rows = session.query(exam_model.UserQuestionTag.tag_name).filter(
-                exam_model.UserQuestionTag.user_id == self.user_id,
-                exam_model.UserQuestionTag.question_id == self.question.id
-            ).all()
+            current_tags_rows = (
+                session.query(exam_model.UserQuestionTag.tag_name)
+                .filter(
+                    exam_model.UserQuestionTag.question_id == self.question.id,
+                )
+                .all()
+            )
             current_tags = set(r[0] for r in current_tags_rows)
 
             for tag_name in all_tags:
                 cb = QCheckBox(tag_name)
                 cb.setChecked(tag_name in current_tags)
                 cb.setStyleSheet("font-size: 11px; color: #3c4043;")
-                cb.stateChanged.connect(lambda state, t=tag_name: self._on_tag_state_changed(t, state))
+                cb.stateChanged.connect(
+                    lambda state, t=tag_name: self._on_tag_state_changed(t, state)
+                )
                 self.tags_layout.addWidget(cb)
         finally:
             session.close()
@@ -54,25 +60,27 @@ class TagMenuDialog(QDialog):
         session = get_session()
         try:
             if state == Qt.CheckState.Checked.value:
-                exists = session.query(exam_model.UserQuestionTag).filter(
-                    exam_model.UserQuestionTag.user_id == self.user_id,
-                    exam_model.UserQuestionTag.question_id == self.question.id,
-                    exam_model.UserQuestionTag.tag_name == tag_name
-                ).first()
+                exists = (
+                    session.query(exam_model.UserQuestionTag)
+                    .filter(
+                        exam_model.UserQuestionTag.question_id == self.question.id,
+                        exam_model.UserQuestionTag.tag_name == tag_name,
+                    )
+                    .first()
+                )
                 if not exists:
                     new_tag = exam_model.UserQuestionTag(
                         user_id=self.user_id,
                         question_id=self.question.id,
                         tag_name=tag_name,
-                        dirty=1
+                        dirty=1,
                     )
                     session.add(new_tag)
                     session.commit()
             else:
                 session.query(exam_model.UserQuestionTag).filter(
-                    exam_model.UserQuestionTag.user_id == self.user_id,
                     exam_model.UserQuestionTag.question_id == self.question.id,
-                    exam_model.UserQuestionTag.tag_name == tag_name
+                    exam_model.UserQuestionTag.tag_name == tag_name,
                 ).delete()
                 session.commit()
         finally:
@@ -87,17 +95,20 @@ class TagMenuDialog(QDialog):
 
         session = get_session()
         try:
-            exists = session.query(exam_model.UserQuestionTag).filter(
-                exam_model.UserQuestionTag.user_id == self.user_id,
-                exam_model.UserQuestionTag.question_id == self.question.id,
-                exam_model.UserQuestionTag.tag_name == tag_name
-            ).first()
+            exists = (
+                session.query(exam_model.UserQuestionTag)
+                .filter(
+                    exam_model.UserQuestionTag.question_id == self.question.id,
+                    exam_model.UserQuestionTag.tag_name == tag_name,
+                )
+                .first()
+            )
             if not exists:
                 new_tag = exam_model.UserQuestionTag(
                     user_id=self.user_id,
                     question_id=self.question.id,
                     tag_name=tag_name,
-                    dirty=1
+                    dirty=1,
                 )
                 session.add(new_tag)
                 session.commit()

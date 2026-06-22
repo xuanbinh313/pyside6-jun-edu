@@ -31,7 +31,7 @@ class Ui_ExamGroupsWidget(object):
         self.left_panel = QWidget(ExamGroupsWidget)
         self.left_panel.setObjectName(u"left_panel")
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        sizePolicy.setHorizontalStretch(2)
+        sizePolicy.setHorizontalStretch(1)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.left_panel.sizePolicy().hasHeightForWidth())
         self.left_panel.setSizePolicy(sizePolicy)
@@ -91,17 +91,19 @@ class Ui_ExamGroupsWidget(object):
 "                border: 1px solid #dadce0;\n"
 "                border-radius: 6px;\n"
 "                background-color: #ffffff;\n"
-"                padding: 5px;\n"
 "            }\n"
 "            QListWidget::item {\n"
-"                padding: 10px;\n"
+"                padding: 0 10px;\n"
 "                border-bottom: 1px solid #f1f3f4;\n"
 "            }\n"
 "            QListWidget::item:selected {\n"
 "                background-color: #e8f0fe;\n"
 "                color: #1a73e8;\n"
-"                font-weight: bold;\n"
-"                border-radius: 4px;\n"
+"                border: none;\n"
+"            }\n"
+"\n"
+"            QListWidget {\n"
+"                outline: 0;\n"
 "            }\n"
 "        ")
 
@@ -204,7 +206,7 @@ class Ui_ExamGroupsWidget(object):
         self.options_scroll.setWidgetResizable(True)
         self.options_container = QWidget()
         self.options_container.setObjectName(u"options_container")
-        self.options_container.setGeometry(QRect(0, 0, 459, 548))
+        self.options_container.setGeometry(QRect(0, 0, 574, 548))
         self.options_layout = QVBoxLayout(self.options_container)
         self.options_layout.setSpacing(12)
         self.options_layout.setObjectName(u"options_layout")

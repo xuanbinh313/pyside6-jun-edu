@@ -22,7 +22,7 @@ class Exam(Base):
     full_audio_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    user_id: Mapped[str] = mapped_column(String, nullable=False, default="")
+    user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
@@ -53,8 +53,18 @@ class ExamSrtChunk(Base):
     end_time: Mapped[float] = mapped_column(Float, nullable=False)
     text: Mapped[str] = mapped_column(String, nullable=False)
     hint: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-
     exam: Mapped["Exam"] = relationship("Exam", back_populates="srt_chunks")
+    user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+
+
+class AdditionalMeta(TypedDict):
+    audio_start: float
+    audio_end: float
+    note: str
+
+
+class QuestionAdditionalMeta(TypedDict):
+    note: str
 
 
 class ExamContext(Base):
@@ -66,17 +76,16 @@ class ExamContext(Base):
     context_type: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[dict] = mapped_column(JSON, nullable=False)
     index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    additional_meta: Mapped[AdditionalMeta] = mapped_column(
+        JSON,
+        default=lambda: {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
+    )
 
     exam: Mapped["Exam"] = relationship("Exam", back_populates="contexts")
     questions: Mapped[List["ExamQuestion"]] = relationship(
         "ExamQuestion", back_populates="context"
     )
-
-
-class AdditionalMeta(TypedDict):
-    audio_start: float
-    audio_end: float
-    note: str
+    user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 
 
 class ExamQuestion(Base):
@@ -94,9 +103,9 @@ class ExamQuestion(Base):
     content: Mapped[str] = mapped_column(String, nullable=False)
     options: Mapped[list[str]] = mapped_column(JSON, default=[])
     correct_answer: Mapped[str] = mapped_column(String, nullable=False)
-    additional_meta: Mapped[AdditionalMeta] = mapped_column(
+    additional_meta: Mapped[QuestionAdditionalMeta] = mapped_column(
         JSON,
-        default=lambda: {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
+        default=lambda: {"note": ""},
     )
 
     context: Mapped[Optional["ExamContext"]] = relationship(
@@ -105,13 +114,13 @@ class ExamQuestion(Base):
     answers: Mapped[List["UserAnswer"]] = relationship(
         "UserAnswer", back_populates="question"
     )
+    user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 
 
 class UserQuestionTag(Base):
     __tablename__ = "user_question_tags"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
-    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     question_id: Mapped[str] = mapped_column(
         ForeignKey("exam_questions.id"), nullable=False
     )
@@ -120,18 +129,19 @@ class UserQuestionTag(Base):
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
     dirty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 
 
 class ExamAttempt(Base):
     __tablename__ = "exam_attempts"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
-    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     exam_id: Mapped[str] = mapped_column(ForeignKey("exams.id"), nullable=False)
     total_correct: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_questions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     final_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
@@ -155,7 +165,12 @@ class UserAnswer(Base):
     )
     user_choice: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_correct: Mapped[bool] = mapped_column(Boolean, nullable=False, index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    attempt: Mapped["ExamAttempt"] = relationship("ExamAttempt", back_populates="answers")
-    question: Mapped["ExamQuestion"] = relationship("ExamQuestion", back_populates="answers")
+    attempt: Mapped["ExamAttempt"] = relationship(
+        "ExamAttempt", back_populates="answers"
+    )
+    question: Mapped["ExamQuestion"] = relationship(
+        "ExamQuestion", back_populates="answers"
+    )

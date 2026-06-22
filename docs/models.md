@@ -91,7 +91,7 @@ Top-level exam record.
 | `full_audio_url` | `String` | Yes | - | Local file path or HTTP URL for full exam audio. |
 | `duration_minutes` | `Integer` | No | `0` | Total real-test duration. |
 | `is_published` | `Boolean` | No | `False` | Publish flag. |
-| `user_id` | `String` | No | `""` | Owner/user identifier. Imports commonly use `local_user`. |
+| `user_id` | `String` | Yes | - | Owner/user identifier. |
 | `created_at` | `DateTime` | Yes | current UTC time | Creation timestamp. |
 | `updated_at` | `DateTime` | Yes | current UTC time | Updated automatically on ORM update. |
 
@@ -118,6 +118,7 @@ One transcript segment with audio timing.
 | `end_time` | `Float` | No | - | End time in seconds. |
 | `text` | `String` | No | - | Transcript text. |
 | `hint` | `String` | Yes | - | Optional hint/answer text. |
+| `user_id` | `String` | Yes | - | User identifier; indexed. |
 
 **Relationships:**
 
@@ -141,13 +142,14 @@ usually one `STANDALONE` context per question.
 | `context_type` | `String` | No | - | Context kind, such as `READING_PASSAGE`, `AUDIO_SRT`, `IMAGE_DIAGRAM`, or `STANDALONE`. |
 | `content` | `JSON` | No | - | Context payload. Commonly a dict. |
 | `index` | `Integer` | No | `0` | Ordering within the part/exam. |
+| `additional_meta` | `JSON` | Yes | `{"audio_start": 0.0, "audio_end": 0.0, "note": ""}` | Context-level audio timing and optional context note. |
+| `user_id` | `String` | Yes | - | User identifier; indexed. |
 
 **Common `content` shapes:**
 
 | `context_type` | Shape |
 |---|---|
 | `READING_PASSAGE` | `{"text": "Passage text with [[131]] placeholders"}` |
-| `AUDIO_SRT` | `{"text": "...", "srt_lines": [{"start": 0.0, "end": 1.2, "text": "..."}]}` |
 | `IMAGE_DIAGRAM` | `{"text": "Diagram description", "image_data_url": "data:image/..."}` |
 | `STANDALONE` | `{"text": ""}` |
 
@@ -161,13 +163,22 @@ usually one `STANDALONE` context per question.
 ### `AdditionalMeta`
 
 `TypedDict` describing the expected JSON keys stored in
-`ExamQuestion.additional_meta`.
+`ExamContext.additional_meta`.
 
 | Key | Type | Description |
 |---|---|---|
 | `audio_start` | `float` | Optional clip start in seconds. |
 | `audio_end` | `float` | Optional clip end in seconds. |
 | `note` | `str` | Explanation or teacher note. |
+
+### `QuestionAdditionalMeta`
+
+`TypedDict` describing the expected JSON keys stored in
+`ExamQuestion.additional_meta`.
+
+| Key | Type | Description |
+|---|---|---|
+| `note` | `str` | Explanation or teacher note for the question answer. |
 
 ### `ExamQuestion`
 
@@ -184,7 +195,8 @@ Question row linked to an `ExamContext`.
 | `content` | `String` | No | - | Question stem. |
 | `options` | `JSON` | Yes | `[]` | Canonical option texts in original A-D order. Some import code may pass a JSON string; consumers normalize both list and string. |
 | `correct_answer` | `String` | No | - | Canonical answer label, usually `A`, `B`, `C`, or `D`. |
-| `additional_meta` | `JSON` | Yes | `{"audio_start": 0.0, "audio_end": 0.0, "note": ""}` | Audio timing and answer explanation metadata. |
+| `additional_meta` | `JSON` | Yes | `{"note": ""}` | Answer explanation metadata. Legacy rows may still contain audio timing; helpers fall back to it when context timing is missing. |
+| `user_id` | `String` | Yes | - | User identifier; indexed. |
 
 **Relationships:**
 
@@ -205,7 +217,7 @@ Per-user tag assigned to a question, used by practice filtering.
 | Column | Type | Nullable | Default | Description |
 |---|---|---|---|---|
 | `id` | `String` PK | No | `generate_uuid()` | UUID primary key. |
-| `user_id` | `String` | No | - | User identifier; indexed. |
+| `user_id` | `String` | Yes | - | User identifier; indexed. |
 | `question_id` | `String` FK -> `exam_questions.id` | No | - | Tagged question. |
 | `tag_name` | `String` | No | - | Free-form tag label. |
 | `created_at` | `DateTime` | Yes | current UTC time | Creation timestamp. |
@@ -223,7 +235,7 @@ One completed learner run for an exam.
 | Column | Type | Nullable | Default | Description |
 |---|---|---|---|---|
 | `id` | `String` PK | No | `generate_uuid()` | UUID primary key. |
-| `user_id` | `String` | No | - | User identifier; indexed. |
+| `user_id` | `String` | Yes | - | User identifier; indexed. |
 | `exam_id` | `String` FK -> `exams.id` | No | - | Parent exam. |
 | `total_correct` | `Integer` | No | `0` | Number of correct answers at submission time. |
 | `total_questions` | `Integer` | No | `0` | Number of active questions submitted. |
@@ -255,6 +267,7 @@ Per-question answer stored for one attempt.
 | `question_id` | `String` FK -> `exam_questions.id` | No | - | Answered question. |
 | `user_choice` | `String` | Yes | - | Canonical selected letter, or `NULL` when unanswered/skipped. |
 | `is_correct` | `Boolean` | No | - | Correctness flag; indexed. Unanswered answers are stored as `False`. |
+| `user_id` | `String` | Yes | - | User identifier; indexed. |
 | `dirty` | `Boolean` | No | `False` | Sync/review marker. |
 
 **Relationships:**

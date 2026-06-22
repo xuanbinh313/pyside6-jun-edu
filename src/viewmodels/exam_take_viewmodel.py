@@ -139,7 +139,7 @@ class ExamTakeViewModel(QObject):
     result_ready = Signal()
     error_message = Signal(str)
 
-    def __init__(self, exam_id, user_id="local_user", parent=None):
+    def __init__(self, exam_id, user_id=None, parent=None):
         super().__init__(parent)
         self.exam_id = exam_id
         self.user_id = user_id
@@ -211,7 +211,9 @@ class ExamTakeViewModel(QObject):
             if mode == "practice":
                 if selected_parts and ctx.part not in selected_parts:
                     continue
-                if selected_tags and not selected_tags.intersection(question_tags.get(question.id, set())):
+                if selected_tags and not selected_tags.intersection(
+                    question_tags.get(question.id, set())
+                ):
                     continue
             selected_questions.append(question)
 
@@ -530,5 +532,9 @@ class ExamTakeViewModel(QObject):
                 return str(text)
             lines = content.get("srt_lines") or []
             if lines:
-                return "\n".join(str(line.get("text", "")) for line in lines if isinstance(line, dict))
+                return "\n".join(
+                    str(line.get("text", ""))
+                    for line in lines
+                    if isinstance(line, dict)
+                )
         return str(content or "")

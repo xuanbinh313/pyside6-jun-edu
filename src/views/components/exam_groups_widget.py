@@ -28,6 +28,7 @@ from src.utils.qt import clear_layout
 from src.views.components.add_exam_question_dialog import AddExamQuestionDialog
 from src.views.components.import_questions_dialog import ImportQuestionsDialog
 from src.views.components.option_question_item import OptionQuestionItem
+from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
 
 
@@ -50,6 +51,7 @@ class ExamGroupsWidget(QWidget):
         self._question_widgets = {}  # question_number → OptionQuestionItem (for scroll navigation)
 
         self._context_widgets = {}
+        self._context_note_labels = {}
         self.setup_ui()
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -128,7 +130,7 @@ class ExamGroupsWidget(QWidget):
                 seen_ctx_ids.append(q.context_id)
 
         # Fetch all referenced contexts in one query
-        ctx_map: dict[str, object] = {}
+        ctx_map: dict[str, exam_model.ExamContext] = {}
         if seen_ctx_ids:
             session = get_session()
             try:
@@ -139,7 +141,7 @@ class ExamGroupsWidget(QWidget):
                 )
                 for ctx in rows:
                     session.expunge(ctx)
-                    ctx_map[ctx.id] = ctx
+                    ctx_map[str(ctx.id)] = ctx
             finally:
                 session.close()
         # 1. Add Standalone question items (questions that have no context_id)
@@ -235,16 +237,8 @@ class ExamGroupsWidget(QWidget):
                 self.player.setPosition(int(audio_start * 1000))
                 self.player.play()
         elif item_kind == "context":
-            # Play first question in _question_widgets that has audio
-            for q_num in sorted(self._question_widgets.keys()):
-                opt_w = self._question_widgets[q_num]
-                q = opt_w.question
-                audio_start, audio_end = get_audio_meta(q)
-                if audio_end > 0.0:
-                    self._audio_end_ms = int(audio_end * 1000)
-                    self.player.setPosition(int(audio_start * 1000))
-                    self.player.play()
-                    break
+            ctx = current.data(Qt.ItemDataRole.UserRole)
+            self._play_context_audio(ctx)
 
     def _on_position_changed(self, pos_ms):
         """Pause automatically when the clip end is reached."""
@@ -463,11 +457,16 @@ class ExamGroupsWidget(QWidget):
                     context_type=ctx_data.get("context_type", "READING_PASSAGE"),
                     content=ctx_data.get("content", {}),
                     index=ctx_data.get("index", 0),
+                    additional_meta=ctx_data.get(
+                        "additional_meta",
+                        {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
+                    ),
+                    user_id=ctx_data.get("user_id"),
                 )
                 session.add(new_ctx)
                 session.flush()  # populate new_ctx.id without full commit
                 if llm_id:
-                    llm_to_real_id[llm_id] = new_ctx.id
+                    llm_to_real_id[llm_id] = str(new_ctx.id)
 
             # ── Step 2: Insert ExamQuestion rows with resolved context_id ──────────
             for idx, q_data in enumerate(questions_data):
@@ -481,6 +480,12 @@ class ExamGroupsWidget(QWidget):
                         context_type="STANDALONE",
                         content={"text": ""},
                         index=idx,
+                        additional_meta={
+                            "audio_start": 0.0,
+                            "audio_end": 0.0,
+                            "note": "",
+                        },
+                        user_id=q_data.get("user_id"),
                     )
                     session.add(new_ctx)
                     session.flush()
@@ -488,11 +493,9 @@ class ExamGroupsWidget(QWidget):
 
                 # additional_meta is already a dict from the parser
                 additional_meta = q_data.get("additional_meta") or {
-                    "audio_start": 0.0,
-                    "audio_end": 0.0,
                     "note": "",
                 }
-                additional_meta.setdefault("note", "")
+                additional_meta = {"note": str(additional_meta.get("note", ""))}
 
                 new_q = exam_model.ExamQuestion(
                     context_id=real_ctx_id,
@@ -502,6 +505,7 @@ class ExamGroupsWidget(QWidget):
                     options=q_data["options"],
                     correct_answer=q_data.get("correct_answer", ""),
                     additional_meta=additional_meta,
+                    user_id=q_data.get("user_id"),
                 )
                 session.add(new_q)
 
@@ -565,6 +569,15 @@ class ExamGroupsWidget(QWidget):
             self._ctx_edit_row = self._create_ctx_edit_row()
         else:
             self._ctx_edit_row.setVisible(True)
+            if hasattr(self, "_ctx_audio_btn"):
+                if hasattr(self, "_ctx_play_btn"):
+                    self._ctx_play_btn.setVisible(True)
+                    self._refresh_context_play_button(self._ctx_play_btn, ctx)
+                self._ctx_audio_btn.setVisible(True)
+                self._ctx_audio_btn.setIcon(
+                    qta.icon("fa5s.music", color=self._context_audio_icon_color(ctx))
+                )
+                self._ctx_audio_btn.setToolTip(self._context_audio_tooltip(ctx))
 
     def _render_audio_srt_context(self, ctx):
         """Display AUDIO_SRT context as a readable transcript."""
@@ -645,18 +658,44 @@ class ExamGroupsWidget(QWidget):
     def _create_ctx_edit_row(self) -> QPushButton:
         """Create (once) a small QWidget with an edit icon button and insert it
         into right_outer_layout directly after passage_label."""
-        edit_ctx_btn = QPushButton()
-        edit_ctx_btn.setIcon(qta.icon("fa5s.edit", color="#1a73e8"))
-        edit_ctx_btn.setToolTip("Edit reading passage")
-        edit_ctx_btn.setFixedSize(24, 24)
-        edit_ctx_btn.setStyleSheet("""
+        icon_btn_style = """
             QPushButton {
                 border: none; background-color: transparent;
             }
             QPushButton:hover {
                 background-color: #e8f0fe; border-radius: 12px;
             }
-        """)
+        """
+
+        ctx = getattr(self, "_current_ctx", None)
+        self._ctx_play_btn = QPushButton()
+        self._refresh_context_play_button(self._ctx_play_btn, ctx)
+        self._ctx_play_btn.setFixedSize(24, 24)
+        self._ctx_play_btn.setStyleSheet(icon_btn_style)
+        self._ctx_play_btn.clicked.connect(
+            lambda: self._play_context_audio(getattr(self, "_current_ctx", None))
+        )
+        self.ui.title_outer.layout().addWidget(self._ctx_play_btn)
+
+        self._ctx_audio_btn = QPushButton()
+        self._ctx_audio_btn.setIcon(
+            qta.icon("fa5s.music", color=self._context_audio_icon_color(ctx))
+        )
+        self._ctx_audio_btn.setToolTip(self._context_audio_tooltip(ctx))
+        self._ctx_audio_btn.setFixedSize(24, 24)
+        self._ctx_audio_btn.setStyleSheet(icon_btn_style)
+        self._ctx_audio_btn.clicked.connect(
+            lambda: self._on_select_context_audio_segment(
+                getattr(self, "_current_ctx", None)
+            )
+        )
+        self.ui.title_outer.layout().addWidget(self._ctx_audio_btn)
+
+        edit_ctx_btn = QPushButton()
+        edit_ctx_btn.setIcon(qta.icon("fa5s.edit", color="#1a73e8"))
+        edit_ctx_btn.setToolTip("Edit reading passage")
+        edit_ctx_btn.setFixedSize(24, 24)
+        edit_ctx_btn.setStyleSheet(icon_btn_style)
         edit_ctx_btn.clicked.connect(self._on_edit_context)
         self.ui.title_outer.layout().addWidget(edit_ctx_btn)
         return edit_ctx_btn
@@ -724,6 +763,53 @@ class ExamGroupsWidget(QWidget):
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers
     # ─────────────────────────────────────────────────────────────────────────
+    def on_question_checked(self, question):
+        context_id = getattr(question, "context_id", None)
+        if not context_id:
+            return
+
+        label = self._context_note_labels.get(context_id)
+        if label is None:
+            return
+
+        note = self._context_note_text(question)
+        if not note:
+            label.clear()
+            label.setVisible(False)
+            return
+
+        safe_note = html.escape(note).replace("\n", "<br>")
+        label.setText(f"<b>Note:</b> {safe_note}")
+        label.setVisible(True)
+        self.ui.options_scroll.ensureWidgetVisible(label)
+
+    def _context_note_text(self, question):
+        ctx = getattr(question, "context", None)
+        meta = ctx.additional_meta if ctx and isinstance(ctx.additional_meta, dict) else {}
+        note = str(meta.get("note", "")).strip()
+        if note:
+            return note
+
+        context_id = getattr(question, "context_id", None)
+        if not context_id:
+            return ""
+
+        session = get_session()
+        try:
+            db_ctx = (
+                session.query(exam_model.ExamContext)
+                .filter(exam_model.ExamContext.id == context_id)
+                .first()
+            )
+            db_meta = (
+                db_ctx.additional_meta
+                if db_ctx and isinstance(db_ctx.additional_meta, dict)
+                else {}
+            )
+            return str(db_meta.get("note", "")).strip()
+        finally:
+            session.close()
+
     def _populate_q_list(self, contexts):
         """Fill q_list with all ExamContext rows, grouped under Part headers."""
         current_part = None
@@ -807,6 +893,104 @@ class ExamGroupsWidget(QWidget):
         count = self.ui.options_layout.count()
         self.ui.options_layout.insertWidget(max(0, count - 1), widget)
 
+    def _context_audio_meta(self, ctx):
+        if not ctx:
+            return {}
+        return ctx.additional_meta if isinstance(ctx.additional_meta, dict) else {}
+
+    def _context_audio_range(self, ctx):
+        meta = self._context_audio_meta(ctx)
+        try:
+            audio_start = float(meta.get("audio_start", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            audio_start = 0.0
+        try:
+            audio_end = float(meta.get("audio_end", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            audio_end = 0.0
+        return audio_start, audio_end
+
+    def _context_audio_icon_color(self, ctx):
+        _, audio_end = self._context_audio_range(ctx)
+        return "#1a73e8" if audio_end > 0.0 else "#5f6368"
+
+    def _context_audio_tooltip(self, ctx):
+        audio_start, audio_end = self._context_audio_range(ctx)
+        if audio_end > 0.0:
+            return f"Audio segment: {audio_start:.2f}s - {audio_end:.2f}s"
+        return "Select audio segment from transcript"
+
+    def _refresh_context_play_button(self, button, ctx):
+        audio_start, audio_end = self._context_audio_range(ctx)
+        has_audio = audio_end > 0.0
+        button.setIcon(
+            qta.icon("fa5s.play", color="#34a853" if has_audio else "#9aa0a6")
+        )
+        button.setEnabled(has_audio)
+        if has_audio:
+            button.setToolTip(f"Play segment: {audio_start:.2f}s - {audio_end:.2f}s")
+        else:
+            button.setToolTip("No audio segment selected")
+
+    def _play_context_audio(self, ctx):
+        if not ctx:
+            return
+        audio_start, audio_end = self._context_audio_range(ctx)
+        if audio_end <= 0.0:
+            return
+        self._audio_end_ms = int(audio_end * 1000)
+        self.player.setPosition(int(audio_start * 1000))
+        self.player.play()
+
+    def _on_select_context_audio_segment(self, ctx):
+        if not ctx:
+            return
+        exam_id = self.viewmodel.exam_id
+        if not exam_id:
+            QMessageBox.warning(self, "No Exam", "Could not determine the exam.")
+            return
+
+        dialog = SelectTranscriptDialog(exam_id, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selected_chunks:
+            return
+
+        first = dialog.selected_chunks[0]
+        last = dialog.selected_chunks[-1]
+        session = get_session()
+        try:
+            db_ctx = (
+                session.query(exam_model.ExamContext)
+                .filter(exam_model.ExamContext.id == ctx.id)
+                .first()
+            )
+            if not db_ctx:
+                QMessageBox.warning(self, "Missing Context", "Context not found.")
+                return
+
+            existing_meta = (
+                db_ctx.additional_meta
+                if isinstance(db_ctx.additional_meta, dict)
+                else {}
+            )
+            db_ctx.additional_meta = {
+                "audio_start": float(first.start_time),
+                "audio_end": float(last.end_time),
+                "note": str(existing_meta.get("note", "")),
+            }
+            session.commit()
+            ctx.additional_meta = db_ctx.additional_meta
+            context_id = ctx.id
+        except Exception as exc:
+            session.rollback()
+            QMessageBox.critical(
+                self, "Error Saving", f"Could not save segment to context:\n{exc}"
+            )
+            return
+        finally:
+            session.close()
+
+        self._reload_and_select_context(context_id)
+
     def _create_context_section(self, ctx):
         section = QWidget(self.ui.options_container)
         section.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
@@ -823,14 +1007,37 @@ class ExamGroupsWidget(QWidget):
         )
         header_layout.addWidget(title, 1)
 
+        icon_btn_style = """
+            QPushButton { border: none; background-color: transparent; }
+            QPushButton:hover { background-color: #e8f0fe; border-radius: 12px; }
+        """
+
+        play_btn = QPushButton()
+        self._refresh_context_play_button(play_btn, ctx)
+        play_btn.setFixedSize(24, 24)
+        play_btn.setStyleSheet(icon_btn_style)
+        play_btn.clicked.connect(
+            lambda checked=False, c=ctx: self._play_context_audio(c)
+        )
+        header_layout.addWidget(play_btn)
+
+        audio_btn = QPushButton()
+        audio_btn.setIcon(
+            qta.icon("fa5s.music", color=self._context_audio_icon_color(ctx))
+        )
+        audio_btn.setToolTip(self._context_audio_tooltip(ctx))
+        audio_btn.setFixedSize(24, 24)
+        audio_btn.setStyleSheet(icon_btn_style)
+        audio_btn.clicked.connect(
+            lambda checked=False, c=ctx: self._on_select_context_audio_segment(c)
+        )
+        header_layout.addWidget(audio_btn)
+
         edit_btn = QPushButton()
         edit_btn.setIcon(qta.icon("fa5s.edit", color="#1a73e8"))
         edit_btn.setToolTip("Edit context")
         edit_btn.setFixedSize(24, 24)
-        edit_btn.setStyleSheet("""
-            QPushButton { border: none; background-color: transparent; }
-            QPushButton:hover { background-color: #e8f0fe; border-radius: 12px; }
-        """)
+        edit_btn.setStyleSheet(icon_btn_style)
         edit_btn.clicked.connect(lambda checked=False, c=ctx: self._on_edit_context(c))
         header_layout.addWidget(edit_btn)
         layout.addLayout(header_layout)
@@ -852,6 +1059,24 @@ class ExamGroupsWidget(QWidget):
             }
         """)
         layout.addWidget(body)
+
+        note_label = QLabel()
+        note_label.setTextFormat(Qt.TextFormat.RichText)
+        note_label.setWordWrap(True)
+        note_label.setVisible(False)
+        note_label.setStyleSheet("""
+            QLabel {
+                border: 1px solid #dadce0;
+                border-radius: 6px;
+                background-color: #f8f9fa;
+                padding: 8px 10px;
+                font-size: 12px;
+                color: #3c4043;
+                line-height: 1.5;
+            }
+        """)
+        layout.addWidget(note_label)
+        self._context_note_labels[ctx.id] = note_label
         return section
 
     def _context_content_html(self, ctx):
@@ -884,7 +1109,9 @@ class ExamGroupsWidget(QWidget):
             if isinstance(content, dict):
                 entries = content.get("srt_lines") or []
                 if not entries and content.get("text"):
-                    return html.escape(str(content.get("text", ""))).replace("\n", "<br>")
+                    return html.escape(str(content.get("text", ""))).replace(
+                        "\n", "<br>"
+                    )
             else:
                 entries = content or []
 
@@ -914,10 +1141,13 @@ class ExamGroupsWidget(QWidget):
         return "<br>".join(parts)
 
     def _questions_for_context(self, context_id):
+        from sqlalchemy.orm import joinedload
+
         session = get_session()
         try:
             questions = (
                 session.query(exam_model.ExamQuestion)
+                .options(joinedload(exam_model.ExamQuestion.context))
                 .filter(exam_model.ExamQuestion.context_id == context_id)
                 .order_by(exam_model.ExamQuestion.question_number.asc())
                 .all()
@@ -933,6 +1163,7 @@ class ExamGroupsWidget(QWidget):
         clear_layout(self.ui.options_layout, keep_tail=1)
         self._question_widgets.clear()
         self._context_widgets.clear()
+        self._context_note_labels.clear()
 
     def populate_tags(self):
         self.ui.tag_filter_list.blockSignals(True)
@@ -947,10 +1178,7 @@ class ExamGroupsWidget(QWidget):
         session = get_session()
         try:
             all_tags_rows = (
-                session.query(exam_model.UserQuestionTag.tag_name)
-                .filter(exam_model.UserQuestionTag.user_id == "local_user")
-                .distinct()
-                .all()
+                session.query(exam_model.UserQuestionTag.tag_name).distinct().all()
             )
             all_tags = sorted([r[0] for r in all_tags_rows])
 
@@ -1004,7 +1232,6 @@ class ExamGroupsWidget(QWidget):
                     )
                     .filter(
                         exam_model.ExamContext.exam_id == self.viewmodel.exam_id,
-                        exam_model.UserQuestionTag.user_id == "local_user",
                         exam_model.UserQuestionTag.tag_name.in_(selected_tags),
                     )
                     .distinct()
@@ -1031,6 +1258,9 @@ class ExamGroupsWidget(QWidget):
 
     def on_question_audio_changed(self, question):
         context_id = getattr(question, "context_id", None)
+        self._reload_and_select_context(context_id)
+
+    def _reload_and_select_context(self, context_id):
         self.viewmodel.load_exam()
         self.populate()
         if not context_id:

@@ -1,114 +1,75 @@
-# Feature: Authentication System (Login, Register, Logout)
+# Migration of Audio Segment Metadata from ExamQuestion to ExamContext
 
-* **Stack:** PySide6 (Frontend GUI) + Supabase Python SDK (Backend/Auth)
-* **Target:** Provide a secure and seamless user account management system for the Desktop environment.
+This plan outlines the changes needed to move the audio timestamp metadata (`audio_start` and `audio_end`) from individual questions (`ExamQuestion`) to their shared contexts (`ExamContext`).
 
-## 1. Functional Overview
+## User Review Required
 
-The authentication system manages user access control and includes three core features:
+> [!IMPORTANT]
+> The database schema changes require updates to SQLAlchemy model configurations. If an existing local SQLite database exists, it will need to have the `additional_meta` column added to the `exam_contexts` table. We should handle this gracefully in `src/models/database.py` via schema checks, or inform you how to recreate it.
 
-1. **Registration (Register):** Allows new users to create an account using an Email and Password.
-2. **Login:** Authenticates existing users, issues, and maintains user sessions.
-3. **Logout:** Safely terminates the current session and redirects the user back to the login screen.
+## Proposed Changes
 
+---
 
-## 2. Detailed Functional Requirements
+### [Models]
 
-### 2.1. Registration Feature (Register)
+#### [MODIFY] [exam.py](file:///d:/my-project/workspace-anki/jun-edu/src/models/exam.py)
+- Define a new `QuestionAdditionalMeta` TypedDict containing only `note`.
+- Keep `AdditionalMeta` TypedDict as is (containing `audio_start`, `audio_end`, and `note`).
+- Update `ExamContext` model to add `additional_meta: Mapped[AdditionalMeta] = mapped_column(JSON, default=lambda: {"audio_start": 0.0, "audio_end": 0.0, "note": ""})`.
+- Update `ExamQuestion` model to change type of `additional_meta` to `QuestionAdditionalMeta` and default to `lambda: {"note": ""}`.
 
-* **Description:** Users input their details to create a new account. Upon successful registration, Supabase sends a confirmation email (if the "Confirm Email" setting is enabled in your Supabase dashboard).
-* **Inputs:**
-* `Email` (String, must be a valid email format).
-* `Password` (String, minimum of 6 characters by default under Supabase policy).
-* `Confirm Password` (String, must match the Password field exactly).
+#### [MODIFY] [database.py](file:///d:/my-project/workspace-anki/jun-edu/src/models/database.py)
+- Update `_ensure_schema_columns()` to automatically check and add `additional_meta` to `exam_contexts` if it is missing, making sure existing SQLite databases do not crash.
 
+---
 
-* **Workflow:**
-1. The user clicks "Register" -> The Frontend performs input validation.
-2. The Frontend invokes the Supabase SDK API: `supabase.auth.sign_up({"email": email, "password": password})`.
-3. If successful: Display a message instructing the user to verify their email (or automatically log them in and redirect to the dashboard, depending on your Supabase configurations).
-4. If failed: Display the corresponding error message returned by Supabase (e.g., Email already exists, Connection timeout...).
+### [Helpers]
 
+#### [MODIFY] [helpers.py](file:///d:/my-project/workspace-anki/jun-edu/src/utils/helpers.py)
+- Update `get_audio_meta(question)` to retrieve the audio timestamps from `question.context.additional_meta` if `question.context` is available, falling back to `question.additional_meta` (for backward compatibility).
 
+---
 
-### 2.2. Login Feature
+### [Views & Components]
 
-* **Description:** Authenticates the user's identity and redirects them to the application's main dashboard.
-* **Inputs:** `Email`, `Password`.
-* **Workflow:**
-1. The user clicks "Login" -> The Frontend invokes the API: `supabase.auth.sign_in_with_password({"email": email, "password": password})`.
-2. If successful:
-* Supabase returns the `Session` data (containing `access_token` and `refresh_token`).
-* The application stores the tokens to persist the login state.
-* Closes the Login window and opens the main Dashboard window.
+#### [MODIFY] [add_exam_question_dialog.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/components/add_exam_question_dialog.py)
+- Remove question-level audio start/end fields and selectors from `_setup_question_forms()`, `_add_question_form()`, `_populate_question_form()`, and saving methods.
+- Update `_populate_from_context()` to read `audio_start` and `audio_end` from `context.additional_meta` instead of `context.content`.
+- Update `_context_content()` to exclude `audio_start` and `audio_end` from the content dictionary.
+- In `_on_save()`, save `audio_start` and `audio_end` to `db_ctx.additional_meta`.
+- Clean up `_add_question_audio_selector`, `_on_select_question_audio_segment`, `_set_question_audio_segment` since audio selection is now handled strictly at the context level.
 
+#### [MODIFY] [exam_groups_widget.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/components/exam_groups_widget.py)
+- Update `_on_listen_clicked` to play audio using the context's `additional_meta` (retrieving it via `ctx.additional_meta` or fallback).
+- In `_questions_for_context()`, eager load the `context` relation using `joinedload` so that `question.context` is loaded before expunging.
+- In `_on_import_questions_clicked`, pass `additional_meta` (containing audio segment info) when creating the `ExamContext` row.
 
-3. If failed (Incorrect credentials, unverified email): Display a specific, user-friendly error message.
+#### [MODIFY] [import_questions_dialog.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/components/import_questions_dialog.py)
+- Update `PROMPT_TEXT` template to instruct the LLM to output `additional_meta` on `contexts` instead of `questions` (the prompt will guide the LLM to output `audio_start`/`audio_end` in the context's metadata, and only `note` in the question's metadata).
+- Update `_parse_json` to parse `additional_meta` from the LLM context entries.
+- Add fallback logic in `_parse_json` that if the LLM output places `audio_start` or `audio_end` on questions instead of contexts, it copies those values to the context's `additional_meta` and strips them from the question.
 
+#### [MODIFY] [option_question_item.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/components/option_question_item.py)
+- Update `_on_select_audio_segment` to save selected transcript timestamps to `db_q.context.additional_meta` instead of `db_q.additional_meta`.
 
+---
 
-### 2.3. Logout Feature
+### [Documentation]
 
-* **Description:** Terminates the active user session securely.
-* **Workflow:**
-1. The user clicks the "Logout" button on the main dashboard screen.
-2. The application invokes the API: `supabase.auth.sign_out()`.
-3. The local system clears the stored authentication tokens.
-4. Closes all main application windows, re-initializes, and displays the Login screen.
+#### [MODIFY] [models.md](file:///d:/my-project/workspace-anki/jun-edu/docs/models.md)
+- Update documentation schema tables to reflect the new structure.
 
+## Verification Plan
 
+### Automated Tests
+- Run Python syntax compile check:
+  ```powershell
+  .\.venv\Scripts\python.exe -B -c "import pathlib; [compile(path.read_text(encoding='utf-8-sig'), str(path), 'exec') for root in ('src','ui_gen') for path in pathlib.Path(root).rglob('*.py')]; print('syntax ok')"
+  ```
 
-### 2.4. Session Management (Auto-Login)
-
-* **Description:** When the application launches, if a previous session is still valid, the app bypasses the login screen and routes the user directly to the main dashboard.
-* **Workflow:**
-1. Upon app startup (ideally inside the Main Window's `__init__` method), check for an existing locally stored token.
-2. Call `supabase.auth.get_session()` or set the token into the client to verify its validity.
-3. If the Session is valid -> Navigate straight to the main app dashboard. If invalid -> Present the Login screen.
-
-## 3. UI/UX Requirements (PySide6 UI Requirements)
-
-### 3.1. Mandatory UI Components
-
-* **Login/Register View:**
-* `QLineEdit` for Email (with clear placeholder text).
-* `QLineEdit` for Password (configured with `EchoMode = QLineEdit.Password` to mask characters).
-* `QPushButton` for the primary action (Login / Register).
-* `QPushButton` or link-styled `QLabel` to toggle between the Login and Register forms.
-
-
-* **Loading States (UX):**
-* During API calls to Supabase, all action buttons must be disabled via `setEnabled(False)` to prevent duplicate submissions (Double Requests).
-* Display a loading indicator, spinner, or an indeterminate `QProgressBar`.
-
-### 3.2. Validation & Error Handling
-
-* Use a `QMessageBox` or a dynamic red text `QLabel` beneath the input fields to display clear error prompts for the following scenarios:
-* Empty Email or Password fields.
-* Malformed Email formats (missing `@`, missing domain).
-* Password mismatch (on the Register view).
-* Server-side errors (e.g., `Invalid login credentials`).
-
-## 4. Technical & Security Requirements
-
-### 4.1. SDK Integration
-
-* Use the official Python `supabase` client (`pip install supabase`).
-* Initialize a standalone `supabase_client.py` file utilizing the Singleton pattern so that all PySide6 classes share a single connection instance:
-```python
-from supabase import create_client, Client
-url: str = "YOUR_SUPABASE_URL"
-key: str = "YOUR_SUPABASE_ANON_KEY"
-supabase: Client = create_client(url, key)
-
-```
-
-### 4.2. Secure Token Storage
-
-* **Basic Level:** Store `access_token` and `refresh_token` in a local `config.json` file or leverage PySide6's `QSettings`.
-* **Advanced Level (Recommended):** Use the Python `keyring` library to securely save tokens directly into the Operating System's credential manager (Windows Credential Manager / macOS Keychain) to mitigate token theft.
-
-### 4.3. Asynchronous Processing (Multi-threading)
-
-* **Mandatory:** Executing network requests via the Supabase API is a blocking I/O task. **Do not execute these requests directly on the PySide6 Main UI Thread**, as doing so will freeze the graphical interface ("Not Responding").
-* **Solution:** Employ `QThread` combined with the `QObject` (Worker pattern) or integrate the `qasync` library for asynchronous event loops. Use `PySide6.QtCore.Signal` to securely pass operation results from the background worker thread back to the main UI thread.
+### Manual Verification
+- Open the application and create/edit an exam.
+- Add questions and context to verify context-level audio segment selection works.
+- Verify playback of context audio segments works as expected.
+- Verify prompt copy and paste JSON import works, checking both new and legacy formats.

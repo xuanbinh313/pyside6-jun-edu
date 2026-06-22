@@ -18,258 +18,56 @@ class ImportQuestionsDialog(QDialog):
                                     question_number, question_type, additional_meta)
     """
 
-    # LLM prompt template
+    # Định nghĩa ngôn ngữ mặc định (Bạn có thể đổi thành "English", "Japanese", v.v.)
+    TARGET_LANG = "Vietnamese (vn)"
+
     PROMPT_TEXT = r"""
-Analyze the attached exam image and extract all content into a structured JSON object
-with two main arrays: "contexts" and "questions".
-
-OBJECTIVE
-
-* Identify if questions share a common context (reading passage, diagram, etc.).
-* Always create at least ONE context entry for every question and link all
-  questions to a context via "context_id".
-* If a question is standalone (e.g. TOEIC Part 5), create a dedicated context entry with
-  context_type "STANDALONE" and content { "text": "" }, then link that question
-  to it.
-* NEVER use null context_id.
-* For STANDALONE questions, create ONE unique STANDALONE context per question.
-  Do NOT group multiple standalone questions into a single context.
-
-OUTPUT FORMAT (output ONLY raw JSON no markdown, no code fences, no explanation)
+Analyze the attached exam image and extract all content into a raw JSON object. 
+OUTPUT CONSTRAINT: Output ONLY the raw JSON. No markdown, no ```json code fences, no explanations.
+TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
 
 {
     "contexts": [
         {
-            "id": "<unique_string_id_you_create>",
-            "part": <integer>,
-            "context_type": "READING_PASSAGE",
-            "content": { "text": "<full passage text with [[question_number]] placeholders>" },
-            "index": 0
-        }
-    ],
-    "questions": [
-        {
-            "context_id": "<must match an id from contexts array>",
-            "content": "<question stem exactly as shown>",
-            "options": ["<option text>", "..."],
-            "correct_answer": "",
-            "question_number": <integer>,
-            "question_type": "MULTIPLE_CHOICE",
-            "additional_meta": {
-                "audio_start": 0.0,
-                "audio_end": 0.0,
-                "note": "<why the correct answer is correct>"
-            }
-        }
-    ]
-}
-
-FIELD RULES — contexts
-
-id
-
-* A short unique string you invent (e.g. "ctx_1", "ctx_2").
-* Must be referenced exactly by questions that belong to this context.
-
-context_type — choose ONE:
-
-* "READING_PASSAGE"   paragraphs, articles, emails, letters
-* "IMAGE_DIAGRAM"     charts, maps, graphs, floor plans
-* "STANDALONE"        independent questions with no shared passage or diagram
-
-part
-
-* TOEIC part (1–7) or IELTS section as an integer.
-* Store part ONLY on the context, never on questions.
-
-content — shape depends on context_type:
-
-* READING_PASSAGE
-  {
-    "text": "<full passage text, replacing each blank '-------' or blank question indicator with [[question_number]] matching the corresponding question (e.g. [[131]])>"
-  }
-
-* IMAGE_DIAGRAM
-  {
-    "text": "<brief description of the diagram>"
-  }
-
-* STANDALONE
-  {
-    "text": ""
-  }
-
-index
-
-* Integer order in which this context appears in the image (0-based).
-
-STANDALONE RULES
-
-* Every standalone question MUST have its own dedicated STANDALONE context.
-* Never reuse a STANDALONE context across multiple questions.
-* Example:
-  Question 101 → context_id = "ctx_101"
-  Question 102 → context_id = "ctx_102"
-* Even if several standalone questions appear consecutively in the same part,
-  create separate STANDALONE contexts for each one.
-
-FIELD RULES — questions
-
-context_id
-
-* Must match the "id" value of a context in the "contexts" array above.
-* Must NEVER be null.
-* Standalone questions must reference their own dedicated STANDALONE context.
-
-content
-
-* Exact question stem as printed.
-* For reading passage fill-in-the-blanks, you can set the stem to something
-  simple such as "-------" if no separate stem is printed.
-* Preserve blanks and punctuation exactly as shown.
-
-options
-
-* Flat array of strings.
-* REMOVE answer-label prefixes:
-  (A), (B), (C), (D)
-  A., B., C., D.
-  A), B), C), D)
-* Preserve original order.
-* Example:
-  ["Home", "Work", "Travel", "School"]
-
-correct_answer
-
-* REQUIRED.
-* Must contain the answer choice label:
-  "A", "B", "C", "D", etc.
-* If an answer key or marked answer is visible, use it.
-* If no answer key is visible, solve the question from the visible content
-  and choose the best answer.
-* Never leave correct_answer empty.
-* Use "UNKNOWN" only as a last resort when the image is too unclear.
-
-question_number
-
-* Printed question number as an integer.
-
-question_type — choose ONE:
-
-* "MULTIPLE_CHOICE"
-* "FILL_IN_THE_BLANK"
-* "ESSAY"
-* "RECORDING"
-
-additional_meta
-
-* Always include:
-  {
-  "audio_start": 0.0,
-  "audio_end": 0.0,
-  "note": "<explanation>"
-  }
-* Fill in real timestamps only if shown in the image.
-* note is REQUIRED.
-* Explain why correct_answer is correct using visible context, grammar,
-  vocabulary, reading passage evidence, or diagram evidence.
-
-READING PASSAGE RULES
-
-* If multiple questions belong to the same reading passage, email, notice,
-  article, advertisement, form, or text block, create ONE shared
-  READING_PASSAGE context.
-
-* Insert placeholders into the passage text:
-  [[131]]
-  [[132]]
-  etc.
-
-* Replace each blank in the passage with the corresponding placeholder.
-
-* All questions associated with that passage must reference the same context_id.
-
-IMAGE DIAGRAM RULES
-
-* Use IMAGE_DIAGRAM for charts, maps, schedules, graphs, floor plans,
-  tables, or visual-only contexts.
-
-* Put a concise but useful description in:
-  content.text
-
-* Link all related questions to that diagram context.
-
-CONSTRAINTS
-
-* Output ONLY the raw JSON object.
-* No markdown.
-* No code fences.
-* No explanations outside JSON.
-* Every question in the image must appear in the output.
-* Every question must have a matching context_id.
-* Every question must have correct_answer filled with the best answer label.
-* Every question must have additional_meta.note explaining why the answer is correct.
-* Do not leave correct_answer as "".
-* Never use null context_id.
-* Every STANDALONE question must have its own unique STANDALONE context.
-* Never group multiple STANDALONE questions into one context.
-* Context IDs must be unique.
-* All referenced context_ids must exist in the contexts array.
-
-EXAMPLE OUTPUT
-
-{
-    "contexts": [
-        {
-            "id": "ctx_1",
-            "part": 6,
-            "context_type": "READING_PASSAGE",
+            "id": "Unique string ID (e.g., 'ctx_1', 'ctx_102')",
+            "part": 6, // Integer (TOEIC part 1-7 or IELTS section). Store ONLY in context, NEVER in questions.
+            "context_type": "READING_PASSAGE | IMAGE_DIAGRAM | STANDALONE",
             "content": {
-                "text": "Dear Mr. Smith,\nThank you for applying. We are pleased to inform you that [[131]] has been approved. Please contact us if you have [[132]] questions."
+                // READING_PASSAGE: Full text, replace blanks/indicators with placeholders like [[131]], [[132]]
+                // IMAGE_DIAGRAM: Concise description of the chart/map/table
+                // STANDALONE: Must be exactly {"text": ""}
+                "text": "string"
             },
-            "index": 0
+            "index": 0, // 0-based order of appearance in the image
+            "additional_meta": { 
+                "audio_start": 0.0, 
+                "audio_end": 0.0, 
+                "note": "REQUIRED. Provide the exact full translation of 'content.text' into {TARGET_LANG}. If STANDALONE, leave as empty string." 
+            }
         }
     ],
     "questions": [
         {
-            "context_id": "ctx_1",
-            "content": "-------",
-            "options": [
-                "your application",
-                "apply",
-                "applicant",
-                "applicable"
-            ],
-            "correct_answer": "A",
-            "question_number": 131,
-            "question_type": "MULTIPLE_CHOICE",
+            "context_id": "Must match a valid context id. NEVER null.",
+            "question_number": 131, // Printed question number as integer
+            "question_type": "MULTIPLE_CHOICE | FILL_IN_THE_BLANK | ESSAY | RECORDING",
+            "content": "Exact stem. For reading blanks with no separate stem, use '-------'.",
+            "options": ["Flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order."],
+            "correct_answer": "Required choice label ('A', 'B', etc.). Solve if unmarked. 'UNKNOWN' as last resort.",
             "additional_meta": {
-                "audio_start": 0.0,
-                "audio_end": 0.0,
-                "note": "The phrase 'has been approved' requires a noun phrase subject, so 'your application' is correct."
-            }
-        },
-        {
-            "context_id": "ctx_1",
-            "content": "-------",
-            "options": [
-                "any",
-                "some",
-                "few",
-                "no"
-            ],
-            "correct_answer": "A",
-            "question_number": 132,
-            "question_type": "MULTIPLE_CHOICE",
-            "additional_meta": {
-                "audio_start": 0.0,
-                "audio_end": 0.0,
-                "note": "The plural noun 'questions' is used in an open condition, making 'any' the natural determiner."
+                "note": "REQUIRED. Strictly format this field exactly as follows:\n[Translation of option 1 into {TARGET_LANG}]\n[Translation of option 2 into {TARGET_LANG}]\n[Translation of option 3 into {TARGET_LANG}]\n[Translation of option 4 into {TARGET_LANG}]\n\n[Detailed grammatical/contextual explanation in {TARGET_LANG} explaining why the correct_answer is right.]"
             }
         }
     ]
 }
-"""
+
+STRICT ARCHITECTURE RULES:
+1. Every question must link to a context. Never use null context_id.
+2. STANDALONE Questions: Every standalone question (e.g., TOEIC Part 5) MUST have its own unique, dedicated context entry (context_type: "STANDALONE", content: {"text": ""}). NEVER group multiple standalone questions into a single context.
+3. SHARED Contexts: Questions sharing a passage or diagram must reference the exact same shared context ID.
+4. Extract every visible question. Never leave correct_answer or additional_meta.note empty.
+5. In 'questions.additional_meta.note', ensure there is a clear new line separating the option translations and the final explanation.
+""".replace("{TARGET_LANG}", TARGET_LANG)
 
     VALID_CONTEXT_TYPES = {
         "READING_PASSAGE",
@@ -310,7 +108,8 @@ EXAMPLE OUTPUT
             '      "part": 6,\n'
             '      "context_type": "READING_PASSAGE",\n'
             '      "content": { "text": "..." },\n'
-            '      "index": 0\n'
+            '      "index": 0,\n'
+            '      "additional_meta": { "audio_start": 0.0, "audio_end": 0.0, "note": "" }\n'
             "    }\n"
             "  ],\n"
             '  "questions": [\n'
@@ -321,7 +120,7 @@ EXAMPLE OUTPUT
             '      "correct_answer": "",\n'
             '      "question_number": 131,\n'
             '      "question_type": "MULTIPLE_CHOICE",\n'
-            '      "additional_meta": { "audio_start": 0.0, "audio_end": 0.0, "note": "Explain why the selected answer is correct." }\n'
+            '      "additional_meta": { "note": "Explain why the selected answer is correct." }\n'
             "    }\n"
             "  ]\n"
             "}"
@@ -431,6 +230,23 @@ EXAMPLE OUTPUT
             except (TypeError, ValueError):
                 index = i
 
+            meta_raw = ctx.get("additional_meta", {})
+            if not isinstance(meta_raw, dict):
+                meta_raw = {}
+            try:
+                audio_start = float(meta_raw.get("audio_start", 0.0))
+            except (TypeError, ValueError):
+                audio_start = 0.0
+            try:
+                audio_end = float(meta_raw.get("audio_end", 0.0))
+            except (TypeError, ValueError):
+                audio_end = 0.0
+            ctx_meta = {
+                "audio_start": audio_start,
+                "audio_end": audio_end,
+                "note": str(meta_raw.get("note", "")).strip(),
+            }
+
             contexts.append(
                 {
                     "llm_id": llm_id,  # temporary reference key
@@ -438,6 +254,8 @@ EXAMPLE OUTPUT
                     "context_type": ctx_type,
                     "content": content,
                     "index": index,
+                    "additional_meta": ctx_meta,
+                    "user_id": str(ctx.get("user_id")),
                 }
             )
 
@@ -474,7 +292,7 @@ EXAMPLE OUTPUT
             else:
                 options_list = []
 
-            # additional_meta (audio timestamps + answer explanation)
+            # additional_meta (only note for question, keep start/end as helper fields for fallback resolution)
             meta_raw = q.get("additional_meta", {})
             if not isinstance(meta_raw, dict):
                 meta_raw = {}
@@ -487,12 +305,6 @@ EXAMPLE OUTPUT
                 audio_end = float(meta_raw.get("audio_end", 0.0))
             except (TypeError, ValueError):
                 audio_end = 0.0
-            additional_meta = {
-                **meta_raw,
-                "audio_start": audio_start,
-                "audio_end": audio_end,
-                "note": note,
-            }
 
             # question_number
             try:
@@ -529,9 +341,39 @@ EXAMPLE OUTPUT
                     "correct_answer": correct_answer,
                     "question_number": question_number,
                     "question_type": q_type,
-                    "additional_meta": additional_meta,
+                    "additional_meta": {
+                        "note": note,
+                    },
+                    "user_id": str(q.get("user_id")),
+                    "_temp_audio_start": audio_start,
+                    "_temp_audio_end": audio_end,
                 }
             )
+
+        # Resolve any audio start/end from questions to contexts if context doesn't have it
+        for q in questions:
+            llm_ctx_id = q.get("llm_context_id")
+            if not llm_ctx_id:
+                continue
+            # Find matching context
+            matching_ctx = next(
+                (c for c in contexts if c["llm_id"] == llm_ctx_id), None
+            )
+            if matching_ctx:
+                ctx_meta = matching_ctx.setdefault(
+                    "additional_meta",
+                    {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
+                )
+                q_start = q.pop("_temp_audio_start", 0.0)
+                q_end = q.pop("_temp_audio_end", 0.0)
+                if (q_start > 0.0 or q_end > 0.0) and ctx_meta.get(
+                    "audio_end", 0.0
+                ) == 0.0:
+                    ctx_meta["audio_start"] = q_start
+                    ctx_meta["audio_end"] = q_end
+            else:
+                q.pop("_temp_audio_start", None)
+                q.pop("_temp_audio_end", None)
 
         context_ids = {ctx["llm_id"] for ctx in contexts}
         next_index = len(contexts)
@@ -549,6 +391,12 @@ EXAMPLE OUTPUT
                     "context_type": "STANDALONE",
                     "content": {"text": ""},
                     "index": next_index,
+                    "additional_meta": {
+                        "audio_start": 0.0,
+                        "audio_end": 0.0,
+                        "note": "",
+                    },
+                    "user_id": str(q.get("user_id")),
                 }
             )
             context_ids.add(standalone_id)
@@ -557,5 +405,7 @@ EXAMPLE OUTPUT
 
         for q in questions:
             q.pop("_legacy_part", None)
+            q.pop("_temp_audio_start", None)
+            q.pop("_temp_audio_end", None)
 
         return contexts, questions
