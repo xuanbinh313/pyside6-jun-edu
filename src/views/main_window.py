@@ -5,8 +5,14 @@ import sys
 import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import (QApplication, QInputDialog, QMainWindow, QMenu,
-                               QMessageBox, QSystemTrayIcon)
+from PySide6.QtWidgets import (
+    QApplication,
+    QInputDialog,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QSystemTrayIcon,
+)
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -31,39 +37,43 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-        
+
         self.auth_viewmodel = AuthViewModel()
         self.reminder_viewmodel = ReminderViewModel()
         self.sync_viewmodel = SyncViewModel()
         self.auth_dialog = None
-        
+
         self.stacked_widget = self.ui.stacked_widget
-        
+
         self.list_viewmodel = ExamListViewModel()
         self.list_view = ExamListView(
             self.list_viewmodel,
             self.navigate_to_details,
             self.navigate_to_take_exam,
         )
-        
+
         self.stacked_widget.addWidget(self.list_view)
-        
+
         self.close_event_minutes = 10
         self.setup_menu_bar()
-        
+
         self.setup_system_tray()
         self.setup_mvvm_connections()
         self.auth_viewmodel.check_saved_session()
-        
+
     def navigate_to_details(self, exam_id):
         if exam_id == "EXTERNAL":
             self.ext_viewmodel = ExamAddExternalViewModel()
-            self.ext_view = ExamAddExternalView(self.ext_viewmodel, self.navigate_to_list, self.navigate_to_details)
+            self.ext_view = ExamAddExternalView(
+                self.ext_viewmodel, self.navigate_to_list, self.navigate_to_details
+            )
             self.stacked_widget.addWidget(self.ext_view)
             self.stacked_widget.setCurrentWidget(self.ext_view)
         else:
             self.details_viewmodel = ExamDetailsViewModel(exam_id)
-            self.details_view = ExamDetailsView(self.details_viewmodel, self.navigate_to_list)
+            self.details_view = ExamDetailsView(
+                self.details_viewmodel, self.navigate_to_list
+            )
             self.stacked_widget.addWidget(self.details_view)
             self.stacked_widget.setCurrentWidget(self.details_view)
 
@@ -72,12 +82,12 @@ class MainWindow(QMainWindow):
         self.take_view = ExamTakeView(self.take_viewmodel, self.navigate_to_list)
         self.stacked_widget.addWidget(self.take_view)
         self.stacked_widget.setCurrentWidget(self.take_view)
-        
+
     def navigate_to_list(self):
         # Refresh list and switch back
         self.list_viewmodel.load_exams()
         self.stacked_widget.setCurrentWidget(self.list_view)
-        
+
         # Optionally remove the details view
         widget = self.stacked_widget.widget(1)
         if widget:
@@ -89,9 +99,12 @@ class MainWindow(QMainWindow):
         self.auth_action.triggered.connect(self.show_auth_modal)
         self.ui.menu_main.insertAction(self.ui.action_settings, self.auth_action)
         self.ui.menu_main.insertSeparator(self.ui.action_settings)
-        self.sync_action = QAction("Sync to Supabase", self)
+        self.sync_action = QAction("Sync to Remote", self)
         self.sync_action.triggered.connect(self.sync_viewmodel.sync_to_supabase)
         self.ui.menu_main.insertAction(self.ui.action_settings, self.sync_action)
+        self.sync_local_action = QAction("Sync to Local", self)
+        self.sync_local_action.triggered.connect(self.sync_viewmodel.sync_to_local)
+        self.ui.menu_main.insertAction(self.ui.action_settings, self.sync_local_action)
         self.ui.menu_main.insertSeparator(self.ui.action_settings)
         self.logout_action = QAction("Logout", self)
         self.logout_action.triggered.connect(self.auth_viewmodel.sign_out)
@@ -102,10 +115,12 @@ class MainWindow(QMainWindow):
 
     def _on_sync_started(self):
         self.sync_action.setEnabled(False)
+        self.sync_local_action.setEnabled(False)
         self.statusBar().showMessage("Syncing SQLite data to Supabase...")
 
     def _on_sync_finished(self, results):
         self.sync_action.setEnabled(True)
+        self.sync_local_action.setEnabled(True)
         summary = ", ".join(
             f"{result.table_name}: {result.row_count}" for result in results
         )
@@ -118,6 +133,7 @@ class MainWindow(QMainWindow):
 
     def _on_sync_failed(self, message):
         self.sync_action.setEnabled(True)
+        self.sync_local_action.setEnabled(True)
         self.statusBar().showMessage("Sync failed", 5000)
         QMessageBox.critical(
             self,
@@ -125,8 +141,45 @@ class MainWindow(QMainWindow):
             message,
         )
 
+    def _on_local_sync_started(self):
+        self.sync_action.setEnabled(False)
+        self.sync_local_action.setEnabled(False)
+        self.statusBar().showMessage("Syncing Supabase data to local SQLite...")
+
+    def _on_local_sync_finished(self, results):
+        self.sync_action.setEnabled(True)
+        self.sync_local_action.setEnabled(True)
+        self.list_viewmodel.load_exams()
+        summary = ", ".join(
+            f"{result.table_name}: {result.row_count}" for result in results
+        )
+        self.statusBar().showMessage("Local sync complete", 5000)
+        QMessageBox.information(
+            self,
+            "Local Sync",
+            f"Supabase data synced to local SQLite.\n\n{summary}",
+        )
+
+    def _on_local_sync_failed(self, message):
+        self.sync_action.setEnabled(True)
+        self.sync_local_action.setEnabled(True)
+        self.statusBar().showMessage("Local sync failed", 5000)
+        QMessageBox.critical(
+            self,
+            "Local Sync Failed",
+            message,
+        )
+
     def show_settings_modal(self):
-        minutes, ok = QInputDialog.getInt(self, "Settings", "Set time closeEvent (minutes):", self.close_event_minutes, 1, 1440, 1)
+        minutes, ok = QInputDialog.getInt(
+            self,
+            "Settings",
+            "Set time closeEvent (minutes):",
+            self.close_event_minutes,
+            1,
+            1440,
+            1,
+        )
         if ok:
             self.close_event_minutes = minutes
 
@@ -169,27 +222,30 @@ class MainWindow(QMainWindow):
         self.sync_viewmodel.sync_started.connect(self._on_sync_started)
         self.sync_viewmodel.sync_finished.connect(self._on_sync_finished)
         self.sync_viewmodel.sync_failed.connect(self._on_sync_failed)
+        self.sync_viewmodel.local_sync_started.connect(self._on_local_sync_started)
+        self.sync_viewmodel.local_sync_finished.connect(self._on_local_sync_finished)
+        self.sync_viewmodel.local_sync_failed.connect(self._on_local_sync_failed)
 
     def setup_system_tray(self):
         """Configure background execution via System Tray."""
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(qta.icon('fa5s.graduation-cap', color='#1a73e8'))
-        
+        self.tray_icon.setIcon(qta.icon("fa5s.graduation-cap", color="#1a73e8"))
+
         # Context Menu for Tray
         tray_menu = QMenu()
         open_action = QAction("Open Application", self)
         open_action.triggered.connect(self.showNormal)
-        
+
         exit_action = QAction("Exit Completely", self)
         exit_action.triggered.connect(QApplication.quit)
-        
+
         tray_menu.addAction(open_action)
         tray_menu.addSeparator()
         tray_menu.addAction(exit_action)
-        
+
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.show()
-        
+
         # Double click tray icon to restore
         self.tray_icon.activated.connect(self._on_tray_icon_activated)
 
@@ -210,7 +266,9 @@ class MainWindow(QMainWindow):
             )
             msg_box.setIcon(QMessageBox.Icon.Question)
 
-            btn_tray = msg_box.addButton("Run in Background (System Tray)", QMessageBox.ButtonRole.AcceptRole)
+            btn_tray = msg_box.addButton(
+                "Run in Background (System Tray)", QMessageBox.ButtonRole.AcceptRole
+            )
             msg_box.addButton("Exit Completely", QMessageBox.ButtonRole.RejectRole)
             msg_box.setDefaultButton(btn_tray)
             msg_box.exec()
@@ -229,7 +287,7 @@ class MainWindow(QMainWindow):
                     "Jun Edu",
                     f"Set a {minutes}-minute reminder and continued running in the system tray.",
                     QSystemTrayIcon.MessageIcon.Information,
-                    3000
+                    3000,
                 )
 
                 # Prevent the application from exiting completely.
@@ -245,17 +303,21 @@ class MainWindow(QMainWindow):
             "TIME TO STUDY!",
             "Open your exercises now to keep the material fresh.",
             QSystemTrayIcon.MessageIcon.Warning,
-            5000
+            5000,
         )
-        
+
         # 2. Force Window Focus (Qt Native Window Management)
-        self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
-        self.showNormal()      
-        self.raise_()           
-        self.activateWindow()   
-        
+        self.setWindowState(
+            self.windowState() & ~Qt.WindowState.WindowMinimized
+            | Qt.WindowState.WindowActive
+        )
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
         # 3. Load Exam Content
         # self.stacked_widget.setCurrentWidget(self.list_view)
+
 
 if __name__ == "__main__":
     init_db()

@@ -216,7 +216,7 @@ Emits `progress(str)`, `finished(dict)`, or `error(str)`.
 
 **File:** [`src/viewmodels/sync_viewmodel.py`](../src/viewmodels/sync_viewmodel.py)
 
-Runs SQLite-to-Supabase sync on a background thread and reports progress back to the main window.
+Runs SQLite/Supabase sync on a background thread and reports progress back to the main window.
 
 ### Signals
 
@@ -225,6 +225,9 @@ Runs SQLite-to-Supabase sync on a background thread and reports progress back to
 | `sync_started` | - | Sync worker starts |
 | `sync_finished` | `list[TableSyncResult]` | All configured tables finish syncing |
 | `sync_failed` | `str` | Sync raises an error |
+| `local_sync_started` | - | Supabase-to-SQLite sync worker starts |
+| `local_sync_finished` | `list[TableSyncResult]` | Remote rows and media finish syncing locally |
+| `local_sync_failed` | `str` | Local sync raises an error |
 
 ### State
 
@@ -238,6 +241,7 @@ Runs SQLite-to-Supabase sync on a background thread and reports progress back to
 | Method | Description |
 |---|---|
 | `sync_to_supabase()` | Starts a `SyncWorker` unless sync is already running |
+| `sync_to_local()` | Starts a Supabase-to-SQLite `SyncWorker` unless sync is already running |
 
 ---
 

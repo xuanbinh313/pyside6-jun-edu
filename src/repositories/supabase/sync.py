@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 from dotenv import load_dotenv
+from sqlalchemy import DateTime
 from sqlalchemy.inspection import inspect
 from supabase import Client
 
@@ -21,7 +22,7 @@ from src.repositories.sqlite.orm_models import (
     UserQuestionTag,
 )
 from src.utils.helpers import get_local_media_path
-from src.utils.r2_service import upload_media_file
+from src.utils.r2_service import download_media_file, upload_media_file
 
 load_dotenv()
 
@@ -70,6 +71,27 @@ def _serialize_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _deserialize_value(value: Any, column: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(column.type, DateTime) and isinstance(value, str):
+        try:
+            return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+    return value
+
+
+def _deserialize_row(model: type, row: dict[str, Any]) -> dict[str, Any]:
+    mapper = inspect(model)
+    columns = {column.key: column for column in mapper.columns}
+    return {
+        key: _deserialize_value(value, columns[key])
+        for key, value in row.items()
+        if key in columns
+    }
+
+
 def _serialize_mediafile_row(row: MediaFile) -> dict[str, Any]:
     data = _serialize_row(row)
     data.pop("dirty", None)
@@ -87,6 +109,29 @@ def _get_supabase_table_client(schema: str):
     if schema == "public":
         return client
     return client.schema(schema)
+
+
+def _fetch_user_rows(
+    supabase_client,
+    table_name: str,
+    user_id: str,
+    batch_size: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        response = (
+            supabase_client.table(table_name)
+            .select("*")
+            .eq("user_id", user_id)
+            .range(offset, offset + batch_size - 1)
+            .execute()
+        )
+        batch = list(response.data or [])
+        rows.extend(batch)
+        if len(batch) < batch_size:
+            return rows
+        offset += batch_size
 
 
 def _upsert_rows(
@@ -165,6 +210,96 @@ def _sync_dirty_mediafiles(
     )
 
 
+def _sync_remote_mediafiles_to_sqlite(
+    session,
+    supabase_client,
+    batch_size: int,
+    user_id: str,
+) -> TableSyncResult:
+    rows = _fetch_user_rows(
+        supabase_client=supabase_client,
+        table_name=MediaFile.__tablename__,
+        user_id=user_id,
+        batch_size=batch_size,
+    )
+    downloaded_count = 0
+    for row in rows:
+        filename = str(row.get("filename", "") or "")
+        if filename and not bool(row.get("is_deleted", False)):
+            download_media_file(
+                local_path=get_local_media_path(filename),
+                user_id=user_id,
+                filename=filename,
+            )
+            downloaded_count += 1
+
+        data = _deserialize_row(MediaFile, row)
+        data["dirty"] = False
+        data.setdefault("is_deleted", False)
+        session.merge(MediaFile(**data))
+    session.commit()
+    return TableSyncResult(
+        table_name=MediaFile.__tablename__,
+        row_count=downloaded_count,
+    )
+
+
+def _path_leaf(value: str) -> str:
+    return value.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+
+
+def _rewrite_remote_media_references(session) -> None:
+    mediafiles = (
+        session.query(MediaFile)
+        .filter(MediaFile.is_deleted.is_(False))
+        .order_by(MediaFile.created_at.asc())
+        .all()
+    )
+    for mediafile in mediafiles:
+        local_path = str(get_local_media_path(mediafile.filename))
+        exams = session.query(Exam).filter(Exam.full_audio_url.is_not(None)).all()
+        for exam in exams:
+            audio_value = str(exam.full_audio_url or "")
+            if (
+                audio_value == mediafile.filename
+                or _path_leaf(audio_value) == mediafile.filename
+            ):
+                exam.full_audio_url = local_path
+
+        contexts = (
+            session.query(ExamContext)
+            .filter(ExamContext.context_type == "IMAGE_DIAGRAM")
+            .all()
+        )
+        for context in contexts:
+            content = context.content if isinstance(context.content, dict) else {}
+            if content.get("image_filename") != mediafile.filename:
+                continue
+            content["image_path"] = local_path
+            context.content = dict(content)
+    session.commit()
+
+
+def _sync_remote_table_to_sqlite(
+    session,
+    supabase_client,
+    model: type,
+    batch_size: int,
+    user_id: str,
+) -> TableSyncResult:
+    table_name = model.__tablename__
+    rows = _fetch_user_rows(
+        supabase_client=supabase_client,
+        table_name=table_name,
+        user_id=user_id,
+        batch_size=batch_size,
+    )
+    for row in rows:
+        session.merge(model(**_deserialize_row(model, row)))
+    session.commit()
+    return TableSyncResult(table_name=table_name, row_count=len(rows))
+
+
 def sync_sqlite_to_supabase(batch_size: int = 500) -> list[TableSyncResult]:
     """Upsert all local SQLite rows into matching Supabase tables."""
     user_id = _current_supabase_user_id()
@@ -196,6 +331,39 @@ def sync_sqlite_to_supabase(batch_size: int = 500) -> list[TableSyncResult]:
             )
             session.commit()
             results.append(TableSyncResult(table_name=table_name, row_count=len(rows)))
+        return results
+    finally:
+        session.close()
+
+
+def sync_supabase_to_sqlite(batch_size: int = 500) -> list[TableSyncResult]:
+    """Download Supabase rows and media into the local SQLite/temp store."""
+    user_id = _current_supabase_user_id()
+    schema = _get_supabase_schema()
+    supabase_client = _get_supabase_table_client(schema)
+
+    session = get_session()
+    try:
+        results: list[TableSyncResult] = []
+        results.append(
+            _sync_remote_mediafiles_to_sqlite(
+                session=session,
+                supabase_client=supabase_client,
+                batch_size=batch_size,
+                user_id=user_id,
+            )
+        )
+        for model in SYNC_MODELS:
+            results.append(
+                _sync_remote_table_to_sqlite(
+                    session=session,
+                    supabase_client=supabase_client,
+                    model=model,
+                    batch_size=batch_size,
+                    user_id=user_id,
+                )
+            )
+        _rewrite_remote_media_references(session)
         return results
     finally:
         session.close()

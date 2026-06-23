@@ -80,12 +80,18 @@ their own sessions.
 
 `src/repositories/supabase/client.py` owns Supabase client construction,
 `src/repositories/supabase/auth.py` owns login/session helpers, and
-`src/repositories/supabase/sync.py` owns SQLite-to-Supabase sync.
+`src/repositories/supabase/sync.py` owns bidirectional SQLite/Supabase sync.
 
 Media attachments are tracked locally in the SQLite `mediafiles` table. Imported
 audio and diagram files are saved under the app's local media folder with
 validated lowercase filenames, marked `dirty=True`, and uploaded to Cloudflare R2
 during SQLite-to-Supabase sync before their `mediafiles` row is upserted.
+
+Supabase-to-SQLite sync downloads the signed-in user's remote rows into local
+SQLite and downloads each `mediafiles` object from R2 key
+`media/{user_id}/{filename}` into the same temp media folder. Downloaded media
+rows are marked `dirty=False` locally, and exam audio/diagram image references
+are rewritten to local temp paths when their filenames match downloaded media.
 
 R2 sync reads these `.env` settings:
 

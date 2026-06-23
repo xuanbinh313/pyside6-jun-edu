@@ -13,6 +13,10 @@ class R2UploadError(Exception):
     """Raised when a local media file cannot be uploaded to Cloudflare R2."""
 
 
+class R2DownloadError(Exception):
+    """Raised when a remote media file cannot be downloaded from Cloudflare R2."""
+
+
 def _env(*names: str) -> str:
     for name in names:
         value = os.getenv(name, "").strip()
@@ -98,4 +102,35 @@ def upload_media_file(local_path: Union[str, Path], user_id: str, filename: str)
         config=Config(signature_version="s3v4"),
     )
     client.upload_file(str(path), bucket, object_key)
+    return object_key
+
+
+def download_media_file(
+    local_path: Union[str, Path], user_id: str, filename: str
+) -> str:
+    """Download one R2 media object into the local media folder."""
+    path = Path(local_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not user_id:
+        raise R2DownloadError("Media file user_id is required for R2 object naming.")
+
+    try:
+        import boto3
+    except ImportError as exc:
+        raise R2DownloadError(
+            "boto3 is required for Cloudflare R2 downloads. Install requirements.txt."
+        ) from exc
+
+    endpoint, access_key, secret_key, bucket = _r2_settings()
+    object_key = f"media/{user_id}/{filename}"
+    client = boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name="auto",
+        config=Config(signature_version="s3v4"),
+    )
+    client.download_file(bucket, object_key, str(path))
     return object_key
