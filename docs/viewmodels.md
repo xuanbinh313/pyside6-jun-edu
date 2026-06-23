@@ -90,7 +90,7 @@ Manages a single exam's metadata and its SRT chunk list. Used by both **new exam
 | Method | Signature | Description |
 |---|---|---|
 | `load_exam()` | `→ None` | Loads exam + chunks from DB; expunges from session; emits `data_loaded` |
-| `save_exam()` | `(title, description, duration_minutes, is_published) → None` | Upserts exam metadata; emits `data_saved` |
+| `save_exam()` | `(title, description, duration_minutes, is_published, audio_name) → None` | Upserts exam metadata; emits `data_saved` |
 | `save_chunks()` | `→ None` | Replaces all DB chunks for this exam with `srt_chunks` (delete-all + re-insert) |
 | `list_question_tags()` | `→ list[str]` | Returns tag names for the Groups & Questions filter. |
 | `list_contexts()` | `(selected_tags=None) → list[ExamContext]` | Loads contexts through `IExamRepository`, optionally tag-filtered. |

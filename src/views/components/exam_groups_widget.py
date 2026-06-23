@@ -1,6 +1,4 @@
 ﻿import html
-import os
-
 import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt, QUrl
 from PySide6.QtGui import QCursor
@@ -16,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.utils.helpers import get_audio_meta
+from src.utils.helpers import get_audio_meta, get_local_media_path
 from src.utils.qt import clear_layout
 from src.views.components.add_exam_question_dialog import AddExamQuestionDialog
 from src.views.components.exam_context_html import context_content_html
@@ -105,12 +103,10 @@ class ExamGroupsWidget(QWidget):
         self.ui.transcript_browser.setVisible(False)
 
         # Load audio source
-        if self.viewmodel.exam and self.viewmodel.exam.full_audio_url:
-            path = self.viewmodel.exam.full_audio_url
-            if os.path.exists(path):
-                self.player.setSource(QUrl.fromLocalFile(path))
-            elif path.startswith("http"):
-                self.player.setSource(QUrl(path))
+        if self.viewmodel.exam and self.viewmodel.exam.audio_name:
+            path = get_local_media_path(self.viewmodel.exam.audio_name)
+            if path.exists():
+                self.player.setSource(QUrl.fromLocalFile(str(path)))
 
         contexts = getattr(self.viewmodel, "contexts", [])
         self._populate_q_list(contexts)

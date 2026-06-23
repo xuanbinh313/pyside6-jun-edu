@@ -29,7 +29,7 @@ class IExamRepository(ABC):
         description: str | None,
         duration_minutes: int,
         is_published: bool,
-        full_audio_url: str | None = None,
+        audio_name: str | None = None,
     ) -> str:
         raise NotImplementedError
 

@@ -2,12 +2,12 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QPushButton,QTableWidgetIte
                             QHeaderView,QLineEdit, QAbstractItemView)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import QUrl, Qt, QTimer, QSize
-import os
 
 # Import the icon management library.
 import qtawesome as qta
 
 from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
+from src.utils.helpers import get_local_media_path
 
 class TimeAdjustWidget(QWidget):
     def __init__(self, value, on_change, parent=None):
@@ -196,12 +196,10 @@ class ExamTranscriptWidget(QWidget):
         self._has_changes = False
         self.ui.save_btn.setVisible(False)
         
-        if self.viewmodel.exam and self.viewmodel.exam.full_audio_url:
-            path = self.viewmodel.exam.full_audio_url
-            if os.path.exists(path):
-                self.player.setSource(QUrl.fromLocalFile(path))
-            elif path.startswith("http"):
-                self.player.setSource(QUrl(path))
+        if self.viewmodel.exam and self.viewmodel.exam.audio_name:
+            path = get_local_media_path(self.viewmodel.exam.audio_name)
+            if path.exists():
+                self.player.setSource(QUrl.fromLocalFile(str(path)))
                 
         for row, chunk in enumerate(self.viewmodel.srt_chunks):
             self._insert_chunk_row(row, chunk)

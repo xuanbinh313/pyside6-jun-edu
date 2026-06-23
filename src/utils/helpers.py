@@ -7,9 +7,11 @@ import base64
 import html
 import mimetypes
 import re
+import shutil
 import tempfile
 from pathlib import Path
 from urllib.parse import unquote
+from urllib.request import Request, urlopen
 
 from slugify import slugify
 
@@ -66,6 +68,13 @@ def get_local_media_path(filename: str) -> Path:
     return get_local_media_dir() / get_valid_name(filename)
 
 
+def is_local_media_path(path: str | Path) -> bool:
+    try:
+        return Path(path).resolve().parent == get_local_media_dir().resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
 def unique_media_filename(filename: str) -> str:
     valid_name = get_valid_name(filename)
     candidate = valid_name
@@ -79,6 +88,40 @@ def unique_media_filename(filename: str) -> str:
         path = media_dir / candidate
         counter += 1
     return candidate
+
+
+def local_media_filename_from_source(
+    source: str | Path, filename: str | None = None
+) -> str:
+    """Copy or download an audio source into local media and return its filename."""
+    source_text = str(source or "").strip()
+    if not source_text:
+        return ""
+
+    if re.match(r"^https?://", source_text, flags=re.IGNORECASE):
+        guessed_name = filename or Path(source_text.split("?", 1)[0]).name or "audio"
+        unique_filename = unique_media_filename(guessed_name)
+        target_path = get_local_media_path(unique_filename)
+        request = Request(source_text, headers={"User-Agent": "JunEdu/1.0"})
+        with urlopen(request, timeout=60) as response:
+            target_path.write_bytes(response.read())
+        return unique_filename
+
+    local_path = Path(source_text)
+    if not local_path.is_absolute() and not local_path.exists():
+        media_path = get_local_media_path(source_text)
+        if media_path.exists():
+            return get_valid_name(source_text)
+
+    if not local_path.is_file():
+        raise ValueError(f"Audio file does not exist: {local_path}")
+
+    if is_local_media_path(local_path):
+        return get_valid_name(local_path.name)
+
+    unique_filename = unique_media_filename(filename or local_path.name)
+    shutil.copy2(local_path, get_local_media_path(unique_filename))
+    return unique_filename
 
 
 def optimize_image_to_webp_file(

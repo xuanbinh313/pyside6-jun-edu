@@ -140,19 +140,19 @@ class ExamAddExternalViewModel(QObject):
             url_audio = result.get("url_audio", "")
 
             # Download audio
-            full_audio_url = (
+            audio_url = (
                 url_audio
                 if url_audio.startswith("http")
                 else f"{TTS_AGENT_URL}{url_audio}"
             )
             emit_progress("Downloading aligned audio...")
-            audio_resp = requests.get(full_audio_url)
+            audio_resp = requests.get(audio_url)
             if audio_resp.status_code == 200:
                 timestamp = int(time_module.time() * 1000)
-                unique_file_name = unique_media_filename(
+                audio_name = unique_media_filename(
                     f"{timestamp}_{self.audio_file_name}"
                 )
-                target_path = get_local_media_path(unique_file_name)
+                target_path = get_local_media_path(audio_name)
 
                 with open(target_path, "wb") as f:
                     f.write(audio_resp.content)
@@ -169,7 +169,7 @@ class ExamAddExternalViewModel(QObject):
                         )
                         if not exam:
                             raise Exception("Target exam not found.")
-                        exam.full_audio_url = str(target_path)
+                        exam.audio_name = audio_name
                         session.query(ExamSrtChunk).filter(
                             ExamSrtChunk.exam_id == exam.id
                         ).delete(synchronize_session="fetch")
@@ -178,7 +178,7 @@ class ExamAddExternalViewModel(QObject):
                             title=self.audio_file_name or "External Exam",
                             description="Generated from external service",
                             duration_minutes=120,
-                            full_audio_url=str(target_path),  # Storing absolute path for playback
+                            audio_name=audio_name,
                             is_published=False,
                         )
                         session.add(exam)
@@ -186,7 +186,7 @@ class ExamAddExternalViewModel(QObject):
 
                     session.add(
                         MediaFile(
-                            filename=unique_file_name,
+                            filename=audio_name,
                             user_id=exam.user_id,
                             dirty=True,
                         )
@@ -205,7 +205,8 @@ class ExamAddExternalViewModel(QObject):
                     exam_id = exam.id
                     return {
                         "exam_id": exam_id,
-                        "full_audio_url": str(target_path),
+                        "audio_name": audio_name,
+                        "audio_path": str(target_path),
                         "chunk_count": len(content),
                     }
                 finally:
@@ -231,7 +232,7 @@ class ExamAddExternalViewModel(QObject):
 
     def _on_add_update_finished(self, result):
         self.is_loading = False
-        self.imported_audio_path = result.get("full_audio_url", "")
+        self.imported_audio_path = result.get("audio_path", "")
         self.imported_chunk_count = int(result.get("chunk_count", 0) or 0)
         self.state_changed.emit()
         self.exam_saved.emit(result["exam_id"])

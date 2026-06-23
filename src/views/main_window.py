@@ -121,6 +121,7 @@ class MainWindow(QMainWindow):
     def _on_sync_finished(self, results):
         self.sync_action.setEnabled(True)
         self.sync_local_action.setEnabled(True)
+        self._refresh_current_exam_view()
         summary = ", ".join(
             f"{result.table_name}: {result.row_count}" for result in results
         )
@@ -150,6 +151,7 @@ class MainWindow(QMainWindow):
         self.sync_action.setEnabled(True)
         self.sync_local_action.setEnabled(True)
         self.list_viewmodel.load_exams()
+        self._refresh_current_exam_view()
         summary = ", ".join(
             f"{result.table_name}: {result.row_count}" for result in results
         )
@@ -169,6 +171,11 @@ class MainWindow(QMainWindow):
             "Local Sync Failed",
             message,
         )
+
+    def _refresh_current_exam_view(self):
+        details_viewmodel = getattr(self, "details_viewmodel", None)
+        if details_viewmodel and details_viewmodel.exam_id:
+            details_viewmodel.load_exam()
 
     def show_settings_modal(self):
         minutes, ok = QInputDialog.getInt(

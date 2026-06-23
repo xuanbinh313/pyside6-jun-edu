@@ -830,7 +830,7 @@ RULES:
                     "context_type": "IMAGE_DIAGRAM",
                     "content": {
                         "text": Path(image_path).stem,
-                        "image_path": image_path,
+                        "_source_image_path": image_path,
                         "image_filename": Path(image_path).name,
                     },
                     "index": index,

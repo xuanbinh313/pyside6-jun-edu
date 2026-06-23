@@ -2,6 +2,7 @@
 
 from PySide6.QtWidgets import QFileDialog, QLabel, QMessageBox, QPushButton, QTextEdit, QWidget
 
+from src.utils.helpers import get_local_media_path, local_media_filename_from_source
 from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
 from ui_gen.ui_exam_form_widget import Ui_ExamFormWidget
 
@@ -63,7 +64,9 @@ class ExamFormWidget(QWidget):
         if self.viewmodel.exam:
             self.title_input.setText(self.viewmodel.exam.title or "")
             self.description_input.setText(self.viewmodel.exam.description or "")
-            self.audio_input.setText(self.viewmodel.exam.full_audio_url or "")
+            audio_name = self.viewmodel.exam.audio_name or ""
+            audio_path = str(get_local_media_path(audio_name)) if audio_name else ""
+            self.audio_input.setText(audio_path)
             self.duration_input.setValue(self.viewmodel.exam.duration_minutes or 0)
             self.published_checkbox.setChecked(bool(self.viewmodel.exam.is_published))
         self.external_viewmodel.target_exam_id = self.viewmodel.exam_id
@@ -213,17 +216,32 @@ class ExamFormWidget(QWidget):
             self.description_input.toPlainText(),
             self.duration_input.value(),
             self.published_checkbox.isChecked(),
-            self.audio_input.text().strip(),
+            self.viewmodel.exam.audio_name if self.viewmodel.exam else None,
         )
         return bool(self.viewmodel.exam_id)
 
+    def _audio_name_from_input(self):
+        audio_source = self.audio_input.text().strip()
+        if not audio_source:
+            return None
+        audio_name = local_media_filename_from_source(audio_source)
+        self.audio_input.setText(str(get_local_media_path(audio_name)))
+        return audio_name
+
     def on_save(self):
+        try:
+            audio_name = self._audio_name_from_input()
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Audio Save Error", f"Could not save audio file:\n{exc}"
+            )
+            return
         self.viewmodel.save_exam(
             self.title_input.text(),
             self.description_input.toPlainText(),
             self.duration_input.value(),
             self.published_checkbox.isChecked(),
-            self.audio_input.text().strip(),
+            audio_name,
         )
         if self._chunks_dirty:
             self.viewmodel.save_chunks()
