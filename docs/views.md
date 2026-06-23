@@ -189,6 +189,13 @@ current_task_id set → pick_btn disabled (audio locked)
 
 Form for editing exam metadata. Used as a tab inside `ExamDetailsView`.
 
+#### Extracted Helpers
+
+| File | Responsibility |
+|---|---|
+| [`src/views/components/exam_context_section.py`](../src/views/components/exam_context_section.py) | Reusable context block with title, audio controls, edit action, rendered rich-text body, and note display |
+| [`src/views/components/exam_context_html.py`](../src/views/components/exam_context_html.py) | Pure rendering helpers for `READING_PASSAGE`, `AUDIO_SRT`, and `IMAGE_DIAGRAM` context content |
+
 #### Key Methods
 
 | Method | Description |

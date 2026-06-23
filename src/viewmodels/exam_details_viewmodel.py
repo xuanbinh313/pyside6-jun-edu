@@ -53,6 +53,41 @@ class ExamDetailsViewModel(QObject):
 
         self.repo.replace_srt_chunks(self.exam_id, self.srt_chunks)
 
+    def list_question_tags(self) -> list[str]:
+        return self.repo.list_question_tags()
+
+    def list_contexts(self, selected_tags: list[str] | None = None):
+        if not self.exam_id:
+            return []
+        return self.repo.list_contexts(self.exam_id, selected_tags)
+
+    def list_questions_for_context(self, context_id: str):
+        return self.repo.list_questions_for_context(context_id)
+
+    def context_question_numbers(self, context_id: str) -> list[int]:
+        return self.repo.get_context_question_numbers(context_id)
+
+    def delete_contexts_and_questions(
+        self, context_ids: list[str], question_ids: list[str]
+    ) -> None:
+        self.repo.delete_contexts_and_questions(context_ids, question_ids)
+
+    def update_context_audio_segment(
+        self, context_id: str, audio_start: float, audio_end: float
+    ):
+        return self.repo.update_context_audio_segment(
+            context_id, audio_start, audio_end
+        )
+
+    def import_contexts_and_questions(
+        self, contexts_data: list[dict], questions_data: list[dict]
+    ) -> dict:
+        if not self.exam_id:
+            raise ValueError("Cannot import questions before the exam is saved.")
+        return self.repo.import_contexts_and_questions(
+            self.exam_id, contexts_data, questions_data
+        )
+
     def duplicate_chunk(self, chunk):
         list_idx = self.srt_chunks.index(chunk)
         max_idx = max((c.index for c in self.srt_chunks), default=0)

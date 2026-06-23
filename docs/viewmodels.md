@@ -92,6 +92,13 @@ Manages a single exam's metadata and its SRT chunk list. Used by both **new exam
 | `load_exam()` | `→ None` | Loads exam + chunks from DB; expunges from session; emits `data_loaded` |
 | `save_exam()` | `(title, description, duration_minutes, is_published) → None` | Upserts exam metadata; emits `data_saved` |
 | `save_chunks()` | `→ None` | Replaces all DB chunks for this exam with `srt_chunks` (delete-all + re-insert) |
+| `list_question_tags()` | `→ list[str]` | Returns tag names for the Groups & Questions filter. |
+| `list_contexts()` | `(selected_tags=None) → list[ExamContext]` | Loads contexts through `IExamRepository`, optionally tag-filtered. |
+| `list_questions_for_context()` | `(context_id) → list[ExamQuestion]` | Loads context questions through `IExamRepository`. |
+| `context_question_numbers()` | `(context_id) → list[int]` | Returns ordered question numbers for context labels. |
+| `delete_contexts_and_questions()` | `(context_ids, question_ids) → None` | Delegates context/question deletion to the repository. |
+| `update_context_audio_segment()` | `(context_id, audio_start, audio_end) → ExamContext \| None` | Persists context audio metadata through the repository. |
+| `import_contexts_and_questions()` | `(contexts_data, questions_data) → dict` | Imports parsed groups/questions through the repository. |
 | `duplicate_chunk()` | `(chunk) → (new_idx, new_chunk)` | Inserts a copy of `chunk` after it in `srt_chunks`; assigns next max index |
 | `merge_chunk()` | `(chunk) → (idx, removed_chunk) \| (None, None)` | Merges text + end_time of chunk with the next chunk; removes next chunk |
 

@@ -1,7 +1,4 @@
-import base64
 import json
-import mimetypes
-from io import BytesIO
 from pathlib import Path
 
 from json_repair import repair_json
@@ -684,28 +681,6 @@ STRICT ARCHITECTURE RULES:
             )
         return data
 
-    def _image_file_to_data_url(self, file_path: str) -> str:
-        path = Path(file_path)
-        raw = path.read_bytes()
-
-        try:
-            from PIL import Image, ImageOps
-
-            with Image.open(BytesIO(raw)) as image:
-                image = ImageOps.exif_transpose(image)
-                if max(image.size) > 1800:
-                    image.thumbnail((1800, 1800), Image.Resampling.LANCZOS)
-                if image.mode not in ("RGB", "RGBA"):
-                    image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
-                output = BytesIO()
-                image.save(output, format="WEBP", quality=90, method=6)
-            encoded = base64.b64encode(output.getvalue()).decode("ascii")
-            return f"data:image/webp;base64,{encoded}"
-        except Exception:
-            mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
-            encoded = base64.b64encode(raw).decode("ascii")
-            return f"data:{mime_type};base64,{encoded}"
-
     def _default_question(self, question_number: int, llm_context_id: str) -> dict:
         return {
             "llm_context_id": llm_context_id,
@@ -742,7 +717,8 @@ STRICT ARCHITECTURE RULES:
                     "context_type": "IMAGE_DIAGRAM",
                     "content": {
                         "text": Path(image_path).stem,
-                        "image_data_url": self._image_file_to_data_url(image_path),
+                        "image_path": image_path,
+                        "image_filename": Path(image_path).name,
                     },
                     "index": index,
                     "additional_meta": {

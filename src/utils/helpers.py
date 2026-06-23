@@ -1,6 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Helper: extract audio timestamps from additional_meta JSON
 # ─────────────────────────────────────────────────────────────────────────────
+from __future__ import annotations
+
 import base64
 import html
 import mimetypes
@@ -77,6 +79,41 @@ def unique_media_filename(filename: str) -> str:
         path = media_dir / candidate
         counter += 1
     return candidate
+
+
+def optimize_image_to_webp_file(
+    source_path: str | Path, filename: str | None = None
+) -> str:
+    """Optimize an image into the local temp media folder and return its filename."""
+    try:
+        from PIL import Image, ImageOps
+    except ImportError as exc:
+        raise ValueError(
+            "Pillow is required to optimize diagram images. Please install requirements.txt."
+        ) from exc
+
+    source = Path(source_path)
+    if not source.is_file():
+        raise ValueError(f"Image file does not exist: {source}")
+
+    output_name = filename or f"{source.stem}.webp"
+    output_path = Path(output_name)
+    output_name = f"{output_path.stem}.webp"
+    unique_filename = unique_media_filename(output_name)
+    target_path = get_local_media_path(unique_filename)
+
+    try:
+        with Image.open(source) as image:
+            image = ImageOps.exif_transpose(image)
+            if max(image.size) > 1800:
+                image.thumbnail((1800, 1800), Image.Resampling.LANCZOS)
+            if image.mode not in ("RGB", "RGBA"):
+                image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+            image.save(target_path, format="WEBP", quality=90, method=6)
+    except Exception as exc:
+        raise ValueError(f"Could not optimize image: {exc}") from exc
+
+    return unique_filename
 
 
 def extension_from_data_url(data_url: str) -> str:

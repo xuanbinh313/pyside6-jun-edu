@@ -56,6 +56,13 @@ workflow:
 | `get_exam_details(exam_id)` | Returns pure exam, transcript chunks, contexts, and questions. |
 | `save_exam(...)` | Creates or updates exam metadata and returns the exam ID. |
 | `replace_srt_chunks(exam_id, chunks)` | Replaces persisted transcript chunks for an exam. |
+| `list_question_tags()` | Returns distinct question tag names for filters. |
+| `list_contexts(exam_id, selected_tags)` | Returns contexts for the groups/questions view, optionally filtered by tags. |
+| `list_questions_for_context(context_id)` | Returns pure question dataclasses for one context. |
+| `get_context_question_numbers(context_id)` | Returns ordered question numbers for context labels. |
+| `delete_contexts_and_questions(context_ids, question_ids)` | Deletes selected context/question records in a repository transaction. |
+| `update_context_audio_segment(context_id, audio_start, audio_end)` | Updates context audio timing metadata and returns the updated context. |
+| `import_contexts_and_questions(exam_id, contexts_data, questions_data)` | Imports parsed question groups, tracks diagram media locally, and returns import counts. |
 
 ## SQLite Repository
 

@@ -36,3 +36,39 @@ class IExamRepository(ABC):
     @abstractmethod
     def replace_srt_chunks(self, exam_id: str, chunks: list[ExamSrtChunk]) -> None:
         raise NotImplementedError
+
+    @abstractmethod
+    def list_question_tags(self) -> list[str]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_contexts(
+        self, exam_id: str, selected_tags: list[str] | None = None
+    ) -> list[ExamContext]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_questions_for_context(self, context_id: str) -> list[ExamQuestion]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_context_question_numbers(self, context_id: str) -> list[int]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_contexts_and_questions(
+        self, context_ids: list[str], question_ids: list[str]
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_context_audio_segment(
+        self, context_id: str, audio_start: float, audio_end: float
+    ) -> ExamContext | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def import_contexts_and_questions(
+        self, exam_id: str, contexts_data: list[dict], questions_data: list[dict]
+    ) -> dict:
+        raise NotImplementedError
