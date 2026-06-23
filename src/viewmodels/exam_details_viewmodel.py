@@ -79,6 +79,11 @@ class ExamDetailsViewModel(QObject):
             context_id, audio_start, audio_end
         )
 
+    def update_correct_answers(self, answer_key: dict[int, str]) -> list[int]:
+        if not self.exam_id or not answer_key:
+            return []
+        return self.repo.update_correct_answers(self.exam_id, answer_key)
+
     def import_contexts_and_questions(
         self, contexts_data: list[dict], questions_data: list[dict]
     ) -> dict:

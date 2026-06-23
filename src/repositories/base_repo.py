@@ -68,6 +68,12 @@ class IExamRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def update_correct_answers(
+        self, exam_id: str, answer_key: dict[int, str]
+    ) -> list[int]:
+        raise NotImplementedError
+
+    @abstractmethod
     def import_contexts_and_questions(
         self, exam_id: str, contexts_data: list[dict], questions_data: list[dict]
     ) -> dict:

@@ -285,6 +285,18 @@ Named widgets from `.ui` file:
 | `on_question_tag_changed()` | Called by `TagMenuPopup` to refresh the tag filter list |
 | `on_question_audio_changed(question)` | Called by `OptionWidget` after saving a new audio segment |
 
+#### Import Questions Dialog
+
+`ImportQuestionsDialog` supports structured JSON import plus an optional answer-key CSV lane. The answer-key prompt asks the LLM to return only:
+
+```csv
+question,answer
+1,A
+2,B
+```
+
+When CSV answers are pasted, the dialog applies them to newly imported question data before saving. `ExamGroupsWidget` also sends the answer map through the ViewModel so existing `ExamQuestion.correct_answer` values in the current exam are updated by `question_number`; missing question numbers are ignored.
+
 ---
 
 ### `ExamTranscriptWidget`

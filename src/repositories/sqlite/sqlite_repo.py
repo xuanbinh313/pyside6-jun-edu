@@ -346,6 +346,38 @@ class SQLiteExamRepository(IExamRepository):
         finally:
             session.close()
 
+    def update_correct_answers(
+        self, exam_id: str, answer_key: dict[int, str]
+    ) -> list[int]:
+        if not answer_key:
+            return []
+
+        session = get_session()
+        try:
+            stmt = (
+                select(orm.ExamQuestion)
+                .join(
+                    orm.ExamContext,
+                    orm.ExamQuestion.context_id == orm.ExamContext.id,
+                )
+                .filter(orm.ExamContext.exam_id == exam_id)
+            )
+            updated_numbers: list[int] = []
+            for question in session.scalars(stmt).all():
+                question_number = int(question.question_number or 0)
+                answer = answer_key.get(question_number)
+                if not answer:
+                    continue
+                question.correct_answer = answer
+                updated_numbers.append(question_number)
+            session.commit()
+            return sorted(updated_numbers)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def import_contexts_and_questions(
         self, exam_id: str, contexts_data: list[dict], questions_data: list[dict]
     ) -> dict:

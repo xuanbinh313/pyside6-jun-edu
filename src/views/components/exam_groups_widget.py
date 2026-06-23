@@ -350,23 +350,34 @@ class ExamGroupsWidget(QWidget):
 
         contexts_data = dialog.result_contexts  # list[dict] with 'llm_id' key
         questions_data = dialog.result_questions  # list[dict] with 'llm_context_id' key
-        if not questions_data:
+        answer_key = getattr(dialog, "result_answer_key", {})
+        if not questions_data and not answer_key:
             return
 
         try:
-            result = self.viewmodel.import_contexts_and_questions(
-                contexts_data, questions_data
-            )
-            duplicate_numbers = result.get("duplicate_numbers", [])
-            if duplicate_numbers:
-                duplicate_text = ", ".join(f"Q{number}" for number in duplicate_numbers)
-                QMessageBox.warning(
-                    self,
-                    "Duplicate Question Numbers",
-                    f"The import data contains duplicate question number(s): {duplicate_text}.\n"
-                    "Please keep each question number unique in the import JSON.",
+            answer_updated_numbers = self.viewmodel.update_correct_answers(answer_key)
+            result = {
+                "context_count": 0,
+                "created_count": 0,
+                "updated_numbers": [],
+                "duplicate_numbers": [],
+            }
+            if questions_data:
+                result = self.viewmodel.import_contexts_and_questions(
+                    contexts_data, questions_data
                 )
-                return
+                duplicate_numbers = result.get("duplicate_numbers", [])
+                if duplicate_numbers:
+                    duplicate_text = ", ".join(
+                        f"Q{number}" for number in duplicate_numbers
+                    )
+                    QMessageBox.warning(
+                        self,
+                        "Duplicate Question Numbers",
+                        f"The import data contains duplicate question number(s): {duplicate_text}.\n"
+                        "Please keep each question number unique in the import JSON.",
+                    )
+                    return
 
             n_ctx = result.get("context_count", 0)
             created_count = result.get("created_count", 0)
@@ -382,6 +393,7 @@ class ExamGroupsWidget(QWidget):
                 "Import Successful",
                 f"Imported {n_ctx} context(s).\n"
                 f"Created {created_count} question(s), updated {len(updated_numbers)} question(s)."
+                f"\nUpdated {len(answer_updated_numbers)} existing answer key(s)."
                 f"{updated_text}",
             )
             self.viewmodel.load_exam()

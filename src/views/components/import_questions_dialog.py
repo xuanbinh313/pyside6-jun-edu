@@ -1,4 +1,7 @@
+import csv
+import io
 import json
+import re
 from pathlib import Path
 
 from json_repair import repair_json
@@ -150,6 +153,24 @@ STRICT ARCHITECTURE RULES:
 
     PROMPT_TEXT = READING_PROMPT_TEXT
 
+    ANSWER_SHEET_PROMPT_TEXT = r"""
+Analyze the attached answer sheet image and extract only the printed answer key.
+OUTPUT CONSTRAINT: Output ONLY CSV text. No markdown, no code fences, no explanations.
+
+CSV FORMAT:
+question,answer
+1,A
+2,B
+3,C
+
+RULES:
+1. The first row must be exactly: question,answer
+2. Use the printed question number as an integer.
+3. Use only answer letters A, B, C, or D.
+4. If an answer cannot be read confidently, omit that row.
+5. Do not include duplicate question rows.
+"""
+
     VALID_CONTEXT_TYPES = {
         "READING_PASSAGE",
         "AUDIO_SRT",
@@ -170,6 +191,7 @@ STRICT ARCHITECTURE RULES:
         self.resize(720, 600)
         self.result_contexts: list[dict] = []
         self.result_questions: list[dict] = []
+        self.result_answer_key: dict[int, str] = {}
         self.selected_image_paths: list[str] = []
         self._setup_ui()
 
@@ -183,6 +205,7 @@ STRICT ARCHITECTURE RULES:
         self.prompt_texts = self._build_prompt_texts()
         self._setup_prompt_list()
         self._setup_image_picker()
+        self._setup_answer_key_input()
 
         placeholder = (
             "{\n"
@@ -219,6 +242,7 @@ STRICT ARCHITECTURE RULES:
         return {
             "listening": self.LISTENING_PROMPT_TEXT,
             "reading": self.READING_PROMPT_TEXT,
+            "answer_sheet": self.ANSWER_SHEET_PROMPT_TEXT,
         }
 
     def _setup_prompt_list(self):
@@ -238,6 +262,7 @@ STRICT ARCHITECTURE RULES:
         prompt_labels = [
             ("listening", "TOEIC Parts 1-4 - Listening transcript"),
             ("reading", "TOEIC Part 5,6,7 - Reading comprehension"),
+            ("answer_sheet", "Answer sheet - CSV question,answer"),
         ]
         for key, label in prompt_labels:
             item = QListWidgetItem(label)
@@ -276,6 +301,21 @@ STRICT ARCHITECTURE RULES:
         )
         numbers_row.addWidget(self.question_numbers_input, 1)
         self.ui.main_layout.insertLayout(divider_index + 1, numbers_row)
+
+    def _setup_answer_key_input(self):
+        answer_label = QLabel("Answer key CSV:")
+        answer_label.setStyleSheet("color: #3c4043; font-size: 12px;")
+        self.answer_key_edit = QTextEdit()
+        self.answer_key_edit.setMinimumHeight(92)
+        self.answer_key_edit.setMaximumHeight(140)
+        self.answer_key_edit.setPlaceholderText("question,answer\n1,A\n2,B\n3,C")
+        self.answer_key_edit.setStyleSheet(
+            "border: 1px solid #dadce0; border-radius: 4px; "
+            "font-family: monospace; font-size: 11px;"
+        )
+        divider_index = self.ui.main_layout.indexOf(self.ui.divider_line)
+        self.ui.main_layout.insertWidget(divider_index, answer_label)
+        self.ui.main_layout.insertWidget(divider_index + 1, self.answer_key_edit)
 
     def _copy_prompt(self):
         current_item = self.prompt_list.currentItem()
@@ -343,22 +383,41 @@ STRICT ARCHITECTURE RULES:
 
     def _on_import(self):
         raw = self.json_edit.toPlainText().strip()
-        if not raw and not self.selected_image_paths:
-            QMessageBox.warning(self, "Warning", "Please paste the JSON data first.")
-            return
-
-        try:
-            contexts, questions = self._parse_json(raw)
-        except Exception as exc:
-            QMessageBox.critical(
+        answer_csv = self.answer_key_edit.toPlainText().strip()
+        if not raw and not self.selected_image_paths and not answer_csv:
+            QMessageBox.warning(
                 self,
-                "JSON Parse Error",
-                f"Could not parse the JSON.\n"
-                f"Make sure it follows the template exactly.\n\nDetails: {exc}",
+                "Warning",
+                "Please paste JSON question data or answer key CSV first.",
             )
             return
 
-        if not questions:
+        contexts: list[dict] = []
+        questions: list[dict] = []
+        if raw or self.selected_image_paths:
+            try:
+                contexts, questions = self._parse_json(raw)
+            except Exception as exc:
+                QMessageBox.critical(
+                    self,
+                    "JSON Parse Error",
+                    f"Could not parse the JSON.\n"
+                    f"Make sure it follows the template exactly.\n\nDetails: {exc}",
+                )
+                return
+
+        try:
+            answer_key = self._parse_answer_key_csv(answer_csv)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Answer CSV Error",
+                f"Could not parse the answer key CSV.\n"
+                f"Use format: question,answer\n1,A\n\nDetails: {exc}",
+            )
+            return
+
+        if not questions and not answer_key:
             QMessageBox.warning(
                 self, "No Data", "No questions found in the pasted JSON."
             )
@@ -374,9 +433,63 @@ STRICT ARCHITECTURE RULES:
             )
             return
 
+        if answer_key:
+            self._apply_answer_key_to_questions(questions, answer_key)
+
         self.result_contexts = contexts
         self.result_questions = questions
+        self.result_answer_key = answer_key
         self.accept()
+
+    def _parse_answer_key_csv(self, raw_text: str) -> dict[int, str]:
+        if not raw_text:
+            return {}
+
+        clean_text = re.sub(r"^```(?:csv)?\s*|\s*```$", "", raw_text.strip())
+        reader = csv.DictReader(io.StringIO(clean_text))
+        if not reader.fieldnames:
+            raise ValueError("CSV header is missing.")
+
+        normalized_fields = {
+            str(field or "").strip().lower(): field for field in reader.fieldnames
+        }
+        question_field = normalized_fields.get("question")
+        answer_field = normalized_fields.get("answer")
+        if not question_field or not answer_field:
+            raise ValueError('CSV header must include "question" and "answer".')
+
+        answer_key: dict[int, str] = {}
+        for row_number, row in enumerate(reader, start=2):
+            raw_question = str(row.get(question_field, "")).strip()
+            raw_answer = str(row.get(answer_field, "")).strip().upper()
+            if not raw_question and not raw_answer:
+                continue
+            try:
+                question_number = int(raw_question)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Row {row_number} has invalid question number: {raw_question}"
+                ) from exc
+            if question_number <= 0:
+                raise ValueError(f"Row {row_number} question must be greater than zero.")
+
+            answer_match = re.search(r"[A-D]", raw_answer)
+            if not answer_match:
+                continue
+            answer_key[question_number] = answer_match.group(0)
+        return answer_key
+
+    def _apply_answer_key_to_questions(
+        self, questions: list[dict], answer_key: dict[int, str]
+    ) -> None:
+        for question in questions:
+            try:
+                question_number = int(question.get("question_number", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            answer = answer_key.get(question_number)
+            if answer:
+                question["correct_answer"] = answer
 
     # JSON parser
     def _parse_json(self, raw_text: str) -> tuple[list[dict], list[dict]]:

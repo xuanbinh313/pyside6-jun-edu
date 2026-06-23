@@ -44,6 +44,9 @@ class SupabaseExamRepository(IExamRepository):
     ):
         raise NotImplementedError("Supabase exam repository is not implemented yet.")
 
+    def update_correct_answers(self, exam_id: str, answer_key: dict[int, str]):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
     def import_contexts_and_questions(
         self, exam_id: str, contexts_data: list[dict], questions_data: list[dict]
     ):
