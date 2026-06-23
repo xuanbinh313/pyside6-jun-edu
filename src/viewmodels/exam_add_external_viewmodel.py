@@ -1,12 +1,12 @@
 ﻿import os
 import time
 import requests
-import tempfile
 import time as time_module
 from PySide6.QtCore import QObject, Signal, QThread
 from dotenv import load_dotenv
 from src.repositories.sqlite.database import get_session
-from src.repositories.sqlite.orm_models import Exam, ExamSrtChunk
+from src.repositories.sqlite.orm_models import Exam, ExamSrtChunk, MediaFile
+from src.utils.helpers import get_local_media_path, unique_media_filename
 
 load_dotenv()
 TTS_AGENT_URL = os.getenv("TTS_AGENT_URL", "https://api.jun-edu.shop")
@@ -148,13 +148,11 @@ class ExamAddExternalViewModel(QObject):
             emit_progress("Downloading aligned audio...")
             audio_resp = requests.get(full_audio_url)
             if audio_resp.status_code == 200:
-                temp_dir = tempfile.gettempdir()
-                media_dir = os.path.join(temp_dir, "jun_edu_media")
-                os.makedirs(media_dir, exist_ok=True)
-
                 timestamp = int(time_module.time() * 1000)
-                unique_file_name = f"{timestamp}_{self.audio_file_name}"
-                target_path = os.path.join(media_dir, unique_file_name)
+                unique_file_name = unique_media_filename(
+                    f"{timestamp}_{self.audio_file_name}"
+                )
+                target_path = get_local_media_path(unique_file_name)
 
                 with open(target_path, "wb") as f:
                     f.write(audio_resp.content)
@@ -171,7 +169,7 @@ class ExamAddExternalViewModel(QObject):
                         )
                         if not exam:
                             raise Exception("Target exam not found.")
-                        exam.full_audio_url = target_path
+                        exam.full_audio_url = str(target_path)
                         session.query(ExamSrtChunk).filter(
                             ExamSrtChunk.exam_id == exam.id
                         ).delete(synchronize_session="fetch")
@@ -180,11 +178,19 @@ class ExamAddExternalViewModel(QObject):
                             title=self.audio_file_name or "External Exam",
                             description="Generated from external service",
                             duration_minutes=120,
-                            full_audio_url=target_path,  # Storing absolute path for playback
+                            full_audio_url=str(target_path),  # Storing absolute path for playback
                             is_published=False,
                         )
                         session.add(exam)
                         session.flush()
+
+                    session.add(
+                        MediaFile(
+                            filename=unique_file_name,
+                            user_id=exam.user_id,
+                            dirty=True,
+                        )
+                    )
 
                     for idx, item in enumerate(content):
                         chunk = ExamSrtChunk(
@@ -199,7 +205,7 @@ class ExamAddExternalViewModel(QObject):
                     exam_id = exam.id
                     return {
                         "exam_id": exam_id,
-                        "full_audio_url": target_path,
+                        "full_audio_url": str(target_path),
                         "chunk_count": len(content),
                     }
                 finally:

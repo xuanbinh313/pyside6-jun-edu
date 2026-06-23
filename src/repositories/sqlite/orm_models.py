@@ -2,7 +2,7 @@ import datetime
 import uuid
 from typing import List, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.util.typing import TypedDict
 
@@ -173,3 +173,21 @@ class UserAnswer(Base):
     question: Mapped["ExamQuestion"] = relationship(
         "ExamQuestion", back_populates="answers"
     )
+
+
+class MediaFile(Base):
+    __tablename__ = "mediafiles"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

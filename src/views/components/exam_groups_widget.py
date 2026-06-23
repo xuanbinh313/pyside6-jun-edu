@@ -2,6 +2,7 @@
 import json
 import os
 import re
+from typing import Optional
 
 import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt, QUrl
@@ -23,13 +24,36 @@ from PySide6.QtWidgets import (
 
 from src.repositories.sqlite import orm_models as exam_model
 from src.repositories.sqlite.database import get_session
-from src.utils.helpers import get_audio_meta
+from src.utils.helpers import (
+    decode_data_url,
+    extension_from_data_url,
+    get_audio_meta,
+    get_local_media_path,
+    unique_media_filename,
+)
 from src.utils.qt import clear_layout
 from src.views.components.add_exam_question_dialog import AddExamQuestionDialog
 from src.views.components.import_questions_dialog import ImportQuestionsDialog
 from src.views.components.option_question_item import OptionQuestionItem
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
+
+
+def _save_imported_diagram_media(ctx_data: dict, user_id: Optional[str]) -> str:
+    content = ctx_data.get("content")
+    if not isinstance(content, dict):
+        return ""
+    image_data_url = str(content.get("image_data_url", "") or "")
+    if not image_data_url.startswith("data:"):
+        return ""
+
+    filename = content.get("filename") or content.get("image_filename")
+    if not filename:
+        filename = f"diagram{extension_from_data_url(image_data_url)}"
+    unique_filename = unique_media_filename(str(filename))
+    get_local_media_path(unique_filename).write_bytes(decode_data_url(image_data_url))
+    content["image_filename"] = unique_filename
+    return unique_filename
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -192,9 +216,7 @@ class ExamGroupsWidget(QWidget):
                 item.setForeground(Qt.GlobalColor.darkBlue)
                 self.ui.q_list.addItem(item)
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Slots
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _on_question_selected(self, current, previous):
         self.player.stop()
 
@@ -269,9 +291,7 @@ class ExamGroupsWidget(QWidget):
             menu.addAction(f"Question {q_num} not in current view")
             menu.exec(QCursor.pos())
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Edit / Delete question
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _on_q_list_context_menu(self, pos: QPoint):
         """Show Edit / Delete context menu for the right-clicked list item."""
         clicked_item = self.ui.q_list.itemAt(pos)
@@ -459,9 +479,7 @@ class ExamGroupsWidget(QWidget):
                 }
             )
             if import_duplicates:
-                duplicate_text = ", ".join(
-                    f"Q{number}" for number in import_duplicates
-                )
+                duplicate_text = ", ".join(f"Q{number}" for number in import_duplicates)
                 QMessageBox.warning(
                     self,
                     "Duplicate Question Numbers",
@@ -520,6 +538,18 @@ class ExamGroupsWidget(QWidget):
                     {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
                 )
                 new_ctx.user_id = ctx_data.get("user_id")
+                if new_ctx.context_type == "IMAGE_DIAGRAM":
+                    media_filename = _save_imported_diagram_media(
+                        ctx_data, new_ctx.user_id
+                    )
+                    if media_filename:
+                        session.add(
+                            exam_model.MediaFile(
+                                filename=media_filename,
+                                user_id=new_ctx.user_id,
+                                dirty=True,
+                            )
+                        )
                 session.flush()  # populate new_ctx.id without full commit
                 if llm_id:
                     llm_to_real_id[llm_id] = str(new_ctx.id)
@@ -852,7 +882,9 @@ class ExamGroupsWidget(QWidget):
 
     def _context_note_text(self, question):
         ctx = getattr(question, "context", None)
-        meta = ctx.additional_meta if ctx and isinstance(ctx.additional_meta, dict) else {}
+        meta = (
+            ctx.additional_meta if ctx and isinstance(ctx.additional_meta, dict) else {}
+        )
         note = str(meta.get("note", "")).strip()
         if note:
             return note

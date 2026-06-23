@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 
 from json_repair import repair_json
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -12,8 +13,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QDialog,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QTextEdit,
+    QVBoxLayout,
 )
 
 from ui_gen.ui_import_questions_dialog import Ui_ImportQuestionsDialog
@@ -34,7 +39,71 @@ class ImportQuestionsDialog(QDialog):
     # Định nghĩa ngôn ngữ mặc định (Bạn có thể đổi thành "English", "Japanese", v.v.)
     TARGET_LANG = "Vietnamese (vn)"
 
-    PROMPT_TEXT = r"""
+    LISTENING_PROMPT_TEXT = r"""
+Analyze the attached listening transcript text and extract all content into a raw JSON object. 
+OUTPUT CONSTRAINT: Output ONLY the raw JSON. No markdown, no ```json code fences, no explanations.
+TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
+
+{
+    "contexts": [
+        {
+            "id": "Unique string ID (e.g., 'ctx_l1_1', 'ctx_l3_32')",
+            "part": 2, // Integer (TOEIC part 1, 2, 3, or 4). Store ONLY in context, NEVER in questions.
+            "context_type": "AUDIO_SRT | STANDALONE",
+            "content": {
+                // AUDIO_SRT: For Part 3 & 4. Put the full conversation/talk transcript text here.
+                // STANDALONE: For Part 1 & 2. Must be exactly {"text": ""}
+                "text": "string"
+            },
+            "index": 0, // 0-based order of appearance in the transcript
+            "additional_meta": { 
+                "audio_start": 0.0, 
+                "audio_end": 0.0, 
+                "note": "REQUIRED. Provide the exact full translation of 'content.text' into {TARGET_LANG}. If STANDALONE, leave as empty string." 
+            }
+        }
+    ],
+    "questions": [
+        {
+            "context_id": "Must match a valid context id. NEVER null.",
+            "question_number": 11, // Printed or spoken question number as integer
+            "question_type": "MULTIPLE_CHOICE",
+            "content": "Question stem text. Follow the LISTENING PART RULES below.",
+            "options": ["Flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order."],
+            "correct_answer": "Required choice label ('A', 'B', 'C', or 'D').",
+            "additional_meta": {
+                "note": "REQUIRED. Strictly format this field exactly as follows:\n[Translation of the question content stem into {TARGET_LANG}]\n[Translation of option 1 into {TARGET_LANG}]\n[Translation of option 2 into {TARGET_LANG}]\n[Translation of option 3 into {TARGET_LANG}]\n[Translation of option 4 into {TARGET_LANG} (if applicable)]\n\n[Detailed grammatical/contextual explanation in {TARGET_LANG} explaining why the correct_answer is right based on keywords from the transcript.]"
+            }
+        }
+    ]
+}
+
+LISTENING PART RULES:
+1. PART 1 (Photographs):
+   - context_type: "STANDALONE" (content.text = "")
+   - questions.content: Set to exactly "Look at the picture and choose the statement that best describes it."
+   - questions.options: Put the 4 transcript descriptions (A, B, C, D) here.
+
+2. PART 2 (Question-Response):
+   - context_type: "STANDALONE" (content.text = "")
+   - questions.content: Put the spoken Question/Statement here (e.g., "Where is the meeting room?").
+   - questions.options: Put the 3 spoken response choices (A, B, C) here.
+
+3. PART 3 & 4 (Conversations & Talks):
+   - context_type: "AUDIO_SRT"
+   - contexts.content.text: Put the entire spoken dialogue or monologue transcript block here.
+   - questions.content: Put the printed question stem here.
+   - questions.options: Put the 4 printed multiple-choice options here.
+
+STRICT ARCHITECTURE RULES:
+1. Every question must link to a context. Never use null context_id.
+2. For Part 1 and Part 2, every single question MUST have its own unique, dedicated "STANDALONE" context. Do NOT group multiple Part 1 or Part 2 questions into one context.
+3. For Part 3 and Part 4, all questions belonging to the same conversation/talk (usually sets of 3) must reference the exact same shared "AUDIO_SRT" context ID.
+4. Extract every question provided in the transcript. Never leave correct_answer or additional_meta.note empty.
+5. In 'questions.additional_meta.note', ensure there is a clear new line separating the translations (question + options) and the final explanation.
+""".replace("{TARGET_LANG}", TARGET_LANG)
+
+    READING_PROMPT_TEXT = r"""
 Analyze the attached exam image and extract all content into a raw JSON object. 
 OUTPUT CONSTRAINT: Output ONLY the raw JSON. No markdown, no ```json code fences, no explanations.
 TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
@@ -82,6 +151,8 @@ STRICT ARCHITECTURE RULES:
 5. In 'questions.additional_meta.note', ensure there is a clear new line separating the option translations and the final explanation.
 """.replace("{TARGET_LANG}", TARGET_LANG)
 
+    PROMPT_TEXT = READING_PROMPT_TEXT
+
     VALID_CONTEXT_TYPES = {
         "READING_PASSAGE",
         "AUDIO_SRT",
@@ -112,7 +183,8 @@ STRICT ARCHITECTURE RULES:
 
         self.prompt_edit = self.ui.prompt_edit
         self.json_edit = self.ui.json_edit
-        self.prompt_edit.setText(self.PROMPT_TEXT)
+        self.prompt_texts = self._build_prompt_texts()
+        self._setup_prompt_list()
         self._setup_image_picker()
 
         placeholder = (
@@ -146,6 +218,38 @@ STRICT ARCHITECTURE RULES:
         self.ui.cancel_btn.clicked.connect(self.reject)
         self.ui.import_btn.clicked.connect(self._on_import)
 
+    def _build_prompt_texts(self) -> dict[str, str]:
+        return {
+            "listening": self.LISTENING_PROMPT_TEXT,
+            "reading": self.READING_PROMPT_TEXT,
+        }
+
+    def _setup_prompt_list(self):
+        self.ui.step1_title.setText("Step 1 - Choose a prompt to copy or edit")
+        self.ui.description_label.setText(
+            "Select the matching TOEIC part, review the prompt, copy it to your LLM, then paste the generated JSON below."
+        )
+        self.prompt_edit.hide()
+        self.ui.copy_btn.setText("Open Selected Prompt")
+
+        self.prompt_list = QListWidget()
+        self.prompt_list.setMinimumHeight(132)
+        self.prompt_list.setMaximumHeight(160)
+        self.prompt_list.setStyleSheet(
+            "border: 1px solid #dadce0; border-radius: 4px; background: white;"
+        )
+        prompt_labels = [
+            ("listening", "TOEIC Parts 1-4 - Listening transcript"),
+            ("reading", "TOEIC Part 5,6,7 - Reading comprehension"),
+        ]
+        for key, label in prompt_labels:
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            self.prompt_list.addItem(item)
+        self.prompt_list.setCurrentRow(1)
+        self.prompt_list.itemClicked.connect(self._open_prompt_editor)
+        self.ui.main_layout.insertWidget(2, self.prompt_list)
+
     def _setup_image_picker(self):
         image_row = QHBoxLayout()
         self.pick_images_btn = QPushButton("Select Diagram Images")
@@ -158,7 +262,8 @@ STRICT ARCHITECTURE RULES:
         self.image_count_label = QLabel("No images selected")
         self.image_count_label.setStyleSheet("color: #5f6368; font-size: 12px;")
         image_row.addWidget(self.image_count_label, 1)
-        self.ui.main_layout.insertLayout(4, image_row)
+        divider_index = self.ui.main_layout.indexOf(self.ui.divider_line)
+        self.ui.main_layout.insertLayout(divider_index, image_row)
 
         numbers_row = QHBoxLayout()
         numbers_label = QLabel("Question numbers:")
@@ -173,11 +278,57 @@ STRICT ARCHITECTURE RULES:
             "padding: 5px 8px; border: 1px solid #dadce0; border-radius: 4px;"
         )
         numbers_row.addWidget(self.question_numbers_input, 1)
-        self.ui.main_layout.insertLayout(5, numbers_row)
+        self.ui.main_layout.insertLayout(divider_index + 1, numbers_row)
 
     def _copy_prompt(self):
-        QApplication.clipboard().setText(self.PROMPT_TEXT)
-        QMessageBox.information(self, "Copied", "Prompt copied to clipboard!")
+        current_item = self.prompt_list.currentItem()
+        if current_item is None:
+            QMessageBox.warning(self, "No Prompt", "Please select a prompt first.")
+            return
+        self._open_prompt_editor(current_item)
+
+    def _open_prompt_editor(self, item: QListWidgetItem):
+        prompt_key = item.data(Qt.ItemDataRole.UserRole)
+        if not prompt_key:
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(item.text())
+        dialog.resize(760, 560)
+
+        layout = QVBoxLayout(dialog)
+        editor = QTextEdit(dialog)
+        editor.setPlainText(self.prompt_texts.get(prompt_key, ""))
+        editor.setStyleSheet(
+            "border: 1px solid #dadce0; border-radius: 4px; "
+            "font-family: monospace; font-size: 11px;"
+        )
+        layout.addWidget(editor)
+
+        button_row = QHBoxLayout()
+        copy_btn = QPushButton("Copy to Clipboard", dialog)
+        copy_btn.setStyleSheet(
+            "background-color: #1a73e8; color: white; font-weight: bold; "
+            "padding: 6px 12px; border-radius: 4px;"
+        )
+        close_btn = QPushButton("Close", dialog)
+        close_btn.setStyleSheet("padding: 6px 12px;")
+        button_row.addStretch(1)
+        button_row.addWidget(copy_btn)
+        button_row.addWidget(close_btn)
+        layout.addLayout(button_row)
+
+        def copy_current_prompt():
+            current_text = editor.toPlainText()
+            self.prompt_texts[prompt_key] = current_text
+            QApplication.clipboard().setText(current_text)
+            QMessageBox.information(dialog, "Copied", "Prompt copied to clipboard!")
+
+        copy_btn.clicked.connect(copy_current_prompt)
+        close_btn.clicked.connect(dialog.accept)
+
+        dialog.exec()
+        self.prompt_texts[prompt_key] = editor.toPlainText()
 
     def _pick_images(self):
         files, _ = QFileDialog.getOpenFileNames(

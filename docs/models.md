@@ -75,6 +75,20 @@ their own sessions.
 `src/repositories/supabase/auth.py` owns login/session helpers, and
 `src/repositories/supabase/sync.py` owns SQLite-to-Supabase sync.
 
+Media attachments are tracked locally in the SQLite `mediafiles` table. Imported
+audio and diagram files are saved under the app's local media folder with
+validated lowercase filenames, marked `dirty=True`, and uploaded to Cloudflare R2
+during SQLite-to-Supabase sync before their `mediafiles` row is upserted.
+
+R2 sync reads these `.env` settings:
+
+| Variable | Description |
+|---|---|
+| `CLOUDFLARE_R2_ENDPOINT` | R2 S3-compatible endpoint, with or without `https://` |
+| `CLOUDFLARE_R2_ACCESS_KEY_ID` | R2 access key |
+| `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | R2 secret key |
+| `CLOUDFLARE_R2_BUCKET` | Target bucket |
+
 `src/repositories/supabase/supabase_repo.py` is the placeholder for stateless
 Supabase API-backed repositories. It should map JSON dictionaries into
 `src.models` dataclasses before returning data to ViewModels.
