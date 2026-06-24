@@ -1,4 +1,5 @@
-﻿import html
+﻿from shiboken6 import isValid
+import html
 import json
 
 import qtawesome as qta
@@ -183,12 +184,29 @@ class OptionQuestionItem(QWidget):
                 break
             parent_widget = parent_widget.parent()
 
+    def _is_alive(self):
+        return (
+            isValid(self)
+            and hasattr(self, "ui")
+            and hasattr(self.ui, "tag_btn")
+            and isValid(self.ui.tag_btn)
+            and hasattr(self, "tags_label")
+            and isValid(self.tags_label)
+        )
+
     def _show_tag_menu(self):
+        if not self._is_alive():
+            return
+
         popup = TagMenuDialog(self.question, self)
+
         pos = self.ui.tag_btn.mapToGlobal(QPoint(0, self.ui.tag_btn.height()))
         popup.move(pos)
+
         popup.exec()
-        self._refresh_tag_ui()
+
+        if self._is_alive():
+            self._refresh_tag_ui()
 
     def _tag_names(self):
         session = get_session()
@@ -206,14 +224,21 @@ class OptionQuestionItem(QWidget):
             session.close()
 
     def _refresh_tag_ui(self):
+        if not self._is_alive():
+            return
+
         tag_names = self._tag_names()
-        if tag_names:
-            self.ui.tag_btn.setIcon(qta.icon("fa5s.tags", color="#1a73e8"))
-            self.ui.tag_btn.setToolTip("Tagged: " + ", ".join(tag_names))
-            self.tags_label.setText("Tags: " + ", ".join(tag_names))
-            self.tags_label.setVisible(True)
-        else:
-            self.ui.tag_btn.setIcon(qta.icon("fa5s.tags", color="#5f6368"))
-            self.ui.tag_btn.setToolTip("Manage tags for this question")
-            self.tags_label.clear()
-            self.tags_label.setVisible(False)
+        has_tags = bool(tag_names)
+
+        color = "#1a73e8" if has_tags else "#5f6368"
+        tooltip = (
+            "Tagged: " + ", ".join(tag_names)
+            if has_tags
+            else "Manage tags for this question"
+        )
+
+        self.ui.tag_btn.setIcon(qta.icon("fa5s.tags", color=color))
+        self.ui.tag_btn.setToolTip(tooltip)
+
+        self.tags_label.setVisible(has_tags)
+        self.tags_label.setText("Tags: " + ", ".join(tag_names) if has_tags else "")

@@ -70,7 +70,6 @@ class TagMenuDialog(QDialog):
                 )
                 if not exists:
                     new_tag = exam_model.UserQuestionTag(
-                        user_id=self.user_id,
                         question_id=self.question.id,
                         tag_name=tag_name,
                         dirty=1,
@@ -105,7 +104,6 @@ class TagMenuDialog(QDialog):
             )
             if not exists:
                 new_tag = exam_model.UserQuestionTag(
-                    user_id=self.user_id,
                     question_id=self.question.id,
                     tag_name=tag_name,
                     dirty=1,
