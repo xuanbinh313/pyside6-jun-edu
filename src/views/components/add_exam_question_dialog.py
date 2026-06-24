@@ -1,9 +1,6 @@
-﻿import base64
-import binascii
 import json
-import os
 import tempfile
-from io import BytesIO
+from pathlib import Path
 
 import qtawesome as qta
 from src.repositories.sqlite import orm_models as exam_model
@@ -28,17 +25,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from src.repositories.sqlite.database import get_session
-from src.repositories.sqlite.orm_models import ExamContext
+from src.utils.helpers import get_local_media_path, optimize_image_to_webp_file
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_add_exam_question_dialog import Ui_AddExamQuestionDialog
 
 
 class ImageDropArea(QLabel):
-    """Drop/paste target that stores the selected image as a data URL."""
+    """Drop/paste target that stores the selected image as a local path."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.image_data_url = ""
+        self.image_path = ""
+        self.image_filename = ""
         self.setAcceptDrops(True)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumHeight(180)
@@ -70,29 +68,22 @@ class ImageDropArea(QLabel):
     def paste_from_clipboard(self) -> bool:
         return self._load_from_mime(QApplication.clipboard().mimeData())
 
-    def set_data_url(self, data_url: str):
-        self.image_data_url = data_url or ""
-        if not self.image_data_url:
+    def set_image_path(self, image_path: str, image_filename: str = ""):
+        self.image_path = image_path or ""
+        self.image_filename = image_filename or Path(self.image_path).name
+        if not self.image_path:
             self.setText("Drop image here or press Ctrl+V")
             self.setPixmap(QPixmap())
+            self.setToolTip("")
             return
-        image_bytes = self._decode_data_url(self.image_data_url)
-        if image_bytes is None:
-            return
-        image = QImage.fromData(image_bytes)
+
+        image = QImage(self.image_path)
         if not image.isNull():
             self._show_preview(image)
 
-    def _decode_data_url(self, data_url: str):
-        if not data_url.startswith("data:image/") or ";base64," not in data_url:
-            return None
-        try:
-            return base64.b64decode(data_url.split(";base64,", 1)[1])
-        except (binascii.Error, ValueError):
-            return None
-
     def _load_from_mime(self, mime) -> bool:
         image = QImage()
+        source_path = ""
         if mime.hasImage():
             image_data = mime.imageData()
             if isinstance(image_data, QImage):
@@ -104,27 +95,23 @@ class ImageDropArea(QLabel):
         elif mime.hasUrls():
             for url in mime.urls():
                 if url.isLocalFile():
-                    candidate = QImage(url.toLocalFile())
+                    local_path = url.toLocalFile()
+                    candidate = QImage(local_path)
                     if not candidate.isNull():
                         image = candidate
+                        source_path = local_path
                         break
 
         if image.isNull():
             return False
 
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            tmp_path = tmp.name
-        try:
-            image.save(tmp_path)
-            with open(tmp_path, "rb") as f:
-                raw = f.read()
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-        encoded = base64.b64encode(raw).decode("ascii")
-        self.image_data_url = f"data:image/png;base64,{encoded}"
+        if not source_path:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                source_path = tmp.name
+            image.save(source_path)
+
+        self.image_path = source_path
+        self.image_filename = Path(source_path).name
         self._show_preview(image)
         return True
 
@@ -138,7 +125,7 @@ class ImageDropArea(QLabel):
                 Qt.TransformationMode.SmoothTransformation,
             )
         )
-        self.setToolTip("Image loaded")
+        self.setToolTip(self.image_path or "Image loaded")
 
 
 class AddExamQuestionDialog(QDialog):
@@ -410,7 +397,13 @@ class AddExamQuestionDialog(QDialog):
         self._refresh_context_audio_ui()
         self.ui.context_text_edit.setPlainText(content.get("text", ""))
         self.ui.image_description_edit.setPlainText(content.get("text", ""))
-        self.image_drop_area.set_data_url(content.get("image_data_url", ""))
+        image_filename = str(content.get("image_filename", "") or "")
+        image_path = ""
+        if image_filename:
+            image_path = str(get_local_media_path(image_filename))
+        if not image_path:
+            image_path = str(content.get("image_path", "") or "")
+        self.image_drop_area.set_image_path(image_path, image_filename)
 
         session = get_session()
         try:
@@ -470,43 +463,31 @@ class AddExamQuestionDialog(QDialog):
     def _context_content(self):
         ctx_type = self.ui.context_type_combo.currentText()
         if ctx_type == "IMAGE_DIAGRAM":
-            if not self.image_drop_area.image_data_url:
+            if not self.image_drop_area.image_path:
                 raise ValueError("Please drop or paste an image.")
+            filename = self._save_diagram_image_file()
             return {
                 "text": self.ui.image_description_edit.toPlainText().strip(),
-                "image_data_url": self._optimized_webp_data_url(
-                    self.image_drop_area.image_data_url
-                ),
+                "image_filename": filename,
             }
         text = self.ui.context_text_edit.toPlainText().strip()
         if ctx_type != "STANDALONE" and not text:
             raise ValueError("Context text cannot be empty.")
         return {"text": text}
 
-    def _optimized_webp_data_url(self, data_url: str) -> str:
-        if not data_url.startswith("data:image/") or ";base64," not in data_url:
-            raise ValueError("Invalid image data.")
-        try:
-            from PIL import Image, ImageOps
-        except ImportError as exc:
-            raise ValueError(
-                "Pillow is required to optimize diagram images. Please install requirements.txt."
-            ) from exc
+    def _save_diagram_image_file(self) -> str:
+        current_filename = self.image_drop_area.image_filename
+        current_path = Path(self.image_drop_area.image_path)
+        if current_filename and current_path == get_local_media_path(current_filename):
+            return current_filename
 
-        try:
-            raw = base64.b64decode(data_url.split(";base64,", 1)[1])
-            with Image.open(BytesIO(raw)) as image:
-                image = ImageOps.exif_transpose(image)
-                if max(image.size) > 1800:
-                    image.thumbnail((1800, 1800), Image.Resampling.LANCZOS)
-                if image.mode not in ("RGB", "RGBA"):
-                    image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
-                output = BytesIO()
-                image.save(output, format="WEBP", quality=90, method=6)
-        except Exception as exc:
-            raise ValueError(f"Could not optimize image: {exc}") from exc
-        encoded = base64.b64encode(output.getvalue()).decode("ascii")
-        return f"data:image/webp;base64,{encoded}"
+        filename = optimize_image_to_webp_file(
+            self.image_drop_area.image_path, current_filename
+        )
+        self.image_drop_area.set_image_path(
+            str(get_local_media_path(filename)), filename
+        )
+        return filename
 
     def _select_audio_segment(self):
         dialog = SelectTranscriptDialog(self.exam_id, self)
@@ -607,6 +588,22 @@ class AddExamQuestionDialog(QDialog):
                 else "",
             )
             session.add(db_ctx)
+            if db_ctx.context_type == "IMAGE_DIAGRAM":
+                image_filename = str(ctx_content.get("image_filename", "") or "")
+                if image_filename:
+                    existing_media = (
+                        session.query(exam_model.MediaFile)
+                        .filter(exam_model.MediaFile.filename == image_filename)
+                        .first()
+                    )
+                    if not existing_media:
+                        session.add(
+                            exam_model.MediaFile(
+                                filename=image_filename,
+                                user_id=db_ctx.user_id,
+                                dirty=True,
+                            )
+                        )
             session.flush()
 
             if self.removed_question_ids:

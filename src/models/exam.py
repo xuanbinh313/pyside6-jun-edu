@@ -104,7 +104,7 @@ class Exam:
     title: str
     id: str = field(default_factory=generate_uuid)
     description: Optional[str] = None
-    full_audio_url: Optional[str] = None
+    audio_name: Optional[str] = None
     duration_minutes: int = 0
     is_published: bool = False
     user_id: Optional[str] = ""

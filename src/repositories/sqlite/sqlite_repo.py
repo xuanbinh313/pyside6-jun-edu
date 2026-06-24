@@ -21,7 +21,7 @@ def _exam_from_orm(db_exam: orm.Exam) -> Exam:
         id=db_exam.id,  # type: ignore
         title=db_exam.title,  # type: ignore
         description=db_exam.description,  # type: ignore
-        full_audio_url=db_exam.full_audio_url,  # type: ignore
+        audio_name=db_exam.audio_name,  # type: ignore
         duration_minutes=db_exam.duration_minutes,  # type: ignore
         is_published=db_exam.is_published,  # type: ignore
         user_id=db_exam.user_id,  # type: ignore
@@ -79,12 +79,15 @@ def _save_imported_diagram_media(ctx_data: dict) -> str:
     if not isinstance(content, dict):
         return ""
 
-    image_path = str(content.get("image_path", "") or "")
+    image_path = str(
+        content.get("_source_image_path", "") or content.get("image_path", "") or ""
+    )
     if image_path:
         filename = content.get("filename") or content.get("image_filename")
         media_filename = optimize_image_to_webp_file(image_path, str(filename or ""))
         content["image_filename"] = media_filename
-        content["image_path"] = str(get_local_media_path(media_filename))
+        content.pop("_source_image_path", None)
+        content.pop("image_path", None)
         content.pop("image_data_url", None)
         return media_filename
 
@@ -98,6 +101,9 @@ def _save_imported_diagram_media(ctx_data: dict) -> str:
     unique_filename = unique_media_filename(str(filename))
     get_local_media_path(unique_filename).write_bytes(decode_data_url(image_data_url))
     content["image_filename"] = unique_filename
+    content.pop("image_data_url", None)
+    content.pop("_source_image_path", None)
+    content.pop("image_path", None)
     return unique_filename
 
 
@@ -176,7 +182,7 @@ class SQLiteExamRepository(IExamRepository):
         description: str | None,
         duration_minutes: int,
         is_published: bool,
-        full_audio_url: str | None = None,
+        audio_name: str | None = None,
     ) -> str:
         session = get_session()
         try:
@@ -191,7 +197,21 @@ class SQLiteExamRepository(IExamRepository):
             db_exam.description = description
             db_exam.duration_minutes = duration_minutes
             db_exam.is_published = is_published
-            db_exam.full_audio_url = full_audio_url
+            db_exam.audio_name = audio_name
+            if audio_name:
+                existing_media = (
+                    session.query(orm.MediaFile)
+                    .filter(orm.MediaFile.filename == audio_name)
+                    .first()
+                )
+                if not existing_media:
+                    session.add(
+                        orm.MediaFile(
+                            filename=audio_name,
+                            user_id=db_exam.user_id,
+                            dirty=True,
+                        )
+                    )
             session.commit()
             return db_exam.id  # type: ignore
         except Exception:

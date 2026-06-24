@@ -19,7 +19,7 @@ class Exam(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    full_audio_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    audio_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="")

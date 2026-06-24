@@ -57,16 +57,15 @@ def audio_srt_context_html(content) -> str:
 
 def image_diagram_context_html(content) -> str:
     content = content if isinstance(content, dict) else {}
-    image_data_url = content.get("image_data_url", "")
     image_path = content.get("image_path", "")
     image_filename = content.get("image_filename", "")
     text = html.escape(str(content.get("text", ""))).replace("\n", "<br>")
     parts = []
-    image_source = image_data_url
-    if not image_source and image_path:
-        image_source = Path(str(image_path)).resolve().as_uri()
-    if not image_source and image_filename:
+    image_source = ""
+    if image_filename:
         image_source = get_local_media_path(str(image_filename)).resolve().as_uri()
+    elif image_path:
+        image_source = Path(str(image_path)).resolve().as_uri()
     if image_source:
         parts.append(
             f'<img src="{html.escape(image_source, quote=True)}" '

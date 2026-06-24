@@ -35,7 +35,7 @@ class ExamDetailsViewModel(QObject):
         self.data_loaded.emit()
 
     def save_exam(
-        self, title, description, duration_minutes, is_published, full_audio_url=None
+        self, title, description, duration_minutes, is_published, audio_name=None
     ):
         self.exam_id = self.repo.save_exam(
             exam_id=self.exam_id,
@@ -43,7 +43,7 @@ class ExamDetailsViewModel(QObject):
             description=description,
             duration_minutes=duration_minutes,
             is_published=is_published,
-            full_audio_url=full_audio_url,
+            audio_name=audio_name,
         )
         self.data_saved.emit()
 

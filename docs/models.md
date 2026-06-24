@@ -85,13 +85,15 @@ their own sessions.
 Media attachments are tracked locally in the SQLite `mediafiles` table. Imported
 audio and diagram files are saved under the app's local media folder with
 validated lowercase filenames, marked `dirty=True`, and uploaded to Cloudflare R2
-during SQLite-to-Supabase sync before their `mediafiles` row is upserted.
+during SQLite-to-Supabase sync before their `mediafiles` row is upserted. Exams
+store audio by `audio_name` only; views resolve that filename back to the local
+media folder for playback.
 
 Supabase-to-SQLite sync downloads the signed-in user's remote rows into local
 SQLite and downloads each `mediafiles` object from R2 key
 `media/{user_id}/{filename}` into the same temp media folder. Downloaded media
-rows are marked `dirty=False` locally, and exam audio/diagram image references
-are rewritten to local temp paths when their filenames match downloaded media.
+rows are marked `dirty=False` locally; exam audio continues to reference the
+downloaded file by `audio_name`.
 
 R2 sync reads these `.env` settings:
 

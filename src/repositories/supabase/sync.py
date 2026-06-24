@@ -85,11 +85,14 @@ def _deserialize_value(value: Any, column: Any) -> Any:
 def _deserialize_row(model: type, row: dict[str, Any]) -> dict[str, Any]:
     mapper = inspect(model)
     columns = {column.key: column for column in mapper.columns}
-    return {
+    data = {
         key: _deserialize_value(value, columns[key])
         for key, value in row.items()
         if key in columns
     }
+    if model is Exam and not data.get("audio_name") and row.get("full_audio_url"):
+        data["audio_name"] = _path_leaf(str(row.get("full_audio_url") or ""))
+    return data
 
 
 def _serialize_mediafile_row(row: MediaFile) -> dict[str, Any]:
@@ -257,15 +260,6 @@ def _rewrite_remote_media_references(session) -> None:
     )
     for mediafile in mediafiles:
         local_path = str(get_local_media_path(mediafile.filename))
-        exams = session.query(Exam).filter(Exam.full_audio_url.is_not(None)).all()
-        for exam in exams:
-            audio_value = str(exam.full_audio_url or "")
-            if (
-                audio_value == mediafile.filename
-                or _path_leaf(audio_value) == mediafile.filename
-            ):
-                exam.full_audio_url = local_path
-
         contexts = (
             session.query(ExamContext)
             .filter(ExamContext.context_type == "IMAGE_DIAGRAM")

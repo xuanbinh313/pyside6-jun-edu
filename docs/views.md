@@ -204,7 +204,7 @@ Form for editing exam metadata. Used as a tab inside `ExamDetailsView`.
 | `on_upload_audio()` | File dialog → sets `audio_input` text (local path) |
 | `on_attach_srt()` | Opens `.srt` file dialog → calls `parse_srt()` |
 | `on_import_csv()` | Opens `.csv` file dialog, parses rows as `ExamSrtChunk` objects |
-| `on_save()` | Syncs `audio_input` to `viewmodel.exam`, then calls `viewmodel.save_exam()` |
+| `on_save()` | Copies/downloads `audio_input` into local media, saves the resulting `audio_name`, then calls `viewmodel.save_exam()` |
 | `parse_srt(file_path)` | Parses standard SRT format into `ExamSrtChunk` list, writes to `viewmodel.srt_chunks` |
 
 #### SRT Parser
