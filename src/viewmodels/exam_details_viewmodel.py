@@ -56,6 +56,12 @@ class ExamDetailsViewModel(QObject):
     def list_question_tags(self) -> list[str]:
         return self.repo.list_question_tags()
 
+    def list_question_tags_for_question(self, question_id: str) -> list[str]:
+        return self.repo.list_question_tags_for_question(question_id)
+
+    def set_question_tag(self, question_id: str, tag_name: str, enabled: bool) -> None:
+        self.repo.set_question_tag(question_id, tag_name, enabled)
+
     def list_contexts(self, selected_tags: list[str] | None = None):
         if not self.exam_id:
             return []

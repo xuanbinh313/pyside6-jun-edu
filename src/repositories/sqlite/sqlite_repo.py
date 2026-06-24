@@ -252,6 +252,47 @@ class SQLiteExamRepository(IExamRepository):
         finally:
             session.close()
 
+    def list_question_tags_for_question(self, question_id: str) -> list[str]:
+        session = get_session()
+        try:
+            rows = (
+                session.query(orm.UserQuestionTag.tag_name)
+                .filter(orm.UserQuestionTag.question_id == question_id)
+                .order_by(orm.UserQuestionTag.tag_name.asc())
+                .all()
+            )
+            return [row[0] for row in rows]
+        finally:
+            session.close()
+
+    def set_question_tag(self, question_id: str, tag_name: str, enabled: bool) -> None:
+        session = get_session()
+        try:
+            existing = (
+                session.query(orm.UserQuestionTag)
+                .filter(
+                    orm.UserQuestionTag.question_id == question_id,
+                    orm.UserQuestionTag.tag_name == tag_name,
+                )
+                .first()
+            )
+            if enabled and not existing:
+                session.add(
+                    orm.UserQuestionTag(
+                        question_id=question_id,
+                        tag_name=tag_name,
+                        dirty=1,
+                    )
+                )
+            elif not enabled and existing:
+                session.delete(existing)
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def list_contexts(
         self, exam_id: str, selected_tags: list[str] | None = None
     ) -> list[ExamContext]:

@@ -57,6 +57,8 @@ workflow:
 | `save_exam(...)` | Creates or updates exam metadata and returns the exam ID. |
 | `replace_srt_chunks(exam_id, chunks)` | Replaces persisted transcript chunks for an exam. |
 | `list_question_tags()` | Returns distinct question tag names for filters. |
+| `list_question_tags_for_question(question_id)` | Returns ordered tag names assigned to one question. |
+| `set_question_tag(question_id, tag_name, enabled)` | Adds or removes one question tag and marks new tags dirty for sync. |
 | `list_contexts(exam_id, selected_tags)` | Returns contexts for the groups/questions view, optionally filtered by tags. |
 | `list_questions_for_context(context_id)` | Returns pure question dataclasses for one context. |
 | `get_context_question_numbers(context_id)` | Returns ordered question numbers for context labels. |

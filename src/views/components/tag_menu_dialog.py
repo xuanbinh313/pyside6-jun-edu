@@ -1,20 +1,27 @@
 ﻿from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QDialog
 
-from src.repositories.sqlite import orm_models as exam_model
-from src.repositories.sqlite.database import get_session
 from src.utils.qt import clear_layout
 from ui_gen.ui_tag_menu_dialog import Ui_TagMenuDialog
 
 
 class TagMenuDialog(QDialog):
-    def __init__(self, question, parent=None):
+    def __init__(self, question, parent=None, viewmodel=None):
         super().__init__(
             parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
         )
         self.question = question
+        self.viewmodel = viewmodel or self._find_viewmodel(parent)
         self.setFixedWidth(200)
         self._build_ui()
+
+    def _find_viewmodel(self, widget):
+        while widget:
+            viewmodel = getattr(widget, "viewmodel", None)
+            if viewmodel is not None:
+                return viewmodel
+            widget = widget.parent()
+        return None
 
     def _build_ui(self):
         self.ui = Ui_TagMenuDialog()
@@ -29,61 +36,32 @@ class TagMenuDialog(QDialog):
     def _load_tags(self):
         clear_layout(self.tags_layout)
 
-        session = get_session()
-        try:
-            all_tags_rows = (
-                session.query(exam_model.UserQuestionTag.tag_name).distinct().all()
-            )
-            all_tags = [r[0] for r in all_tags_rows]
+        if self.viewmodel is None:
+            return
 
-            current_tags_rows = (
-                session.query(exam_model.UserQuestionTag.tag_name)
-                .filter(
-                    exam_model.UserQuestionTag.question_id == self.question.id,
-                )
-                .all()
-            )
-            current_tags = set(r[0] for r in current_tags_rows)
+        all_tags = self.viewmodel.list_question_tags()
+        current_tags = set(
+            self.viewmodel.list_question_tags_for_question(self.question.id)
+        )
 
-            for tag_name in all_tags:
-                cb = QCheckBox(tag_name)
-                cb.setChecked(tag_name in current_tags)
-                cb.setStyleSheet("font-size: 11px; color: #3c4043;")
-                cb.stateChanged.connect(
-                    lambda state, t=tag_name: self._on_tag_state_changed(t, state)
-                )
-                self.tags_layout.addWidget(cb)
-        finally:
-            session.close()
+        for tag_name in sorted(set(all_tags) | current_tags):
+            cb = QCheckBox(tag_name)
+            cb.setChecked(tag_name in current_tags)
+            cb.setStyleSheet("font-size: 11px; color: #3c4043;")
+            cb.stateChanged.connect(
+                lambda state, t=tag_name: self._on_tag_state_changed(t, state)
+            )
+            self.tags_layout.addWidget(cb)
 
     def _on_tag_state_changed(self, tag_name, state):
-        session = get_session()
-        try:
-            if state == Qt.CheckState.Checked.value:
-                exists = (
-                    session.query(exam_model.UserQuestionTag)
-                    .filter(
-                        exam_model.UserQuestionTag.question_id == self.question.id,
-                        exam_model.UserQuestionTag.tag_name == tag_name,
-                    )
-                    .first()
-                )
-                if not exists:
-                    new_tag = exam_model.UserQuestionTag(
-                        question_id=self.question.id,
-                        tag_name=tag_name,
-                        dirty=1,
-                    )
-                    session.add(new_tag)
-                    session.commit()
-            else:
-                session.query(exam_model.UserQuestionTag).filter(
-                    exam_model.UserQuestionTag.question_id == self.question.id,
-                    exam_model.UserQuestionTag.tag_name == tag_name,
-                ).delete()
-                session.commit()
-        finally:
-            session.close()
+        if self.viewmodel is None:
+            return
+
+        self.viewmodel.set_question_tag(
+            self.question.id,
+            tag_name,
+            state == Qt.CheckState.Checked.value,
+        )
 
         self._notify_parent_tags_changed()
 
@@ -91,27 +69,10 @@ class TagMenuDialog(QDialog):
         tag_name = self.new_tag_input.text().strip()
         if not tag_name:
             return
+        if self.viewmodel is None:
+            return
 
-        session = get_session()
-        try:
-            exists = (
-                session.query(exam_model.UserQuestionTag)
-                .filter(
-                    exam_model.UserQuestionTag.question_id == self.question.id,
-                    exam_model.UserQuestionTag.tag_name == tag_name,
-                )
-                .first()
-            )
-            if not exists:
-                new_tag = exam_model.UserQuestionTag(
-                    question_id=self.question.id,
-                    tag_name=tag_name,
-                    dirty=1,
-                )
-                session.add(new_tag)
-                session.commit()
-        finally:
-            session.close()
+        self.viewmodel.set_question_tag(self.question.id, tag_name, True)
 
         self.new_tag_input.clear()
         self._load_tags()

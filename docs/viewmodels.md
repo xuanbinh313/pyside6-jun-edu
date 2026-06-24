@@ -93,6 +93,8 @@ Manages a single exam's metadata and its SRT chunk list. Used by both **new exam
 | `save_exam()` | `(title, description, duration_minutes, is_published, audio_name) → None` | Upserts exam metadata; emits `data_saved` |
 | `save_chunks()` | `→ None` | Replaces all DB chunks for this exam with `srt_chunks` (delete-all + re-insert) |
 | `list_question_tags()` | `→ list[str]` | Returns tag names for the Groups & Questions filter. |
+| `list_question_tags_for_question()` | `(question_id) → list[str]` | Returns tags assigned to a single question. |
+| `set_question_tag()` | `(question_id, tag_name, enabled) → None` | Adds or removes one question tag through the repository. |
 | `list_contexts()` | `(selected_tags=None) → list[ExamContext]` | Loads contexts through `IExamRepository`, optionally tag-filtered. |
 | `list_questions_for_context()` | `(context_id) → list[ExamQuestion]` | Loads context questions through `IExamRepository`. |
 | `context_question_numbers()` | `(context_id) → list[int]` | Returns ordered question numbers for context labels. |
