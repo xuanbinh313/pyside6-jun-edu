@@ -302,7 +302,7 @@ Parsing, selected image state, duplicate validation, and final import payloads a
 
 #### Import Questions Agent Dialog
 
-`ImportQuestionsAgentDialog` adds a visual PDF/page workflow for TOEIC Parts 1-4. Parts 1, 3, and 4 can select question PDF pages; Part 2 uses a context text input defaulting to "Mark your answer on your answer sheet" instead of question-page selection. Part 1 question pages are split into two image crops per selected page before upload and saved as `IMAGE_DIAGRAM` contexts. The answer-sheet tab reuses `ImageDropArea` for listening and reading answer sheets. The agent dialog delegates Gemini calls, PDF slicing, image splitting, and response parsing to `ImportQuestionsAgentViewModel`, then returns the same import payload contract used by the manual dialog.
+`ImportQuestionsAgentDialog` adds a visual PDF/page workflow for TOEIC Parts 1-7. Parts 1 and 3-7 can select question PDF pages; Part 2 uses a context text input defaulting to "Mark your answer on your answer sheet" instead of question-page selection. Part 1 question pages are split into two image crops per selected page before upload and saved as `IMAGE_DIAGRAM` contexts. Parts 5-7 use the reading prompt contract from `ImportQuestionsViewModel.READING_PROMPT_TEXT`. The answer-sheet tab reuses `ImageDropArea` for listening and reading answer sheets. The agent dialog delegates Gemini calls, PDF slicing, image splitting, and response parsing to `ImportQuestionsAgentViewModel`, then returns the same import payload contract used by the manual dialog.
 
 ---
 

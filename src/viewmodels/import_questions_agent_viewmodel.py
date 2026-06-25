@@ -480,6 +480,7 @@ class ImportQuestionsAgentViewModel(QObject):
     error_message = Signal(str)
     import_ready = Signal()
 
+    TOEIC_PARTS = range(1, 8)
     DEFAULT_PART2_CONTEXT = "Mark your answer on your answer sheet"
     PART_PROMPTS = {
         1: """
@@ -665,7 +666,7 @@ STRICT PART 4 RULES:
         self.parser = parser or ImportQuestionsViewModel(self)
         self.part_payloads: dict[int, AgentPartPayload] = {
             part: AgentPartPayload(part=part, prompt=self._default_part_prompt(part))
-            for part in range(1, 5)
+            for part in self.TOEIC_PARTS
         }
         self.part_payloads[2].context_text = self.DEFAULT_PART2_CONTEXT
         self.answer_sheet = AgentAnswerSheetPayload(

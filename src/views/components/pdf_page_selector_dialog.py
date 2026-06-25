@@ -34,6 +34,7 @@ class PdfPageSelectorDialog(QDialog):
         self.pdf_path = pdf_path
         self.selected_pages: list[int] = sorted(set(selected_pages or []))
         self._thumbnail_row = 0
+        self._syncing_preview_selection = False
         self._build_ui(action_text)
         self._load_pdf()
 
@@ -77,7 +78,7 @@ class PdfPageSelectorDialog(QDialog):
         splitter.addWidget(left_panel)
 
         self.preview = QPdfView(splitter)
-        self.preview.setPageMode(QPdfView.PageMode.SinglePage)
+        self.preview.setPageMode(QPdfView.PageMode.MultiPage)
         self.preview.setZoomMode(QPdfView.ZoomMode.FitToWidth)
         splitter.addWidget(self.preview)
         splitter.setSizes([260, 720])
@@ -102,6 +103,9 @@ class PdfPageSelectorDialog(QDialog):
         self.clear_all_btn.clicked.connect(self._clear_all)
         self.page_list.currentRowChanged.connect(self._preview_page)
         self.page_list.itemChanged.connect(self._on_item_changed)
+        self.preview.pageNavigator().currentPageChanged.connect(
+            self._select_thumbnail_for_page
+        )
         self.cancel_btn.clicked.connect(self.reject)
         self.send_btn.clicked.connect(self._accept_if_selected)
 
@@ -150,10 +154,25 @@ class PdfPageSelectorDialog(QDialog):
         self._thumbnail_row += 1
 
     def _preview_page(self, row: int) -> None:
-        if row < 0:
+        if row < 0 or self._syncing_preview_selection:
             return
         navigator = self.preview.pageNavigator()
         navigator.jump(row, QPointF(0, 0))
+
+    def _select_thumbnail_for_page(self, page_index: int) -> None:
+        if page_index < 0 or page_index >= self.page_list.count():
+            return
+
+        self._syncing_preview_selection = True
+        try:
+            self.page_list.setCurrentRow(page_index)
+            item = self.page_list.item(page_index)
+            if item is not None:
+                self.page_list.scrollToItem(
+                    item, QAbstractItemView.ScrollHint.PositionAtCenter
+                )
+        finally:
+            self._syncing_preview_selection = False
 
     def _on_item_changed(self, item: QListWidgetItem) -> None:
         page_index = int(item.data(Qt.ItemDataRole.UserRole))

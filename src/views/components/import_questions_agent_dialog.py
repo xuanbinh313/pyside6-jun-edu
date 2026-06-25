@@ -67,7 +67,7 @@ class ImportQuestionsAgentDialog(QDialog):
         main_layout.addWidget(title)
 
         self.tabs = QTabWidget(self)
-        for part in range(1, 5):
+        for part in self.viewmodel.TOEIC_PARTS:
             self.tabs.addTab(self._build_part_tab(part), f"Part {part}")
         self.tabs.addTab(self._build_answer_sheet_tab(), "Answer Sheets")
         main_layout.addWidget(self.tabs, 1)
