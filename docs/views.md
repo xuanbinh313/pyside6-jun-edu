@@ -278,6 +278,7 @@ Named widgets from `.ui` file:
 | `_on_filter_changed()` | Filters `q_list` based on selected tags |
 | `_on_listen_clicked()` | Seeks and plays the audio segment for the selected question |
 | `_on_import_questions_clicked()` | Opens `ImportQuestionsDialog` |
+| `_on_import_questions_agent_clicked()` | Opens `ImportQuestionsAgentDialog` for Gemini PDF/page import |
 | `_on_q_list_context_menu(pos)` | Right-click menu with Edit / Delete / Duplicate actions (filters actions based on item type) |
 | `_on_edit_context()` | Opens `EditContextDialog` to modify the currently selected context |
 | `_refresh_ctx_header_item(ctx)` | Refreshes the display text of a context header in the question list |
@@ -296,6 +297,12 @@ question,answer
 ```
 
 When CSV answers are pasted, the dialog applies them to newly imported question data before saving. `ExamGroupsWidget` also sends the answer map through the ViewModel so existing `ExamQuestion.correct_answer` values in the current exam are updated by `question_number`; missing question numbers are ignored.
+
+Parsing, selected image state, duplicate validation, and final import payloads are owned by `ImportQuestionsViewModel`; the dialog handles prompt editing, file picking, messages, and accept/reject flow.
+
+#### Import Questions Agent Dialog
+
+`ImportQuestionsAgentDialog` adds a visual PDF/page workflow for TOEIC Parts 1-4. Parts 1, 3, and 4 can select question PDF pages; Part 2 uses a context text input defaulting to "Mark your answer on your answer sheet" instead of question-page selection. Part 1 question pages are split into two image crops per selected page before upload and saved as `IMAGE_DIAGRAM` contexts. The answer-sheet tab reuses `ImageDropArea` for listening and reading answer sheets. The agent dialog delegates Gemini calls, PDF slicing, image splitting, and response parsing to `ImportQuestionsAgentViewModel`, then returns the same import payload contract used by the manual dialog.
 
 ---
 

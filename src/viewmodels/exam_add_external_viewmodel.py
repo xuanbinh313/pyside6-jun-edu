@@ -136,7 +136,7 @@ class ExamAddExternalViewModel(QObject):
             task_id = resp_data.get("task_id")
             result = self.poll_task_status(task_id, emit_progress)
 
-            content = result.get("content", [])
+            content = result.get("segments", [])
             url_audio = result.get("url_audio", "")
 
             # Download audio
@@ -228,7 +228,7 @@ class ExamAddExternalViewModel(QObject):
         self._worker.progress.connect(self.progress_message.emit)
         self._worker.finished.connect(self._on_add_update_finished)
         self._worker.error.connect(self._on_error)
-        self._worker.start()
+        self._worker.run()
 
     def _on_add_update_finished(self, result):
         self.is_loading = False

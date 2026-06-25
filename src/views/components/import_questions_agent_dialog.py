@@ -1,0 +1,289 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import qtawesome as qta
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.viewmodels.import_questions_agent_viewmodel import (
+    ImportQuestionsAgentViewModel,
+)
+from src.views.components.add_exam_question_dialog import ImageDropArea
+from src.views.components.pdf_page_selector_dialog import PdfPageSelectorDialog
+
+
+class ImportQuestionsAgentDialog(QDialog):
+    def __init__(
+        self,
+        parent=None,
+        viewmodel: ImportQuestionsAgentViewModel | None = None,
+    ):
+        super().__init__(parent)
+        self.viewmodel = viewmodel or ImportQuestionsAgentViewModel(parent=self)
+        self._part_widgets: dict[int, dict[str, object]] = {}
+        self._build_ui()
+        self._connect_signals()
+        self._refresh_ui()
+
+    @property
+    def result_contexts(self) -> list[dict]:
+        return self.viewmodel.result_contexts
+
+    @property
+    def result_questions(self) -> list[dict]:
+        return self.viewmodel.result_questions
+
+    @property
+    def result_answer_key(self) -> dict[int, str]:
+        return self.viewmodel.result_answer_key
+
+    def _build_ui(self) -> None:
+        self.setWindowTitle("Import Questions Agent")
+        self.resize(920, 720)
+        self.setWindowFlag(Qt.WindowType.WindowMinMaxButtonsHint)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(14, 14, 14, 14)
+        main_layout.setSpacing(10)
+
+        title = QLabel("Import Questions Agent", self)
+        title.setStyleSheet("font-weight: bold; font-size: 16px; color: #202124;")
+        main_layout.addWidget(title)
+
+        self.tabs = QTabWidget(self)
+        for part in range(1, 5):
+            self.tabs.addTab(self._build_part_tab(part), f"Part {part}")
+        self.tabs.addTab(self._build_answer_sheet_tab(), "Answer Sheets")
+        main_layout.addWidget(self.tabs, 1)
+
+        self.progress_label = QLabel("", self)
+        self.progress_label.setStyleSheet("color: #5f6368; font-size: 12px;")
+        main_layout.addWidget(self.progress_label)
+
+        self.button_box = QDialogButtonBox(self)
+        self.cancel_btn = self.button_box.addButton(
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        self.send_btn = self.button_box.addButton(
+            "Send to agent", QDialogButtonBox.ButtonRole.AcceptRole
+        )
+        self.send_btn.setIcon(qta.icon("fa5s.robot", color="white"))
+        self.send_btn.setStyleSheet(
+            "background-color: #1a73e8; color: white; font-weight: bold; "
+            "padding: 6px 14px; border-radius: 4px;"
+        )
+        main_layout.addWidget(self.button_box)
+
+    def _build_part_tab(self, part: int) -> QWidget:
+        tab = QWidget(self)
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        pdf_group = QGroupBox("PDF page selections", tab)
+        form = QFormLayout(pdf_group)
+        form.setSpacing(8)
+
+        question_label = QLabel("No PDF selected", pdf_group)
+        transcript_label = QLabel("No PDF selected", pdf_group)
+        question_button_text = (
+            "Select question pages (split 2/page)"
+            if part == 1
+            else "Select question pages"
+        )
+        question_button = QPushButton(question_button_text, pdf_group)
+        transcript_button = QPushButton("Select transcript pages", pdf_group)
+        question_button.setIcon(qta.icon("fa5s.file-pdf", color="#ea4335"))
+        transcript_button.setIcon(qta.icon("fa5s.file-alt", color="#5f6368"))
+
+        if part != 2:
+            form.addRow(question_button, question_label)
+        form.addRow(transcript_button, transcript_label)
+        layout.addWidget(pdf_group)
+
+        context_edit = QTextEdit(tab)
+        context_edit.setMinimumHeight(58)
+        context_edit.setPlaceholderText("Context text for this part")
+        context_edit.setPlainText(self.viewmodel.part_payloads[part].context_text)
+        if part == 2:
+            form.addRow("Question context:", context_edit)
+        else:
+            context_edit.hide()
+
+        prompt_edit = QTextEdit(tab)
+        prompt_edit.setMinimumHeight(250)
+        prompt_edit.setPlainText(self.viewmodel.part_payloads[part].prompt)
+        prompt_edit.setStyleSheet(
+            "border: 1px solid #dadce0; border-radius: 4px; "
+            "font-family: monospace; font-size: 11px;"
+        )
+        layout.addWidget(QLabel("Prompt", tab))
+        layout.addWidget(prompt_edit, 1)
+
+        self._part_widgets[part] = {
+            "question_label": question_label,
+            "transcript_label": transcript_label,
+            "question_button": question_button,
+            "transcript_button": transcript_button,
+            "context_edit": context_edit,
+            "prompt_edit": prompt_edit,
+        }
+        if part != 2:
+            question_button.clicked.connect(
+                lambda checked=False, p=part: self._select_pdf_pages(p, "questions")
+            )
+        transcript_button.clicked.connect(
+            lambda checked=False, p=part: self._select_pdf_pages(p, "transcripts")
+        )
+        return tab
+
+    def _build_answer_sheet_tab(self) -> QWidget:
+        tab = QWidget(self)
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        images_row = QHBoxLayout()
+        self.listening_drop = self._build_answer_drop("Listening answer sheet")
+        self.reading_drop = self._build_answer_drop("Reading answer sheet")
+        images_row.addWidget(self.listening_drop)
+        images_row.addWidget(self.reading_drop)
+        layout.addLayout(images_row)
+
+        buttons_row = QHBoxLayout()
+        self.paste_listening_btn = QPushButton("Paste Listening", tab)
+        self.paste_reading_btn = QPushButton("Paste Reading", tab)
+        self.paste_listening_btn.setIcon(qta.icon("fa5s.paste", color="#1a73e8"))
+        self.paste_reading_btn.setIcon(qta.icon("fa5s.paste", color="#1a73e8"))
+        buttons_row.addWidget(self.paste_listening_btn)
+        buttons_row.addWidget(self.paste_reading_btn)
+        buttons_row.addStretch(1)
+        layout.addLayout(buttons_row)
+
+        layout.addWidget(QLabel("Answer sheet prompt", tab))
+        self.answer_prompt_edit = QTextEdit(tab)
+        self.answer_prompt_edit.setMinimumHeight(180)
+        self.answer_prompt_edit.setPlainText(self.viewmodel.answer_sheet.prompt)
+        self.answer_prompt_edit.setStyleSheet(
+            "border: 1px solid #dadce0; border-radius: 4px; "
+            "font-family: monospace; font-size: 11px;"
+        )
+        layout.addWidget(self.answer_prompt_edit, 1)
+
+        self.paste_listening_btn.clicked.connect(
+            lambda: self._paste_answer_sheet("listening")
+        )
+        self.paste_reading_btn.clicked.connect(lambda: self._paste_answer_sheet("reading"))
+        shortcut = QShortcut(QKeySequence.StandardKey.Paste, tab)
+        shortcut.activated.connect(lambda: self._paste_answer_sheet("listening"))
+        return tab
+
+    def _build_answer_drop(self, title: str) -> ImageDropArea:
+        drop = ImageDropArea(self)
+        drop.setMinimumHeight(220)
+        drop.setText(f"{title}\nDrop image here")
+        return drop
+
+    def _connect_signals(self) -> None:
+        self.cancel_btn.clicked.connect(self.reject)
+        self.send_btn.clicked.connect(self._send_to_agent)
+        self.viewmodel.state_changed.connect(self._refresh_ui)
+        self.viewmodel.progress_message.connect(self._show_progress)
+        self.viewmodel.error_message.connect(self._show_error)
+        self.viewmodel.import_ready.connect(self.accept)
+
+    def _select_pdf_pages(self, part: int, lane: str) -> None:
+        current_path = self._current_pdf_path(part, lane)
+        start_dir = str(Path(current_path).parent) if current_path else ""
+        pdf_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select PDF",
+            start_dir,
+            "PDF Files (*.pdf);;All Files (*)",
+        )
+        if not pdf_path:
+            return
+
+        selected_pages = self._current_pages(part, lane)
+        dialog = PdfPageSelectorDialog(pdf_path, selected_pages, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self.viewmodel.set_part_pdf(part, lane, pdf_path, dialog.selected_pages)
+
+    def _current_pdf_path(self, part: int, lane: str) -> str:
+        payload = self.viewmodel.part_payloads[part]
+        if lane == "questions":
+            return payload.question_pdf_path
+        return payload.transcript_pdf_path
+
+    def _current_pages(self, part: int, lane: str) -> list[int]:
+        payload = self.viewmodel.part_payloads[part]
+        if lane == "questions":
+            return payload.question_pages
+        return payload.transcript_pages
+
+    def _paste_answer_sheet(self, lane: str) -> None:
+        drop_area = self.listening_drop if lane == "listening" else self.reading_drop
+        if not drop_area.paste_from_clipboard():
+            QMessageBox.warning(self, "No Image", "Clipboard does not contain an image.")
+            return
+        self.viewmodel.set_answer_sheet_image(lane, drop_area.image_path)
+
+    def _send_to_agent(self) -> None:
+        for part, widgets in self._part_widgets.items():
+            prompt_edit = widgets["prompt_edit"]
+            context_edit = widgets["context_edit"]
+            if isinstance(prompt_edit, QTextEdit):
+                self.viewmodel.set_part_prompt(part, prompt_edit.toPlainText())
+            if isinstance(context_edit, QTextEdit):
+                self.viewmodel.set_part_context_text(part, context_edit.toPlainText())
+
+        self.viewmodel.set_answer_sheet_prompt(self.answer_prompt_edit.toPlainText())
+        if self.listening_drop.image_path:
+            self.viewmodel.set_answer_sheet_image("listening", self.listening_drop.image_path)
+        if self.reading_drop.image_path:
+            self.viewmodel.set_answer_sheet_image("reading", self.reading_drop.image_path)
+        self.viewmodel.send_to_agent()
+
+    def _refresh_ui(self) -> None:
+        for part, widgets in self._part_widgets.items():
+            question_label = widgets["question_label"]
+            transcript_label = widgets["transcript_label"]
+            if isinstance(question_label, QLabel):
+                question_label.setText(self.viewmodel.pdf_summary(part, "questions"))
+            if isinstance(transcript_label, QLabel):
+                transcript_label.setText(self.viewmodel.pdf_summary(part, "transcripts"))
+
+        self.send_btn.setEnabled(self.viewmodel.can_send())
+        self.cancel_btn.setEnabled(not self.viewmodel.is_loading)
+        for widgets in self._part_widgets.values():
+            for key in ("question_button", "transcript_button"):
+                button = widgets[key]
+                if isinstance(button, QPushButton):
+                    button.setEnabled(not self.viewmodel.is_loading)
+        if self.viewmodel.is_loading:
+            self.send_btn.setText("Sending...")
+        else:
+            self.send_btn.setText("Send to agent")
+
+    def _show_progress(self, message: str) -> None:
+        self.progress_label.setText(message)
+
+    def _show_error(self, message: str) -> None:
+        QMessageBox.critical(self, "Agent Import Error", message)

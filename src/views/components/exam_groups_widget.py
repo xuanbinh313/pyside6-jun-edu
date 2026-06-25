@@ -22,6 +22,7 @@ from src.views.components.exam_context_section import (
     ExamContextSection,
     context_audio_range,
 )
+from src.views.components.import_questions_agent_dialog import ImportQuestionsAgentDialog
 from src.views.components.import_questions_dialog import ImportQuestionsDialog
 from src.views.components.option_question_item import OptionQuestionItem
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
@@ -68,11 +69,20 @@ class ExamGroupsWidget(QWidget):
         self.ui.q_label_layout.insertWidget(
             self.ui.q_label_layout.count() - 1, self.add_q_btn
         )
+        self.import_agent_btn = QPushButton(self)
+        self.import_agent_btn.setIcon(qta.icon("fa5s.robot", color="#9334e6"))
+        self.import_agent_btn.setToolTip("Import questions with AI agent")
+        self.import_agent_btn.setMinimumSize(28, 28)
+        self.import_agent_btn.setMaximumSize(28, 28)
+        self.ui.q_label_layout.insertWidget(
+            self.ui.q_label_layout.count() - 1, self.import_agent_btn
+        )
         self.ui.import_q_btn.setIcon(qta.icon("fa5s.file-import", color="#34a853"))
         self.ui.listen_btn.setIcon(qta.icon("fa5s.play", color="white"))
 
         # Setup connections
         self.add_q_btn.clicked.connect(self._on_add_question_clicked)
+        self.import_agent_btn.clicked.connect(self._on_import_questions_agent_clicked)
         self.ui.import_q_btn.clicked.connect(self._on_import_questions_clicked)
         self.ui.tag_filter_list.itemChanged.connect(self._on_filter_changed)
         self.ui.q_list.currentItemChanged.connect(self._on_question_selected)
@@ -344,6 +354,16 @@ class ExamGroupsWidget(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
+        self._save_import_result(dialog)
+
+    def _on_import_questions_agent_clicked(self):
+        dialog = ImportQuestionsAgentDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._save_import_result(dialog)
+
+    def _save_import_result(self, dialog):
         contexts_data = dialog.result_contexts  # list[dict] with 'llm_id' key
         questions_data = dialog.result_questions  # list[dict] with 'llm_context_id' key
         answer_key = getattr(dialog, "result_answer_key", {})

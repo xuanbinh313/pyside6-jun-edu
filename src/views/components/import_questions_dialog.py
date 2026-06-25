@@ -1,10 +1,4 @@
-import csv
-import io
-import json
-import re
-from pathlib import Path
-
-from json_repair import repair_json
+from typing import Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
@@ -21,6 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.viewmodels.import_questions_viewmodel import ImportQuestionsViewModel
 from ui_gen.ui_import_questions_dialog import Ui_ImportQuestionsDialog
 
 
@@ -185,15 +180,30 @@ RULES:
     }
     DEFAULT_QUESTION_TYPE = "MULTIPLE_CHOICE"
 
-    def __init__(self, parent=None):
+    def __init__(
+        self, parent=None, viewmodel: Optional[ImportQuestionsViewModel] = None
+    ):
         super().__init__(parent)
         self.setWindowTitle("Import Questions  LLM JSON Import")
         self.resize(720, 600)
-        self.result_contexts: list[dict] = []
-        self.result_questions: list[dict] = []
-        self.result_answer_key: dict[int, str] = {}
-        self.selected_image_paths: list[str] = []
+        self.viewmodel = viewmodel or ImportQuestionsViewModel(self)
         self._setup_ui()
+
+    @property
+    def result_contexts(self) -> list[dict]:
+        return self.viewmodel.result_contexts
+
+    @property
+    def result_questions(self) -> list[dict]:
+        return self.viewmodel.result_questions
+
+    @property
+    def result_answer_key(self) -> dict[int, str]:
+        return self.viewmodel.result_answer_key
+
+    @property
+    def selected_image_paths(self) -> list[str]:
+        return self.viewmodel.selected_image_paths
 
     # UI
     def _setup_ui(self):
@@ -202,7 +212,7 @@ RULES:
 
         self.prompt_edit = self.ui.prompt_edit
         self.json_edit = self.ui.json_edit
-        self.prompt_texts = self._build_prompt_texts()
+        self.prompt_texts = self.viewmodel.prompt_texts
         self._setup_prompt_list()
         self._setup_image_picker()
         self._setup_answer_key_input()
@@ -239,11 +249,7 @@ RULES:
         self.ui.import_btn.clicked.connect(self._on_import)
 
     def _build_prompt_texts(self) -> dict[str, str]:
-        return {
-            "listening": self.LISTENING_PROMPT_TEXT,
-            "reading": self.READING_PROMPT_TEXT,
-            "answer_sheet": self.ANSWER_SHEET_PROMPT_TEXT,
-        }
+        return self.viewmodel.prompt_texts
 
     def _setup_prompt_list(self):
         self.ui.step1_title.setText("Step 1 - Choose a prompt to copy or edit")
@@ -376,10 +382,11 @@ RULES:
         )
         if not files:
             return
-        self.selected_image_paths = files
-        self.image_count_label.setText(f"{len(files)} image(s) selected")
-        default_numbers = ",".join(str(i) for i in range(1, len(files) + 1))
-        self.question_numbers_input.setText(default_numbers)
+        self.viewmodel.set_selected_image_paths(files)
+        self.image_count_label.setText(self.viewmodel.selected_image_count_label())
+        self.question_numbers_input.setText(
+            self.viewmodel.default_question_numbers_text()
+        )
 
     def _on_import(self):
         raw = self.json_edit.toPlainText().strip()
@@ -392,489 +399,42 @@ RULES:
             )
             return
 
-        contexts: list[dict] = []
-        questions: list[dict] = []
-        if raw or self.selected_image_paths:
-            try:
-                contexts, questions = self._parse_json(raw)
-            except Exception as exc:
-                QMessageBox.critical(
-                    self,
-                    "JSON Parse Error",
-                    f"Could not parse the JSON.\n"
-                    f"Make sure it follows the template exactly.\n\nDetails: {exc}",
-                )
-                return
-
         try:
-            answer_key = self._parse_answer_key_csv(answer_csv)
+            self.viewmodel.parse_import(
+                raw, answer_csv, self.question_numbers_input.text().strip()
+            )
         except Exception as exc:
-            QMessageBox.critical(
-                self,
-                "Answer CSV Error",
-                f"Could not parse the answer key CSV.\n"
-                f"Use format: question,answer\n1,A\n\nDetails: {exc}",
-            )
+            QMessageBox.critical(self, "Import Error", str(exc))
             return
 
-        if not questions and not answer_key:
-            QMessageBox.warning(
-                self, "No Data", "No questions found in the pasted JSON."
-            )
-            return
-        duplicate_numbers = self._duplicate_question_numbers(questions)
-        if duplicate_numbers:
-            duplicate_text = ", ".join(f"Q{number}" for number in duplicate_numbers)
-            QMessageBox.warning(
-                self,
-                "Duplicate Question Numbers",
-                f"The import data contains duplicate question number(s): {duplicate_text}.\n"
-                "Please keep each question number unique in the import JSON.",
-            )
-            return
-
-        if answer_key:
-            self._apply_answer_key_to_questions(questions, answer_key)
-
-        self.result_contexts = contexts
-        self.result_questions = questions
-        self.result_answer_key = answer_key
         self.accept()
 
     def _parse_answer_key_csv(self, raw_text: str) -> dict[int, str]:
-        if not raw_text:
-            return {}
-
-        clean_text = re.sub(r"^```(?:csv)?\s*|\s*```$", "", raw_text.strip())
-        reader = csv.DictReader(io.StringIO(clean_text))
-        if not reader.fieldnames:
-            raise ValueError("CSV header is missing.")
-
-        normalized_fields = {
-            str(field or "").strip().lower(): field for field in reader.fieldnames
-        }
-        question_field = normalized_fields.get("question")
-        answer_field = normalized_fields.get("answer")
-        if not question_field or not answer_field:
-            raise ValueError('CSV header must include "question" and "answer".')
-
-        answer_key: dict[int, str] = {}
-        for row_number, row in enumerate(reader, start=2):
-            raw_question = str(row.get(question_field, "")).strip()
-            raw_answer = str(row.get(answer_field, "")).strip().upper()
-            if not raw_question and not raw_answer:
-                continue
-            try:
-                question_number = int(raw_question)
-            except ValueError as exc:
-                raise ValueError(
-                    f"Row {row_number} has invalid question number: {raw_question}"
-                ) from exc
-            if question_number <= 0:
-                raise ValueError(f"Row {row_number} question must be greater than zero.")
-
-            answer_match = re.search(r"[A-D]", raw_answer)
-            if not answer_match:
-                continue
-            answer_key[question_number] = answer_match.group(0)
-        return answer_key
+        return self.viewmodel.parse_answer_key_csv(raw_text)
 
     def _apply_answer_key_to_questions(
         self, questions: list[dict], answer_key: dict[int, str]
     ) -> None:
-        for question in questions:
-            try:
-                question_number = int(question.get("question_number", 0) or 0)
-            except (TypeError, ValueError):
-                continue
-            answer = answer_key.get(question_number)
-            if answer:
-                question["correct_answer"] = answer
+        self.viewmodel.apply_answer_key_to_questions(questions, answer_key)
 
-    # JSON parser
     def _parse_json(self, raw_text: str) -> tuple[list[dict], list[dict]]:
-        """
-        Parse the LLM-generated JSON object.
-
-        Returns
-        -------
-        contexts : list[dict]
-            Dicts ready to be passed to ExamContext constructor:
-                part, context_type, content (dict/JSON), index
-            The caller must supply exam_id before persisting.
-            The 'llm_id' key carries the LLM-generated id so that the caller
-            can build the mapping llm_id  real DB uuid.
-
-        questions : list[dict]
-            Dicts ready to be passed to ExamQuestion constructor:
-                context_id (real DB uuid  resolved by caller),
-                content, options (JSON string), correct_answer,
-                question_number, question_type, additional_meta (dict)
-            The 'llm_context_id' key carries the raw LLM reference before resolution.
-            The caller must supply exam_id before persisting.
-        """
-        try:
-            data = self._parse_json_object(raw_text)
-        except json.JSONDecodeError:
-            # LLM output sometimes contains unescaped quotes or other minor
-            # JSON violations – attempt an automatic repair before giving up.
-            data = json.loads(repair_json(raw_text))
-        if not isinstance(data, dict):
-            raise ValueError(
-                "Expected a JSON object at the top level with keys "
-                '"contexts" and "questions".'
-            )
-
-        # Parse contexts.
-        raw_contexts = data.get("contexts", [])
-        if not isinstance(raw_contexts, list):
-            raise ValueError('"contexts" must be a JSON array.')
-
-        contexts: list[dict] = []
-        for i, ctx in enumerate(raw_contexts):
-            if not isinstance(ctx, dict):
-                continue
-
-            llm_id = str(ctx.get("id", f"ctx_{i}")).strip()
-            if not llm_id:
-                llm_id = f"ctx_{i}"
-
-            ctx_type = str(ctx.get("context_type", "READING_PASSAGE")).strip().upper()
-            if ctx_type not in self.VALID_CONTEXT_TYPES:
-                ctx_type = "READING_PASSAGE"
-
-            try:
-                part = int(ctx.get("part") or 1)
-            except (TypeError, ValueError):
-                part = 1
-
-            content = ctx.get("content", {})
-            if not isinstance(content, dict):
-                # If a plain string was returned, normalise it
-                content = {"text": str(content)}
-
-            index = ctx.get("index", i)
-            try:
-                index = int(index)
-            except (TypeError, ValueError):
-                index = i
-
-            meta_raw = ctx.get("additional_meta", {})
-            if not isinstance(meta_raw, dict):
-                meta_raw = {}
-            try:
-                audio_start = float(meta_raw.get("audio_start", 0.0))
-            except (TypeError, ValueError):
-                audio_start = 0.0
-            try:
-                audio_end = float(meta_raw.get("audio_end", 0.0))
-            except (TypeError, ValueError):
-                audio_end = 0.0
-            ctx_meta = {
-                "audio_start": audio_start,
-                "audio_end": audio_end,
-                "note": str(meta_raw.get("note", "")).strip(),
-            }
-
-            contexts.append(
-                {
-                    "llm_id": llm_id,  # temporary reference key
-                    "part": part,
-                    "context_type": ctx_type,
-                    "content": content,
-                    "index": index,
-                    "additional_meta": ctx_meta,
-                    "user_id": str(ctx.get("user_id")),
-                }
-            )
-
-        # Parse questions.
-        raw_questions = data.get("questions", [])
-        if not isinstance(raw_questions, list):
-            raise ValueError('"questions" must be a JSON array.')
-
-        if not raw_questions and not self.selected_image_paths:
-            raise ValueError('The "questions" array is empty.')
-
-        questions: list[dict] = []
-        for q in raw_questions:
-            if not isinstance(q, dict):
-                continue
-
-            content = str(q.get("content", "")).strip()
-            if not content:
-                continue
-
-            # options
-            options_raw = q.get("options", [])
-            if isinstance(options_raw, list):
-                options_list = [str(o) for o in options_raw]
-            elif isinstance(options_raw, str):
-                try:
-                    options_list = json.loads(options_raw)
-                    if not isinstance(options_list, list):
-                        raise ValueError
-                except Exception:
-                    options_list = [
-                        o.strip() for o in options_raw.split(",") if o.strip()
-                    ]
-            else:
-                options_list = []
-
-            # additional_meta (only note for question, keep start/end as helper fields for fallback resolution)
-            meta_raw = q.get("additional_meta", {})
-            if not isinstance(meta_raw, dict):
-                meta_raw = {}
-            note = str(meta_raw.get("note") or q.get("note") or "").strip()
-            try:
-                audio_start = float(meta_raw.get("audio_start", 0.0))
-            except (TypeError, ValueError):
-                audio_start = 0.0
-            try:
-                audio_end = float(meta_raw.get("audio_end", 0.0))
-            except (TypeError, ValueError):
-                audio_end = 0.0
-
-            # question_number
-            try:
-                legacy_part = int(q.get("part") or 1)
-            except (TypeError, ValueError):
-                legacy_part = 1
-            try:
-                question_number = int(q.get("question_number") or 0)
-            except (TypeError, ValueError):
-                question_number = 0
-
-            # question_type
-            q_type = (
-                str(q.get("question_type") or self.DEFAULT_QUESTION_TYPE)
-                .strip()
-                .upper()
-            )
-            if q_type not in self.VALID_QUESTION_TYPES:
-                q_type = self.DEFAULT_QUESTION_TYPE
-
-            correct_answer = str(q.get("correct_answer") or "").strip().upper()
-
-            # context_id  stored as llm reference; caller resolves to real uuid
-            llm_ctx_id = q.get("context_id")
-            if llm_ctx_id is not None:
-                llm_ctx_id = str(llm_ctx_id).strip() or None
-
-            questions.append(
-                {
-                    "llm_context_id": llm_ctx_id,  # resolved by caller after DB insert of contexts
-                    "_legacy_part": legacy_part,
-                    "content": content,
-                    "options": json.dumps(options_list, ensure_ascii=False),
-                    "correct_answer": correct_answer,
-                    "question_number": question_number,
-                    "question_type": q_type,
-                    "additional_meta": {
-                        "note": note,
-                    },
-                    "user_id": str(q.get("user_id")),
-                    "_temp_audio_start": audio_start,
-                    "_temp_audio_end": audio_end,
-                }
-            )
-
-        # Resolve any audio start/end from questions to contexts if context doesn't have it
-        for q in questions:
-            llm_ctx_id = q.get("llm_context_id")
-            if not llm_ctx_id:
-                continue
-            # Find matching context
-            matching_ctx = next(
-                (c for c in contexts if c["llm_id"] == llm_ctx_id), None
-            )
-            if matching_ctx:
-                ctx_meta = matching_ctx.setdefault(
-                    "additional_meta",
-                    {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
-                )
-                q_start = q.pop("_temp_audio_start", 0.0)
-                q_end = q.pop("_temp_audio_end", 0.0)
-                if (q_start > 0.0 or q_end > 0.0) and ctx_meta.get(
-                    "audio_end", 0.0
-                ) == 0.0:
-                    ctx_meta["audio_start"] = q_start
-                    ctx_meta["audio_end"] = q_end
-            else:
-                q.pop("_temp_audio_start", None)
-                q.pop("_temp_audio_end", None)
-
-        context_ids = {ctx["llm_id"] for ctx in contexts}
-        next_index = len(contexts)
-        for q in questions:
-            if q["llm_context_id"] in context_ids:
-                continue
-            standalone_id = f"standalone_{q['question_number'] or next_index}"
-            while standalone_id in context_ids:
-                standalone_id = f"standalone_{next_index}"
-                next_index += 1
-            contexts.append(
-                {
-                    "llm_id": standalone_id,
-                    "part": q.pop("_legacy_part", 1),
-                    "context_type": "STANDALONE",
-                    "content": {"text": ""},
-                    "index": next_index,
-                    "additional_meta": {
-                        "audio_start": 0.0,
-                        "audio_end": 0.0,
-                        "note": "",
-                    },
-                    "user_id": str(q.get("user_id")),
-                }
-            )
-            context_ids.add(standalone_id)
-            q["llm_context_id"] = standalone_id
-            next_index += 1
-
-        for q in questions:
-            q.pop("_legacy_part", None)
-            q.pop("_temp_audio_start", None)
-            q.pop("_temp_audio_end", None)
-
-        return self._merge_image_diagrams(contexts, questions)
+        return self.viewmodel.parse_json(raw_text)
 
     def _duplicate_question_numbers(self, questions: list[dict]) -> list[int]:
-        seen: set[int] = set()
-        duplicates: set[int] = set()
-        for question in questions:
-            try:
-                number = int(question.get("question_number", 0) or 0)
-            except (TypeError, ValueError):
-                continue
-            if number <= 0:
-                continue
-            if number in seen:
-                duplicates.add(number)
-            seen.add(number)
-        return sorted(duplicates)
+        return self.viewmodel.duplicate_question_numbers(questions)
 
     def _parse_question_numbers(self) -> list[int]:
-        if not self.selected_image_paths:
-            return []
-        raw = self.question_numbers_input.text().strip()
-        if not raw:
-            return list(range(1, len(self.selected_image_paths) + 1))
-
-        numbers: list[int] = []
-        for token in raw.replace("\n", ",").split(","):
-            token = token.strip()
-            if not token:
-                continue
-            try:
-                number = int(token)
-            except ValueError as exc:
-                raise ValueError(f"Invalid question number: {token}") from exc
-            if number <= 0:
-                raise ValueError("Question numbers must be greater than zero.")
-            numbers.append(number)
-
-        if len(numbers) > len(self.selected_image_paths):
-            raise ValueError(
-                "Question number count cannot be greater than selected image count."
-            )
-        return numbers or list(range(1, len(self.selected_image_paths) + 1))
+        self.viewmodel.set_question_numbers_text(self.question_numbers_input.text())
+        return self.viewmodel.parse_question_numbers()
 
     def _parse_json_object(self, raw_text: str) -> dict:
-        if not raw_text:
-            return {"contexts": [], "questions": []}
-        try:
-            data = json.loads(raw_text)
-        except json.JSONDecodeError:
-            data = json.loads(repair_json(raw_text))
-        if not isinstance(data, dict):
-            raise ValueError(
-                "Expected a JSON object at the top level with keys "
-                '"contexts" and "questions".'
-            )
-        return data
+        return self.viewmodel.parse_json_object(raw_text)
 
     def _default_question(self, question_number: int, llm_context_id: str) -> dict:
-        return {
-            "llm_context_id": llm_context_id,
-            "content": "",
-            "options": json.dumps(["", "", "", ""], ensure_ascii=False),
-            "correct_answer": "",
-            "question_number": question_number,
-            "question_type": self.DEFAULT_QUESTION_TYPE,
-            "additional_meta": {"note": ""},
-            "user_id": "None",
-        }
+        return self.viewmodel.default_question(question_number, llm_context_id)
 
     def _merge_image_diagrams(
         self, contexts: list[dict], questions: list[dict]
     ) -> tuple[list[dict], list[dict]]:
-        if not self.selected_image_paths:
-            return contexts, questions
-
-        question_numbers = self._parse_question_numbers()
-        question_by_number = {
-            int(q.get("question_number", 0)): q
-            for q in questions
-            if int(q.get("question_number", 0) or 0) > 0
-        }
-
-        image_contexts: list[dict] = []
-        image_questions: list[dict] = []
-        for index, image_path in enumerate(self.selected_image_paths):
-            llm_id = f"image_ctx_{index + 1}"
-            image_contexts.append(
-                {
-                    "llm_id": llm_id,
-                    "part": 1,
-                    "context_type": "IMAGE_DIAGRAM",
-                    "content": {
-                        "text": Path(image_path).stem,
-                        "_source_image_path": image_path,
-                        "image_filename": Path(image_path).name,
-                    },
-                    "index": index,
-                    "additional_meta": {
-                        "audio_start": 0.0,
-                        "audio_end": 0.0,
-                        "note": "",
-                    },
-                    "user_id": "None",
-                }
-            )
-
-            if index >= len(question_numbers):
-                continue
-            question_number = question_numbers[index]
-            question = dict(
-                question_by_number.get(
-                    question_number, self._default_question(question_number, llm_id)
-                )
-            )
-            question["llm_context_id"] = llm_id
-            question["question_number"] = question_number
-            options = question.get("options", "[]")
-            if isinstance(options, str):
-                try:
-                    options_list = json.loads(options)
-                except Exception:
-                    options_list = []
-            elif isinstance(options, list):
-                options_list = options
-            else:
-                options_list = []
-            options_list = [str(option) for option in options_list[:4]]
-            options_list.extend([""] * (4 - len(options_list)))
-            question["options"] = json.dumps(options_list, ensure_ascii=False)
-            question["content"] = str(question.get("content", ""))
-            question["correct_answer"] = str(question.get("correct_answer", ""))
-            question["question_type"] = question.get(
-                "question_type", self.DEFAULT_QUESTION_TYPE
-            )
-            meta = question.get("additional_meta") or {"note": ""}
-            if not isinstance(meta, dict):
-                meta = {"note": ""}
-            question["additional_meta"] = {"note": str(meta.get("note", ""))}
-            image_questions.append(question)
-
-        return image_contexts, image_questions
+        self.viewmodel.set_question_numbers_text(self.question_numbers_input.text())
+        return self.viewmodel.merge_image_diagrams(contexts, questions)

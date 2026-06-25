@@ -273,6 +273,26 @@ A lightweight ViewModel (no `QObject`, no Signals) used directly by `ExamTranscr
 
 ---
 
+## `ImportQuestionsViewModel`
+
+**File:** [`src/viewmodels/import_questions_viewmodel.py`](../src/viewmodels/import_questions_viewmodel.py)
+
+Owns the workflow state for `ImportQuestionsDialog`: prompt text variants, selected diagram image paths, question-number mapping, LLM JSON parsing/repair, answer-key CSV parsing, duplicate question-number validation, and final `result_contexts` / `result_questions` / `result_answer_key` payloads.
+
+The dialog keeps Qt widget behavior only and delegates import parsing through `parse_import()`.
+
+---
+
+## `ImportQuestionsAgentViewModel`
+
+**File:** [`src/viewmodels/import_questions_agent_viewmodel.py`](../src/viewmodels/import_questions_agent_viewmodel.py)
+
+Coordinates the Gemini-backed PDF import workflow. It stores Part 1-4 PDF/page selections, editable prompts, answer-sheet image paths, and runs the agent call on `ImportQuestionsAgentWorker(QThread)`.
+
+Selected PDF pages are sliced with `pypdf`, sent to Gemini through the `google-genai` SDK using `GEMINI_API_KEY`, parsed through `ImportQuestionsViewModel`, and exposed as `result_contexts`, `result_questions`, and `result_answer_key` for the existing exam import save path. Part 1 question pages are handled specially: each selected page is converted into exactly two question images with PyMuPDF plus OpenCV before upload, and parsed Part 1 contexts are normalized to `IMAGE_DIAGRAM` with `_source_image_path` so repository import writes `image_filename`. Part 2 parsed contexts are normalized to `STANDALONE` with `content.text` set from the dialog context input. Part 3 and Part 4 prompts instruct Gemini to use transcript range labels such as `41-43 refer to...` as the grouping boundary for shared `AUDIO_SRT` contexts and to return the same top-level `contexts` / `questions` JSON schema as the other parts.
+
+---
+
 ## `ReminderViewModel`
 
 **File:** [`src/viewmodels/reminder_viewmodel.py`](../src/viewmodels/reminder_viewmodel.py)

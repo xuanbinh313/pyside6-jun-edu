@@ -12,6 +12,7 @@ class AdditionalMeta(TypedDict):
     audio_start: float
     audio_end: float
     note: str
+    image_filename: str
 
 
 class QuestionAdditionalMeta(TypedDict):
@@ -39,7 +40,12 @@ class ExamContext:
     part: int = 1
     index: int = 0
     additional_meta: AdditionalMeta = field(
-        default_factory=lambda: {"audio_start": 0.0, "audio_end": 0.0, "note": ""}
+        default_factory=lambda: {
+            "audio_start": 0.0,
+            "audio_end": 0.0,
+            "note": "",
+            "image_filename": "",
+        }
     )
     user_id: Optional[str] = None
     questions: list["ExamQuestion"] = field(default_factory=list)
@@ -54,7 +60,9 @@ class ExamQuestion:
     id: str = field(default_factory=generate_uuid)
     question_type: str = "MULTIPLE_CHOICE"
     options: list[str] = field(default_factory=list)
-    additional_meta: QuestionAdditionalMeta = field(default_factory=lambda: {"note": ""})
+    additional_meta: QuestionAdditionalMeta = field(
+        default_factory=lambda: {"note": ""}
+    )
     user_id: Optional[str] = None
     context: Optional[ExamContext] = None
 
