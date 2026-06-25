@@ -341,8 +341,9 @@ Named widgets from `.ui` file:
 |---|---|---|
 | `play_pause_btn` | `QPushButton` | Global play/pause toggle |
 | `delay_spin` | `QSpinBox` | Loop delay in seconds before next loop iteration |
+| `add_to_question_btn` | `QPushButton` | Saves the selected transcript row span to a selected exam context; enabled only when rows are selected |
 | `save_btn` | `QPushButton` | Save changes — only visible when `_has_changes` is `True` |
-| `table` | `QTableWidget` | 5-column SRT chunk table |
+| `table` | `QTableWidget` | 5-column SRT chunk table with extended row selection |
 | `seek_slider` | `QSlider` | Audio seek bar (horizontal) |
 | `time_current_label` | `QLabel` | Current position (seconds, 3 decimal places) |
 | `time_total_label` | `QLabel` | Total duration (seconds, 3 decimal places) |
@@ -400,6 +401,7 @@ Toggling loop on the same chunk cancels it (`looping_chunk_idx = None`).
 | `_toggle_play()` | Play ↔ Pause |
 | `_update_play_pause_icon()` | Swaps icon/text based on `playbackState` |
 | `_on_save_clicked()` | Calls `viewmodel.save_chunks()`, clears change flag |
+| `_on_add_to_question_clicked()` | Opens an exam context picker and saves `audio_start` from the first selected row and `audio_end` from the last selected row |
 | `_on_item_changed(item)` | Syncs text column edits back to the chunk object |
 | `_duplicate_chunk(chunk)` | Delegates to ViewModel, inserts new row at correct position |
 | `_merge_chunk(chunk)` | Delegates to ViewModel, updates text/end in place, removes next row |

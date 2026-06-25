@@ -54,6 +54,16 @@
       </spacer>
      </item>
      <item>
+      <widget class="QPushButton" name="add_to_question_btn">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>Add Into Question</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="save_btn">
        <property name="visible">
         <bool>false</bool>

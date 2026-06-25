@@ -46,3 +46,22 @@ class ExamTranscriptViewModel:
             return
 
         self.repo.replace_srt_chunks(self.exam.id, self.srt_chunks)
+
+    @property
+    def exam_id(self):
+        return self.exam.id if self.exam else None
+
+    def list_contexts(self, selected_tags: list[str] | None = None):
+        if not self.exam_id:
+            return []
+        return self.repo.list_contexts(self.exam_id, selected_tags)
+
+    def context_question_numbers(self, context_id: str) -> list[int]:
+        return self.repo.get_context_question_numbers(context_id)
+
+    def update_context_audio_segment(
+        self, context_id: str, audio_start: float, audio_end: float
+    ):
+        return self.repo.update_context_audio_segment(
+            context_id, audio_start, audio_end
+        )

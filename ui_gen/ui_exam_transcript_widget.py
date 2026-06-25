@@ -8,10 +8,17 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject, Qt)
-from PySide6.QtWidgets import (QHBoxLayout, QLabel,
+from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
+    QMetaObject, QObject, QPoint, QRect,
+    QSize, QTime, QUrl, Qt)
+from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
+    QFont, QFontDatabase, QGradient, QIcon,
+    QImage, QKeySequence, QLinearGradient, QPainter,
+    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QHeaderView, QLabel,
     QPushButton, QSizePolicy, QSlider, QSpacerItem,
-    QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout)
+    QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QWidget)
 
 class Ui_ExamTranscriptWidget(object):
     def setupUi(self, ExamTranscriptWidget):
@@ -42,6 +49,12 @@ class Ui_ExamTranscriptWidget(object):
         self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.audio_controls.addItem(self.horizontalSpacer)
+
+        self.add_to_question_btn = QPushButton(ExamTranscriptWidget)
+        self.add_to_question_btn.setObjectName(u"add_to_question_btn")
+        self.add_to_question_btn.setEnabled(False)
+
+        self.audio_controls.addWidget(self.add_to_question_btn)
 
         self.save_btn = QPushButton(ExamTranscriptWidget)
         self.save_btn.setObjectName(u"save_btn")
@@ -109,6 +122,7 @@ class Ui_ExamTranscriptWidget(object):
         ExamTranscriptWidget.setWindowTitle(QCoreApplication.translate("ExamTranscriptWidget", u"Exam Transcript", None))
         self.play_pause_btn.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Play/Pause", None))
         self.delay_label.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Delay (s):", None))
+        self.add_to_question_btn.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Add Into Question", None))
         self.save_btn.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Save Changes", None))
         self.time_current_label.setText(QCoreApplication.translate("ExamTranscriptWidget", u"0:00", None))
         self.time_total_label.setText(QCoreApplication.translate("ExamTranscriptWidget", u"0:00", None))

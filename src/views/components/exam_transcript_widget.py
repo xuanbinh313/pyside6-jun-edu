@@ -1,13 +1,83 @@
-from PySide6.QtWidgets import (QWidget, QHBoxLayout, QPushButton,QTableWidgetItem,
-                            QHeaderView,QLineEdit, QAbstractItemView)
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QDialog,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+    QHeaderView,
+)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import QUrl, Qt, QTimer, QSize
+from PySide6.QtGui import QBrush, QColor
 
 # Import the icon management library.
 import qtawesome as qta
 
 from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
 from src.utils.helpers import get_local_media_path
+
+
+class SelectExamContextDialog(QDialog):
+    def __init__(self, viewmodel, parent=None):
+        super().__init__(parent)
+        self.viewmodel = viewmodel
+        self.selected_context = None
+
+        self.setWindowTitle("Select Exam Context")
+        self.resize(560, 420)
+
+        layout = QVBoxLayout(self)
+        label = QLabel("Select the question context to receive this audio segment.")
+        layout.addWidget(label)
+
+        self.list_widget = QListWidget(self)
+        layout.addWidget(self.list_widget)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._populate()
+
+    def _populate(self):
+        contexts = self.viewmodel.list_contexts()
+        for ctx in contexts:
+            item = QListWidgetItem(self._context_label(ctx))
+            item.setData(Qt.ItemDataRole.UserRole, ctx)
+            self.list_widget.addItem(item)
+
+    def _context_label(self, ctx):
+        numbers = self.viewmodel.context_question_numbers(ctx.id)
+        type_label = ctx.context_type.replace("_", " ").title()
+        if len(numbers) == 1:
+            prefix = f"Question {numbers[0]}"
+        elif numbers:
+            prefix = f"Questions {numbers[0]}-{numbers[-1]}"
+        else:
+            prefix = f"Context {ctx.index}"
+        return f"{prefix} - Part {ctx.part} - {type_label}"
+
+    def _on_accept(self):
+        item = self.list_widget.currentItem()
+        if not item:
+            QMessageBox.warning(self, "No Selection", "Please select a context.")
+            return
+        self.selected_context = item.data(Qt.ItemDataRole.UserRole)
+        self.accept()
+
 
 class TimeAdjustWidget(QWidget):
     def __init__(self, value, on_change, parent=None):
@@ -82,6 +152,15 @@ class ExamTranscriptWidget(QWidget):
         self.ui.play_pause_btn.clicked.connect(self._toggle_play)
         self._update_play_pause_icon() # Initialize the icon.
         
+        self.ui.add_to_question_btn.setIcon(qta.icon('fa5s.plus', color='white'))
+        self.ui.add_to_question_btn.setIconSize(QSize(16, 16))
+        self.ui.add_to_question_btn.setStyleSheet(
+            "QPushButton { background-color: #34a853; color: white; "
+            "padding: 4px 12px; border-radius: 4px; font-weight: bold; }"
+            "QPushButton:disabled { background-color: #dadce0; color: #5f6368; }"
+            "QPushButton:hover:!disabled { background-color: #188038; }"
+        )
+        self.ui.add_to_question_btn.clicked.connect(self._on_add_to_question_clicked)
         
         self.ui.save_btn.setIcon(qta.icon('fa5s.save', color='white'))
         self.ui.save_btn.setIconSize(QSize(16, 16))
@@ -95,8 +174,11 @@ class ExamTranscriptWidget(QWidget):
         
         self.ui.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.ui.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.ui.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.ui.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.ui.table.itemChanged.connect(self._on_item_changed)
+        self.ui.table.selectionModel().selectionChanged.connect(
+            self._update_add_to_question_enabled
+        )
 
         # Seek bar
         self.ui.seek_slider.setTracking(False)  # only emit on release
@@ -171,9 +253,20 @@ class ExamTranscriptWidget(QWidget):
         for row, chunk in enumerate(self.viewmodel.srt_chunks):
             if chunk.start_time <= pos_sec <= chunk.end_time:
                 if getattr(self, '_current_highlighted_row', None) != row:
-                    self.ui.table.selectRow(row)
-                    self._current_highlighted_row = row
+                    self._set_playback_highlight(row)
                 break
+
+    def _set_playback_highlight(self, row):
+        if self._current_highlighted_row is not None:
+            self._set_row_background(self._current_highlighted_row, QBrush())
+        self._set_row_background(row, QBrush(QColor("#e8f0fe")))
+        self._current_highlighted_row = row
+
+    def _set_row_background(self, row, brush):
+        for column in (0, 3):
+            item = self.ui.table.item(row, column)
+            if item:
+                item.setBackground(brush)
 
     def _play_loop(self, loop_idx):
         if self.looping_chunk_idx != loop_idx:
@@ -205,6 +298,7 @@ class ExamTranscriptWidget(QWidget):
             self._insert_chunk_row(row, chunk)
             
         self.ui.table.blockSignals(False)
+        self._update_add_to_question_enabled()
 
     def _insert_chunk_row(self, row, chunk):
         self.ui.table.insertRow(row)
@@ -275,6 +369,57 @@ class ExamTranscriptWidget(QWidget):
         self._has_changes = False
         self.ui.save_btn.setVisible(False)
 
+    def _selected_chunks(self):
+        chunks = []
+        rows = sorted({index.row() for index in self.ui.table.selectedIndexes()})
+        for row in rows:
+            idx_item = self.ui.table.item(row, 0)
+            if idx_item is None:
+                continue
+            idx = int(idx_item.text())
+            chunk = next((c for c in self.viewmodel.srt_chunks if c.index == idx), None)
+            if chunk:
+                chunks.append(chunk)
+        return chunks
+
+    def _update_add_to_question_enabled(self, *args):
+        self.ui.add_to_question_btn.setEnabled(bool(self._selected_chunks()))
+
+    def _on_add_to_question_clicked(self):
+        selected_chunks = self._selected_chunks()
+        if not selected_chunks:
+            self._update_add_to_question_enabled()
+            return
+
+        if not getattr(self.viewmodel, "exam_id", None):
+            QMessageBox.warning(self, "No Exam", "Could not determine the exam.")
+            return
+
+        dialog = SelectExamContextDialog(self.viewmodel, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selected_context:
+            return
+
+        first = selected_chunks[0]
+        last = selected_chunks[-1]
+        ctx = dialog.selected_context
+        try:
+            updated_ctx = self.viewmodel.update_context_audio_segment(
+                ctx.id, float(first.start_time), float(last.end_time)
+            )
+            if not updated_ctx:
+                QMessageBox.warning(self, "Missing Context", "Context not found.")
+                return
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Error Saving",
+                f"Could not save segment to context:\n{exc}",
+            )
+            return
+
+        self.ui.table.clearSelection()
+        self._update_add_to_question_enabled()
+
     def _update_time(self, chunk, field, value):
         if field == 'start':
             chunk.start_time = value
@@ -283,7 +428,7 @@ class ExamTranscriptWidget(QWidget):
         self._mark_changed()
             
     def _on_item_changed(self, item):
-        if item.column() == 3: 
+        if item.column() == 3:
             row = item.row()
             idx_item = self.ui.table.item(row, 0)
             if idx_item is None:
@@ -308,6 +453,7 @@ class ExamTranscriptWidget(QWidget):
         self.ui.table.blockSignals(True)
         self._insert_chunk_row(new_idx, new_chunk)
         self.ui.table.blockSignals(False)
+        self._update_add_to_question_enabled()
         self._mark_changed()
 
     def _merge_chunk(self, chunk):
@@ -319,9 +465,10 @@ class ExamTranscriptWidget(QWidget):
         idx_item = self.ui.table.item(idx, 3)
         if idx_item:
             idx_item.setText(chunk.text)
-        end_item = self.ui.table.item(idx, 2)
-        if end_item:
-            end_item.setText(f"{chunk.end_time:.3f}")
+        end_widget = self.ui.table.cellWidget(idx, 2)
+        if isinstance(end_widget, TimeAdjustWidget):
+            end_widget.val_edit.setText(f"{chunk.end_time:.3f}")
         self.ui.table.removeRow(idx + 1)
         self.ui.table.blockSignals(False)
+        self._update_add_to_question_enabled()
         self._mark_changed()
