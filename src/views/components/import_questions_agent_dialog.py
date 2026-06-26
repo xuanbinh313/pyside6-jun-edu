@@ -449,7 +449,7 @@ class ImportQuestionsAgentDialog(QDialog):
 
         self.send_btn.setEnabled(self.viewmodel.can_send())
         self.cancel_btn.setEnabled(not self.viewmodel.is_loading)
-        self.requests_btn.setEnabled(not self.viewmodel.is_loading)
+        self.requests_btn.setEnabled(True)
         for widgets in self._part_widgets.values():
             for key in ("question_button", "transcript_button"):
                 button = widgets[key]

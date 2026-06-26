@@ -9,7 +9,7 @@ from typing import Callable
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-from PySide6.QtCore import QObject, QThread, QTimer, Signal
+from PySide6.QtCore import QObject, QThread, Signal
 
 from src.models.exam import ImportAgentTask
 from src.repositories.sqlite.import_agent_task_repo import ImportAgentTaskRepository
@@ -1033,7 +1033,6 @@ OUTPUT CONSTRAINT: Output ONLY one raw JSON object. No markdown, no code fences,
 TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
 
 The attached transcript pages are TOEIC Part 1 audio transcript pages.
-Part 1 photograph question pages are processed locally with OpenCV and are not attached to Gemini.
 Do NOT infer or create Part 2, Part 3, or Part 4 questions.
 Use question numbers in transcript order, starting from 1 unless printed/spoken numbers are visible.
 
@@ -1046,13 +1045,13 @@ Return this schema:
       "context_type": "IMAGE_DIAGRAM",
       "content": {"text": "Brief description of the photograph."},
       "index": 0,
-      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "REQUIRED. Vietnamese translation/description of the photograph."},
+      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
       "questions": [
         {
           "question_number": 1,
           "question_type": "MULTIPLE_CHOICE",
           "content": "Look at the picture and choose the statement that best describes it.",
-          "options": ["Flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order."],
+          "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
           "correct_answer": "Required get from answer sheet image",
           "additional_meta": {
               "note": "REQUIRED. Strictly format this field exactly as follows:\n[Translation of the question content stem into {TARGET_LANG}]\n[Translation of option 1 into {TARGET_LANG}]\n[Translation of option 2 into {TARGET_LANG}]\n[Translation of option 3 into {TARGET_LANG}]\n[Translation of option 4 into {TARGET_LANG} (if applicable)]\n\n[Detailed grammatical/contextual explanation in {TARGET_LANG} explaining why the correct_answer is right based on keywords from the transcript.]"
@@ -1066,9 +1065,10 @@ Return this schema:
 STRICT PART 1 RULES:
 1. Every context_type must be IMAGE_DIAGRAM.
 2. Create exactly one context and one question for each attached photograph image.
-3. Every question must reference its own context_id.
+3. every questions options must be as flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order.
 4. Do not use question numbers 11, 12, 13, 14 unless those exact numbers are visibly printed on the image.
 5. Do not create spoken question-response content. That belongs to Part 2, not Part 1.
+6. Only take questions from 1 to 10.
 """.replace("{TARGET_LANG}", TARGET_LANG),
         2: """
 Analyze ONLY TOEIC Listening Part 2 (Question-Response).
@@ -1104,10 +1104,11 @@ Return this schema:
 }
 
 STRICT PART 2 RULES:
-1. Every context_type must be STANDALONE.
+1. Every context_type must be STANDALONE and 1 context only has 1 question.
 2. questions.content: Put the spoken Question/Statement here (e.g., "Where is the meeting room?").
 3. questions.options: Put the 3 spoken response choices (A, B, C) here,Stripped of prefixes like (A), B., C) and keep original order.
 4. Never leave questions.additional_meta.note empty, even when correct_answer is unknown.
+5. only take all questions from 11 to 40.
 """.replace("{TARGET_LANG}", TARGET_LANG),
         3: """
 Analyze ONLY TOEIC Listening Part 3 (Conversations).
@@ -1132,7 +1133,7 @@ Return this schema:
       "context_type": "AUDIO_SRT",
       "content": {"text": "Full conversation transcript for questions 41-43."},
       "index": 0,
-      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "REQUIRED. Vietnamese translation or summary of the conversation."},
+      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "REQUIRED. Vietnamese translation of the conversation."},
       "questions": [
         {
           "question_number": 41,
@@ -1158,14 +1159,15 @@ Return this schema:
 STRICT PART 3 RULES:
 1. Every context part must be 3.
 2. Every context_type must be AUDIO_SRT.
-3. Questions sharing one conversation must be nested in the same context's questions array.
-4. Extract only Part 3 conversation questions.
-5. Preserve printed question numbers when visible.
-6. Use transcript start-number/range labels to group questions; do not split questions from one label into separate contexts.
-7. If a label says 41-43, only questions 41, 42, and 43 may reference that context.
-8. The top-level JSON object must contain exactly one "contexts" array; do not add a top-level "questions" array.
-9. Do not return nested groups, markdown tables, CSV, or any schema other than the JSON object above.
-10. Never leave contexts.additional_meta.note or questions.additional_meta.note empty.
+3. Only take all questions from 41 to 70.
+4. Questions sharing one conversation must be nested in the same context's questions array.
+5. Extract only Part 3 conversation questions.
+6. Preserve printed question numbers when visible.
+7. Use transcript start-number/range labels to group questions; do not split questions from one label into separate contexts.
+8. If a label says 41-43, only questions 41, 42, and 43 may reference that context.
+9. The top-level JSON object must contain exactly one "contexts" array; do not add a top-level "questions" array.
+10. Do not return nested groups, markdown tables, CSV, or any schema other than the JSON object above.
+11. Never leave contexts.additional_meta.note or questions.additional_meta.note empty.
 """.replace("{TARGET_LANG}", TARGET_LANG),
         4: """
 Analyze ONLY TOEIC Listening Part 4 (Talks).
@@ -1216,14 +1218,15 @@ Return this schema:
 STRICT PART 4 RULES:
 1. Every context part must be 4.
 2. Every context_type must be AUDIO_SRT.
-3. Questions sharing one talk must be nested in the same context's questions array.
-4. Extract only Part 4 talk questions.
-5. Preserve printed question numbers when visible.
-6. Use transcript start-number/range labels to group questions; do not split questions from one label into separate contexts.
-7. If a label says 71-73, only questions 71, 72, and 73 may reference that context.
-8. The top-level JSON object must contain exactly one "contexts" array; do not add a top-level "questions" array.
-9. Do not return nested groups, markdown tables, CSV, or any schema other than the JSON object above.
-10. Never leave contexts.additional_meta.note or questions.additional_meta.note empty.
+3. Only take all questions from 71 to 100.
+4. Questions sharing one talk must be nested in the same context's questions array.
+5. Extract only Part 4 talk questions.
+6. Preserve printed question numbers when visible.
+7. Use transcript start-number/range labels to group questions; do not split questions from one label into separate contexts.
+8. If a label says 71-73, only questions 71, 72, and 73 may reference that context.
+9. The top-level JSON object must contain exactly one "contexts" array; do not add a top-level "questions" array.
+10. Do not return nested groups, markdown tables, CSV, or any schema other than the JSON object above.
+11. Never leave contexts.additional_meta.note or questions.additional_meta.note empty.
 """.replace("{TARGET_LANG}", TARGET_LANG),
     }
 
@@ -1250,10 +1253,8 @@ STRICT PART 4 RULES:
         self.is_loading = False
         self.current_task_id: str | None = None
         self._worker: ImportQuestionsAgentWorker | None = None
-        self._retry_timer = QTimer(self)
-        self._retry_timer.setInterval(60_000)
-        self._retry_timer.timeout.connect(self._run_next_retryable_task)
-        self._retry_timer.start()
+        self._batch_task_ids: list[str] = []
+        self._batch_results: dict[str, dict] = {}
 
     def _default_part_prompt(self, part: int) -> str:
         return self.PART_PROMPTS.get(part, self.parser.READING_PROMPT_TEXT)
@@ -1334,14 +1335,28 @@ STRICT PART 4 RULES:
             )
             return
 
-        task = self.create_agent_task()
-        self._start_task(task.id)
+        tasks = self.create_agent_tasks()
+        if not tasks:
+            self.error_message.emit("No agent requests were created.")
+            return
+        self.result_contexts = []
+        self.result_questions = []
+        self.result_answer_key = {}
+        self._batch_task_ids = [task.id for task in tasks]
+        self._batch_results = {}
+        self._start_task(tasks[0].id)
 
     def create_agent_task(self) -> ImportAgentTask:
         payload = self._build_agent_payload()
         task = self.task_repo.create_task(payload.model_dump())
         self.tasks_changed.emit()
         return task
+
+    def create_agent_tasks(self) -> list[ImportAgentTask]:
+        payloads = self._build_agent_request_payloads()
+        tasks = [self.task_repo.create_task(payload.model_dump()) for payload in payloads]
+        self.tasks_changed.emit()
+        return tasks
 
     def _build_agent_payload(self) -> AgentImportPayload:
         return AgentImportPayload(
@@ -1350,6 +1365,34 @@ STRICT PART 4 RULES:
                     update={"prompt": self._effective_part_prompt(part, payload.prompt)}
                 )
                 for part, payload in self.part_payloads.items()
+            ],
+            answer_sheet=self.answer_sheet,
+        )
+
+    def _build_agent_request_payloads(self) -> list[AgentImportPayload]:
+        selected_parts = set(self._parts_with_input())
+        payloads: list[AgentImportPayload] = []
+        listening_parts = [part for part in (1, 2) if part in selected_parts]
+        if listening_parts:
+            payloads.append(self._payload_for_parts(listening_parts))
+
+        for part in self.TOEIC_PARTS:
+            if part in (1, 2) or part not in selected_parts:
+                continue
+            payloads.append(self._payload_for_parts([part]))
+        return payloads
+
+    def _payload_for_parts(self, parts: list[int]) -> AgentImportPayload:
+        return AgentImportPayload(
+            parts=[
+                self.part_payloads[part].model_copy(
+                    update={
+                        "prompt": self._effective_part_prompt(
+                            part, self.part_payloads[part].prompt
+                        )
+                    }
+                )
+                for part in parts
             ],
             answer_sheet=self.answer_sheet,
         )
@@ -1366,34 +1409,63 @@ STRICT PART 4 RULES:
         self._worker.progress.connect(self.progress_message.emit)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
-        self._worker.run()
+        self._worker.start()
         return True
 
     def _on_finished(self, task_id: str, result: dict) -> None:
+        worker = self._worker
+        self._worker = None
+        if worker is not None:
+            worker.deleteLater()
         self.is_loading = False
         self.current_task_id = None
-        self.result_contexts = list(result.get("contexts", []))
-        self.result_questions = list(result.get("questions", []))
-        raw_answer_key = result.get("answer_key", {}) or {}
-        self.result_answer_key = {
-            int(key): str(value) for key, value in raw_answer_key.items()
-        }
+        self._batch_results[task_id] = result
+        self._merge_batch_results()
         self.state_changed.emit()
         self.tasks_changed.emit()
+        if self._start_next_batch_task(after_task_id=task_id):
+            return
         self.import_ready.emit()
 
     def _on_error(self, task_id: str, message: str) -> None:
+        worker = self._worker
+        self._worker = None
+        if worker is not None:
+            worker.deleteLater()
         self.is_loading = False
         self.current_task_id = None
-        task = self.task_repo.get_task(task_id)
-        if task and task.status == "queued":
-            self.progress_message.emit(
-                f"Agent request queued for retry after error: {message}"
-            )
-        else:
-            self.error_message.emit(message)
+        self.error_message.emit(message)
         self.state_changed.emit()
         self.tasks_changed.emit()
+
+    def _merge_batch_results(self) -> None:
+        contexts: list[dict] = []
+        questions: list[dict] = []
+        answer_key: dict[int, str] = {}
+        task_ids = self._batch_task_ids or list(self._batch_results)
+        for task_id in task_ids:
+            result = self._batch_results.get(task_id)
+            if not result:
+                continue
+            contexts.extend(result.get("contexts", []) or [])
+            questions.extend(result.get("questions", []) or [])
+            raw_answer_key = result.get("answer_key", {}) or {}
+            answer_key.update(
+                {int(key): str(value) for key, value in raw_answer_key.items()}
+            )
+        self.result_contexts = contexts
+        self.result_questions = questions
+        self.result_answer_key = answer_key
+
+    def _start_next_batch_task(self, *, after_task_id: str) -> bool:
+        if after_task_id not in self._batch_task_ids:
+            return False
+        next_index = self._batch_task_ids.index(after_task_id) + 1
+        if next_index >= len(self._batch_task_ids):
+            return False
+        next_task_id = self._batch_task_ids[next_index]
+        self.progress_message.emit("Starting next agent request...")
+        return self._start_task(next_task_id)
 
     def run_with_manual_provider(
         self, provider: Callable[[AgentImportPayload], AgentImportResult]
@@ -1414,6 +1486,9 @@ STRICT PART 4 RULES:
             self.error_message.emit("Could not retry the selected request.")
             return
         self.tasks_changed.emit()
+        if task.id not in self._batch_task_ids:
+            self._batch_task_ids = [task.id]
+            self._batch_results = {}
         self._start_task(task.id)
 
     def remove_agent_task(self, task_id: str) -> None:
@@ -1421,14 +1496,6 @@ STRICT PART 4 RULES:
             self.error_message.emit("Could not remove a running or missing request.")
             return
         self.tasks_changed.emit()
-
-    def _run_next_retryable_task(self) -> None:
-        if self.is_loading:
-            return
-        task = self.task_repo.next_retryable_task()
-        if task:
-            self.progress_message.emit(f"Retrying agent request {task.id}...")
-            self._start_task(task.id)
 
     def _parts_with_input(self) -> list[int]:
         return [

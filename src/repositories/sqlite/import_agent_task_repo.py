@@ -68,7 +68,7 @@ class ImportAgentTaskRepository:
                 payload=payload,
                 attempts=0,
                 max_attempts=max_attempts,
-                auto_retry=True,
+                auto_retry=False,
                 error_message="",
                 result={},
                 created_at=now,
@@ -141,16 +141,9 @@ class ImportAgentTaskRepository:
             row = session.get(orm.ImportAgentTaskLocal, task_id)
             if not row:
                 return None
-            can_retry = retryable and row.auto_retry and row.attempts < row.max_attempts
-            row.status = "queued" if can_retry else "failed"
+            row.status = "failed"
             row.error_message = error_message
-            row.next_retry_at = (
-                _datetime_to_db(
-                    _now() + datetime.timedelta(seconds=RETRY_DELAY_SECONDS)
-                )
-                if can_retry
-                else None
-            )
+            row.next_retry_at = None
             row.updated_at = _datetime_to_db(_now())
             session.commit()
             session.refresh(row)
@@ -165,7 +158,7 @@ class ImportAgentTaskRepository:
             if not row or row.status == "running":
                 return None
             row.status = "queued"
-            row.auto_retry = True
+            row.auto_retry = False
             row.next_retry_at = _datetime_to_db(_now())
             row.updated_at = _datetime_to_db(_now())
             session.commit()

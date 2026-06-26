@@ -88,8 +88,8 @@ their own sessions.
 `src/repositories/sqlite/import_agent_task_repo.py` owns persisted Gemini
 agent-import request tasks. It stores the request payload before the worker
 starts, updates `queued` / `running` / `succeeded` / `failed` status, tracks
-attempt counts, schedules retryable busy-service failures, and deletes
-non-running tasks when requested from the status dialog.
+attempt counts, leaves failed agent responses paused for manual Retry, and
+deletes non-running tasks when requested from the status dialog.
 
 ## Supabase Repository
 
