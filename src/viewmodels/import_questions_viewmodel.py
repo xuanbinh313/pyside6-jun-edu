@@ -14,7 +14,7 @@ class ImportQuestionsViewModel(QObject):
     TARGET_LANG = "Vietnamese (vn)"
 
     LISTENING_PROMPT_TEXT = r"""
-Analyze the attached listening transcript text and extract all content into a raw JSON object. 
+Analyze the attached listening transcript text and extract all content into a raw JSON object.
 OUTPUT CONSTRAINT: Output ONLY the raw JSON. No markdown, no ```json code fences, no explanations.
 TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
 
@@ -34,20 +34,19 @@ TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
                 "audio_start": 0.0, 
                 "audio_end": 0.0, 
                 "note": "REQUIRED. Provide the exact full translation of 'content.text' into {TARGET_LANG}. If STANDALONE, leave as empty string." 
-            }
-        }
-    ],
-    "questions": [
-        {
-            "context_id": "Must match a valid context id. NEVER null.",
-            "question_number": 11, // Printed or spoken question number as integer
-            "question_type": "MULTIPLE_CHOICE",
-            "content": "Question stem text. Follow the LISTENING PART RULES below.",
-            "options": ["Flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order."],
-            "correct_answer": "Required choice label ('A', 'B', 'C', or 'D').",
-            "additional_meta": {
-                "note": "REQUIRED. Strictly format this field exactly as follows:\n[Translation of the question content stem into {TARGET_LANG}]\n[Translation of option 1 into {TARGET_LANG}]\n[Translation of option 2 into {TARGET_LANG}]\n[Translation of option 3 into {TARGET_LANG}]\n[Translation of option 4 into {TARGET_LANG} (if applicable)]\n\n[Detailed grammatical/contextual explanation in {TARGET_LANG} explaining why the correct_answer is right based on keywords from the transcript.]"
-            }
+            },
+            "questions": [
+                {
+                    "question_number": 11, // Printed or spoken question number as integer
+                    "question_type": "MULTIPLE_CHOICE",
+                    "content": "Question stem text. Follow the LISTENING PART RULES below.",
+                    "options": ["Flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order."],
+                    "correct_answer": "Required choice label ('A', 'B', 'C', or 'D').",
+                    "additional_meta": {
+                        "note": "REQUIRED. Strictly format this field exactly as follows:\n[Translation of the question content stem into {TARGET_LANG}]\n[Translation of option 1 into {TARGET_LANG}]\n[Translation of option 2 into {TARGET_LANG}]\n[Translation of option 3 into {TARGET_LANG}]\n[Translation of option 4 into {TARGET_LANG} (if applicable)]\n\n[Detailed grammatical/contextual explanation in {TARGET_LANG} explaining why the correct_answer is right based on keywords from the transcript.]"
+                    }
+                }
+            ]
         }
     ]
 }
@@ -70,7 +69,7 @@ LISTENING PART RULES:
    - questions.options: Put the 4 printed multiple-choice options here.
 
 STRICT ARCHITECTURE RULES:
-1. Every question must link to a context. Never use null context_id.
+1. Preferred response shape is contexts[] with each context containing its own questions[] array.
 2. For Part 1 and Part 2, every single question MUST have its own unique, dedicated "STANDALONE" context. Do NOT group multiple Part 1 or Part 2 questions into one context.
 3. For Part 3 and Part 4, all questions belonging to the same conversation/talk (usually sets of 3) must reference the exact same shared "AUDIO_SRT" context ID.
 4. Extract every question provided in the transcript. Never leave correct_answer or additional_meta.note empty.
@@ -78,7 +77,7 @@ STRICT ARCHITECTURE RULES:
 """.replace("{TARGET_LANG}", TARGET_LANG)
 
     READING_PROMPT_TEXT = r"""
-Analyze the attached exam image and extract all content into a raw JSON object. 
+Analyze the attached exam image and extract all content into a raw JSON object.
 OUTPUT CONSTRAINT: Output ONLY the raw JSON. No markdown, no ```json code fences, no explanations.
 TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
 
@@ -99,26 +98,25 @@ TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
                 "audio_start": 0.0, 
                 "audio_end": 0.0, 
                 "note": "REQUIRED. Provide the exact full translation of 'content.text' into {TARGET_LANG}. If STANDALONE, leave as empty string." 
-            }
-        }
-    ],
-    "questions": [
-        {
-            "context_id": "Must match a valid context id. NEVER null.",
-            "question_number": 131, // Printed question number as integer
-            "question_type": "MULTIPLE_CHOICE | FILL_IN_THE_BLANK | ESSAY | RECORDING",
-            "content": "Exact stem. For reading blanks with no separate stem, use '-------'.",
-            "options": ["Flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order."],
-            "correct_answer": "Required choice label ('A', 'B', etc.). Solve if unmarked. 'UNKNOWN' as last resort.",
-            "additional_meta": {
-                "note": "REQUIRED. Strictly format this field exactly as follows:\n[Translation of option 1 into {TARGET_LANG}]\n[Translation of option 2 into {TARGET_LANG}]\n[Translation of option 3 into {TARGET_LANG}]\n[Translation of option 4 into {TARGET_LANG}]\n\n[Detailed grammatical/contextual explanation in {TARGET_LANG} explaining why the correct_answer is right.]"
-            }
+            },
+            "questions": [
+                {
+                    "question_number": 131, // Printed question number as integer
+                    "question_type": "MULTIPLE_CHOICE | FILL_IN_THE_BLANK | ESSAY | RECORDING",
+                    "content": "Exact stem. For reading blanks with no separate stem, use '-------'.",
+                    "options": ["Flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order."],
+                    "correct_answer": "Required choice label ('A', 'B', etc.). Solve if unmarked. 'UNKNOWN' as last resort.",
+                    "additional_meta": {
+                        "note": "REQUIRED. Strictly format this field exactly as follows:\n[Translation of option 1 into {TARGET_LANG}]\n[Translation of option 2 into {TARGET_LANG}]\n[Translation of option 3 into {TARGET_LANG}]\n[Translation of option 4 into {TARGET_LANG}]\n\n[Detailed grammatical/contextual explanation in {TARGET_LANG} explaining why the correct_answer is right.]"
+                    }
+                }
+            ]
         }
     ]
 }
 
 STRICT ARCHITECTURE RULES:
-1. Every question must link to a context. Never use null context_id.
+1. Preferred response shape is contexts[] with each context containing its own questions[] array.
 2. STANDALONE Questions: Every standalone question (e.g., TOEIC Part 5) MUST have its own unique, dedicated context entry (context_type: "STANDALONE", content: {"text": ""}). NEVER group multiple standalone questions into a single context.
 3. SHARED Contexts: Questions sharing a passage or diagram must reference the exact same shared context ID.
 4. Extract every visible question. Never leave correct_answer or additional_meta.note empty.
@@ -296,6 +294,7 @@ RULES:
             raise ValueError('"contexts" must be a JSON array.')
 
         contexts: list[dict] = []
+        nested_questions: list[dict] = []
         for i, ctx in enumerate(raw_contexts):
             if not isinstance(ctx, dict):
                 continue
@@ -303,6 +302,15 @@ RULES:
             llm_id = str(ctx.get("id", f"ctx_{i}")).strip()
             if not llm_id:
                 llm_id = f"ctx_{i}"
+
+            ctx_questions = ctx.get("questions", [])
+            if isinstance(ctx_questions, list):
+                for q in ctx_questions:
+                    if not isinstance(q, dict):
+                        continue
+                    nested_question = dict(q)
+                    nested_question.setdefault("context_id", llm_id)
+                    nested_questions.append(nested_question)
 
             ctx_type = str(ctx.get("context_type", "READING_PASSAGE")).strip().upper()
             if ctx_type not in self.VALID_CONTEXT_TYPES:
@@ -339,6 +347,9 @@ RULES:
                 "audio_end": audio_end,
                 "note": str(meta_raw.get("note", "")).strip(),
             }
+            image_filename = str(meta_raw.get("image_filename", "")).strip()
+            if image_filename:
+                ctx_meta["image_filename"] = image_filename
 
             contexts.append(
                 {
@@ -353,8 +364,11 @@ RULES:
             )
 
         raw_questions = data.get("questions", [])
+        if raw_questions is None:
+            raw_questions = []
         if not isinstance(raw_questions, list):
             raise ValueError('"questions" must be a JSON array.')
+        raw_questions = [*raw_questions, *nested_questions]
 
         if not raw_questions and not self.selected_image_paths:
             raise ValueError('The "questions" array is empty.')

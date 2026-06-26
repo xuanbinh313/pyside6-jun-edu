@@ -6,17 +6,36 @@ from pathlib import Path
 from src.utils.helpers import get_local_media_path
 
 
+def _coerce_content(content):
+    if isinstance(content, str):
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return {"text": content}
+    if isinstance(content, dict):
+        return content
+    if hasattr(content, "model_dump"):
+        return content.model_dump()
+    if hasattr(content, "dict"):
+        return content.dict()
+    return content
+
+
+def _content_get(content, key: str, default=""):
+    content = _coerce_content(content)
+    if isinstance(content, dict):
+        return content.get(key, default)
+    return getattr(content, key, default)
+
+
 def context_content_html(ctx) -> str:
-    content = ctx.content
+    content = _coerce_content(ctx.content)
     if ctx.context_type == "AUDIO_SRT":
         return audio_srt_context_html(content)
     if ctx.context_type == "IMAGE_DIAGRAM":
         return image_diagram_context_html(content)
 
-    if isinstance(content, dict):
-        raw = str(content.get("text", ""))
-    else:
-        raw = str(content or "")
+    raw = str(_content_get(content, "text", content or ""))
     safe = html.escape(raw)
 
     def replace_placeholder(match):
@@ -32,8 +51,7 @@ def context_content_html(ctx) -> str:
 
 def audio_srt_context_html(content) -> str:
     try:
-        if isinstance(content, str):
-            content = json.loads(content)
+        content = _coerce_content(content)
         if isinstance(content, dict):
             entries = content.get("srt_lines") or []
             if not entries and content.get("text"):
@@ -56,10 +74,10 @@ def audio_srt_context_html(content) -> str:
 
 
 def image_diagram_context_html(content) -> str:
-    content = content if isinstance(content, dict) else {}
-    image_path = content.get("image_path", "")
-    image_filename = content.get("image_filename", "")
-    text = html.escape(str(content.get("text", ""))).replace("\n", "<br>")
+    content = _coerce_content(content)
+    image_path = _content_get(content, "image_path", "")
+    image_filename = _content_get(content, "image_filename", "")
+    text = html.escape(str(_content_get(content, "text", ""))).replace("\n", "<br>")
     parts = []
     image_source = ""
     if image_filename:

@@ -86,8 +86,8 @@ def _save_imported_diagram_media(ctx_data: dict) -> str:
         filename = content.get("filename") or content.get("image_filename")
         media_filename = optimize_image_to_webp_file(image_path, str(filename or ""))
         content["image_filename"] = media_filename
+        content["image_path"] = str(get_local_media_path(media_filename))
         content.pop("_source_image_path", None)
-        content.pop("image_path", None)
         content.pop("image_data_url", None)
         return media_filename
 
@@ -101,9 +101,9 @@ def _save_imported_diagram_media(ctx_data: dict) -> str:
     unique_filename = unique_media_filename(str(filename))
     get_local_media_path(unique_filename).write_bytes(decode_data_url(image_data_url))
     content["image_filename"] = unique_filename
+    content["image_path"] = str(get_local_media_path(unique_filename))
     content.pop("image_data_url", None)
     content.pop("_source_image_path", None)
-    content.pop("image_path", None)
     return unique_filename
 
 

@@ -1,14 +1,19 @@
 from __future__ import annotations
-from src.utils.helpers import get_local_media_dir
 
+import ast
+import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
+from src.models.exam import ImportAgentTask
+from src.repositories.sqlite.import_agent_task_repo import ImportAgentTaskRepository
+from src.utils.helpers import get_local_media_dir
 from src.viewmodels.import_questions_viewmodel import ImportQuestionsViewModel
 
 load_dotenv()
@@ -50,20 +55,46 @@ class AgentPartResult(BaseModel):
 
 class ImportQuestionsAgentWorker(QThread):
     progress = Signal(str)
-    finished = Signal(dict)
-    error = Signal(str)
+    finished = Signal(str, dict)
+    error = Signal(str, str)
 
-    def __init__(self, payload: AgentImportPayload, parser: ImportQuestionsViewModel):
+    def __init__(
+        self,
+        task_id: str,
+        parser: ImportQuestionsViewModel,
+        task_repo: ImportAgentTaskRepository | None = None,
+    ):
         super().__init__()
-        self.payload = payload
+        self.task_id = task_id
         self.parser = parser
+        self.task_repo = task_repo or ImportAgentTaskRepository()
+        self.payload = AgentImportPayload()
 
     def run(self):
         try:
+            task = self.task_repo.mark_running(self.task_id)
+            if task is None:
+                raise ValueError("The import agent request no longer exists.")
+            self.payload = AgentImportPayload.model_validate(task.payload)
             result = self._run_agent()
-            self.finished.emit(result.model_dump())
+            result_data = result.model_dump()
+            self.task_repo.mark_succeeded(self.task_id, result_data)
+            self.finished.emit(self.task_id, result_data)
         except Exception as exc:
-            self.error.emit(str(exc))
+            message = str(exc)
+            self.task_repo.mark_failed(
+                self.task_id,
+                message,
+                retryable=self._is_retryable_error(message),
+            )
+            self.error.emit(self.task_id, message)
+
+    def _is_retryable_error(self, message: str) -> bool:
+        normalized = message.upper()
+        return any(
+            token in normalized
+            for token in ("503", "UNAVAILABLE", "SERVICE BUSY", "HIGH DEMAND")
+        )
 
     def _run_agent(self) -> AgentImportResult:
         api_key = os.getenv("GEMINI_API_KEY", "").strip()
@@ -86,14 +117,47 @@ class ImportQuestionsAgentWorker(QThread):
 
         result = AgentImportResult()
         with get_local_media_dir() as tmp_dir:
+            grouped_part_payloads = {
+                payload.part: payload
+                for payload in self.payload.parts
+                if payload.part in (1, 2) and self._has_part_input(payload)
+            }
+            if grouped_part_payloads:
+                parts_text = ", ".join(
+                    f"Part {part}" for part in sorted(grouped_part_payloads)
+                )
+                self.progress.emit(f"Preparing grouped {parts_text} files...")
+                grouped_result = self._generate_parts_1_2(
+                    client,
+                    model_name,
+                    grouped_part_payloads.get(1),
+                    grouped_part_payloads.get(2),
+                    tmp_dir,
+                )
+                contexts, questions = self._parse_agent_response(
+                    grouped_result.response_text
+                )
+                self._normalize_contexts_for_parts_1_2(
+                    grouped_part_payloads,
+                    contexts,
+                    questions,
+                    grouped_result.image_paths,
+                )
+                result.contexts.extend(contexts)
+                result.questions.extend(questions)
+
             for part_payload in self.payload.parts:
+                if part_payload.part in (1, 2):
+                    continue
                 if not self._has_part_input(part_payload):
                     continue
                 self.progress.emit(f"Preparing Part {part_payload.part} files...")
                 part_result = self._generate_part(
                     client, model_name, part_payload, tmp_dir
                 )
-                contexts, questions = self.parser.parse_json(part_result.response_text)
+                contexts, questions = self._parse_agent_response(
+                    part_result.response_text
+                )
                 self._normalize_contexts_for_part(
                     part_payload,
                     contexts,
@@ -102,9 +166,6 @@ class ImportQuestionsAgentWorker(QThread):
                 )
                 result.contexts.extend(contexts)
                 result.questions.extend(questions)
-
-            answer_key = self._generate_answer_key(client, model_name)
-            result.answer_key.update(answer_key)
 
         if result.answer_key:
             self.parser.apply_answer_key_to_questions(
@@ -131,6 +192,87 @@ class ImportQuestionsAgentWorker(QThread):
             or (payload.transcript_pdf_path and payload.transcript_pages)
         )
 
+    def _parse_agent_response(self, response_text: str) -> tuple[list[dict], list[dict]]:
+        data = self._load_agent_response_object(response_text)
+        contexts: list[dict] = []
+        questions: list[dict] = []
+        for index, raw_context in enumerate(data.get("contexts", []) or []):
+            if not isinstance(raw_context, dict):
+                continue
+            llm_id = str(raw_context.get("id") or f"ctx_{index}").strip()
+            if not llm_id:
+                llm_id = f"ctx_{index}"
+            content = raw_context.get("content") or {}
+            if not isinstance(content, dict):
+                content = {"text": str(content)}
+            meta = raw_context.get("additional_meta") or {}
+            if not isinstance(meta, dict):
+                meta = {}
+            contexts.append(
+                {
+                    "llm_id": llm_id,
+                    "part": int(raw_context.get("part") or 1),
+                    "context_type": str(
+                        raw_context.get("context_type") or "STANDALONE"
+                    ).upper(),
+                    "content": content,
+                    "index": int(raw_context.get("index") or index),
+                    "additional_meta": {
+                        "audio_start": float(meta.get("audio_start") or 0.0),
+                        "audio_end": float(meta.get("audio_end") or 0.0),
+                        "note": str(meta.get("note") or ""),
+                    },
+                    "user_id": str(raw_context.get("user_id")),
+                }
+            )
+            for raw_question in raw_context.get("questions", []) or []:
+                if isinstance(raw_question, dict):
+                    questions.append(self._map_agent_question(raw_question, llm_id))
+
+        for raw_question in data.get("questions", []) or []:
+            if isinstance(raw_question, dict):
+                questions.append(self._map_agent_question(raw_question, ""))
+        return contexts, questions
+
+    def _load_agent_response_object(self, response_text: str) -> dict:
+        text = response_text.strip()
+        if text and text[0] == text[-1] and text[0] in {"'", '"'}:
+            try:
+                unwrapped = ast.literal_eval(text)
+            except (SyntaxError, ValueError):
+                unwrapped = text
+            if isinstance(unwrapped, str):
+                text = unwrapped.strip()
+        data = json.loads(text)
+        if isinstance(data, str):
+            data = json.loads(data)
+        if not isinstance(data, dict):
+            raise ValueError("Agent response must be a JSON object.")
+        return data
+
+    def _map_agent_question(self, raw_question: dict, parent_context_id: str) -> dict:
+        options = raw_question.get("options") or []
+        if isinstance(options, str):
+            options = [option.strip() for option in options.split(",") if option.strip()]
+        if not isinstance(options, list):
+            options = []
+        meta = raw_question.get("additional_meta") or {}
+        if not isinstance(meta, dict):
+            meta = {}
+        llm_context_id = str(raw_question.get("context_id") or "").strip()
+        return {
+            "llm_context_id": llm_context_id or parent_context_id,
+            "content": str(raw_question.get("content") or "").strip(),
+            "options": json.dumps([str(option) for option in options], ensure_ascii=False),
+            "correct_answer": str(raw_question.get("correct_answer") or "").strip().upper(),
+            "question_number": int(raw_question.get("question_number") or 0),
+            "question_type": str(
+                raw_question.get("question_type") or "MULTIPLE_CHOICE"
+            ).upper(),
+            "additional_meta": {"note": str(meta.get("note") or "")},
+            "user_id": str(raw_question.get("user_id")),
+        }
+
     def _generate_part(
         self, client, model_name: str, payload: AgentPartPayload, tmp_dir: Path
     ) -> AgentPartResult:
@@ -140,7 +282,8 @@ class ImportQuestionsAgentWorker(QThread):
             payload.prompt.strip(),
             f"\nTarget TOEIC part: {payload.part}.",
             f"Extract ONLY TOEIC Part {payload.part}.",
-            "Return only the raw JSON object with contexts and questions.",
+            "Return only the raw JSON object with contexts containing nested questions.",
+            self._vietnamese_note_contract(),
         ]
         if payload.context_text.strip():
             prompt_parts.append(
@@ -154,6 +297,10 @@ class ImportQuestionsAgentWorker(QThread):
                 tmp_dir / "part_1_question_images",
             )
             part1_image_paths = image_paths
+            prompt_parts.append(
+                "\nPart 1 photograph images were split locally for saving only; "
+                "they are not attached to this agent request."
+            )
         elif payload.part != 2 and payload.question_pdf_path and payload.question_pages:
             path = self._slice_pdf(
                 payload.question_pdf_path,
@@ -177,17 +324,31 @@ class ImportQuestionsAgentWorker(QThread):
                     "as the grouping key for shared AUDIO_SRT contexts."
                 )
 
+        answer_sheet_path = self._answer_sheet_path_for_part(payload.part)
+        if answer_sheet_path:
+            files.append(client.files.upload(file=answer_sheet_path))
+            prompt_parts.append(
+                "\nAnswer sheet image is attached. Use it to set correct_answer "
+                "for this part and to support the Vietnamese explanation notes."
+            )
+
         prompt_parts.append(
             f"\nFINAL GUARDRAIL: Output ONLY TOEIC Part {payload.part} data. "
             f"Do not include any other TOEIC part. Return exactly one JSON object "
-            f"with top-level arrays named contexts and questions."
+            f"with a top-level contexts array. Put each context's questions inside "
+            f"that context's nested questions array."
         )
 
         self.progress.emit(f"Sending Part {payload.part} to Gemini...")
+        print(f"len(files)={len(files)}")
         response = client.models.generate_content(
             model=model_name,
-            contents=["\n".join(prompt_parts), *files],
+            contents=["\n".join(prompt_parts), *files]
         )
+        dump_path = self._save_agent_response_file(
+            response, f"part_{payload.part}"
+        )
+        self.progress.emit(f"Saved agent response: {dump_path}")
         text = self._response_text(response)
         if not text:
             raise ValueError(
@@ -197,6 +358,140 @@ class ImportQuestionsAgentWorker(QThread):
             response_text=text,
             image_paths=[str(path) for path in part1_image_paths],
         )
+
+    def _generate_parts_1_2(
+        self,
+        client,
+        model_name: str,
+        part1_payload: AgentPartPayload | None,
+        part2_payload: AgentPartPayload | None,
+        tmp_dir: Path,
+    ) -> AgentPartResult:
+        files = []
+        part1_image_paths: list[Path] = []
+        prompt_parts = [
+            "Analyze ONLY TOEIC Listening Part 1 (Photographs) and Part 2 "
+            "(Question-Response).",
+            "OUTPUT CONSTRAINT: Output ONLY one raw JSON object. No markdown, "
+            "no code fences, no explanations.",
+            "Return only the raw JSON object with one top-level contexts array. "
+            "Each context must contain its own nested questions array.",
+            self._vietnamese_note_contract(),
+        ]
+
+        if part1_payload and self._has_part_input(part1_payload):
+            prompt_parts.extend(
+                [
+                    "\nPART 1 PROMPT:",
+                    part1_payload.prompt.strip(),
+                    "\nPART 1 FILES:",
+                    "Part 1 selected question PDF pages are NOT attached. They "
+                    "are processed locally with OpenCV first so image contexts can "
+                    "be saved later. Do not expect Part 1 photograph images in "
+                    "this request; use only the selected transcript pages.",
+                ]
+            )
+            if part1_payload.question_pdf_path and part1_payload.question_pages:
+                image_paths = self._prepare_part1_question_images(
+                    part1_payload.question_pdf_path,
+                    part1_payload.question_pages,
+                    tmp_dir / "part_1_question_images",
+                )
+                part1_image_paths = image_paths
+                prompt_parts.append(
+                    "Part 1 photograph image crops were created locally for saving "
+                    "only and are not attached to Gemini."
+                )
+
+            if part1_payload.transcript_pdf_path and part1_payload.transcript_pages:
+                path = self._slice_pdf(
+                    part1_payload.transcript_pdf_path,
+                    part1_payload.transcript_pages,
+                    tmp_dir / "part_1_transcript.pdf",
+                )
+                files.append(client.files.upload(file=path))
+                prompt_parts.append("Part 1 transcript pages are attached as a PDF.")
+
+        if part2_payload and self._has_part_input(part2_payload):
+            prompt_parts.extend(
+                [
+                    "\nPART 2 PROMPT:",
+                    part2_payload.prompt.strip(),
+                    "\nPART 2 FILES:",
+                ]
+            )
+            if part2_payload.context_text.strip():
+                prompt_parts.append(
+                    "\nPart 2 default/context text:\n"
+                    f"{part2_payload.context_text.strip()}"
+                )
+            if part2_payload.transcript_pdf_path and part2_payload.transcript_pages:
+                path = self._slice_pdf(
+                    part2_payload.transcript_pdf_path,
+                    part2_payload.transcript_pages,
+                    tmp_dir / "part_2_transcript.pdf",
+                )
+                files.append(client.files.upload(file=path))
+                prompt_parts.append("Part 2 transcript pages are attached as a PDF.")
+
+        answer_sheet_path = self._answer_sheet_path_for_part(1)
+        if answer_sheet_path:
+            files.append(client.files.upload(file=answer_sheet_path))
+            prompt_parts.append(
+                "Listening answer sheet image is attached. Use it to set "
+                "correct_answer for Part 1 and Part 2 questions and to support "
+                "the Vietnamese explanation notes."
+            )
+
+        prompt_parts.append(
+            "\nFINAL GROUPED PART 1/2 GUARDRAIL: Output ONLY TOEIC Part 1 and "
+            "Part 2 data. Do not include Part 3, Part 4, or any reading parts. "
+            "Set each context.part to 1 or 2 accurately. Part 1 contexts must be "
+            "IMAGE_DIAGRAM with one question each. Part 2 contexts must be "
+            "STANDALONE with one question each."
+        )
+
+        self.progress.emit("Sending grouped Part 1/2 to Gemini...")
+        print(f"len(files)={len(files)}")
+        response = client.models.generate_content(
+            model=model_name,
+            contents=["\n".join(prompt_parts), *files]
+        )
+        dump_path = self._save_agent_response_file(response, "parts_1_2")
+        self.progress.emit(f"Saved agent response: {dump_path}")
+        text = self._response_text(response)
+        if not text:
+            raise ValueError("Gemini returned an empty response for Part 1/2.")
+        return AgentPartResult(
+            response_text=text,
+            image_paths=[str(path) for path in part1_image_paths],
+        )
+
+    def _vietnamese_note_contract(self) -> str:
+        target_lang = getattr(self.parser, "TARGET_LANG", "Vietnamese (vn)")
+        return f"""
+VIETNAMESE NOTE CONTRACT:
+TRANSLATION TARGET LANGUAGE: {target_lang}
+1. Every contexts[].additional_meta.note and questions[].additional_meta.note value must be natural Vietnamese text, never English-only placeholder text.
+2. For STANDALONE contexts, contexts[].additional_meta.note must be an empty string.
+3. For AUDIO_SRT, READING_PASSAGE, and IMAGE_DIAGRAM contexts, contexts[].additional_meta.note must contain the Vietnamese translation or Vietnamese summary of contexts[].content.text.
+4. Every question note is REQUIRED and must be non-empty. Do not use "if available", "leave empty", or similar conditional wording.
+5. Format questions[].additional_meta.note exactly like this, with one translated line per source line and one blank line before the explanation:
+[Vietnamese translation of the question stem, unless the stem is exactly "-------"]
+[Vietnamese translation of option A]
+[Vietnamese translation of option B]
+[Vietnamese translation of option C]
+[Vietnamese translation of option D, if present]
+
+[Detailed Vietnamese grammar/context explanation explaining why correct_answer is right, using transcript/passage keywords.]
+6. If correct_answer is empty because no answer key is visible, still provide Vietnamese translations and explain what evidence is visible; do not leave the note empty.
+""".strip()
+
+    def _answer_sheet_path_for_part(self, part: int) -> str:
+        answer_sheet = self.payload.answer_sheet
+        if part in (1, 2, 3, 4):
+            return answer_sheet.listening_image_path
+        return answer_sheet.reading_image_path
 
     def _prepare_part1_question_images(
         self, pdf_path: str, page_indices: list[int], output_dir: Path
@@ -324,29 +619,6 @@ class ImportQuestionsAgentWorker(QThread):
             output_paths.append(output_path)
         return output_paths
 
-    def _generate_answer_key(self, client, model_name: str) -> dict[int, str]:
-        answer_sheet = self.payload.answer_sheet
-        image_paths = [
-            path
-            for path in (
-                answer_sheet.listening_image_path,
-                answer_sheet.reading_image_path,
-            )
-            if path
-        ]
-        if not image_paths:
-            return {}
-
-        self.progress.emit("Sending answer sheet image(s) to Gemini...")
-        files = [client.files.upload(file=path) for path in image_paths]
-        prompt = answer_sheet.prompt.strip() or self.parser.ANSWER_SHEET_PROMPT_TEXT
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[prompt, *files],
-        )
-        text = self._response_text(response)
-        return self.parser.parse_answer_key_csv(text)
-
     def _slice_pdf(
         self, pdf_path: str, page_indices: list[int], target_path: Path
     ) -> Path:
@@ -393,8 +665,7 @@ class ImportQuestionsAgentWorker(QThread):
                 content.setdefault("text", "")
                 image_path = context_image_map.get(old_id)
                 if image_path:
-                    content["_source_image_path"] = image_path
-                    content["image_filename"] = Path(image_path).name
+                    self._override_context_image(content, image_path)
                 context["content"] = content
             elif payload.part == 2:
                 context["context_type"] = "STANDALONE"
@@ -411,7 +682,190 @@ class ImportQuestionsAgentWorker(QThread):
                 )
 
         if payload.part == 1:
+            self._append_missing_part1_image_contexts(
+                contexts,
+                questions,
+                part1_image_paths or [],
+                set(context_image_map.values()),
+            )
             self._renumber_part1_questions(questions)
+
+    def _normalize_contexts_for_parts_1_2(
+        self,
+        payloads_by_part: dict[int, AgentPartPayload],
+        contexts: list[dict],
+        questions: list[dict],
+        part1_image_paths: list[str],
+    ) -> None:
+        available_parts = set(payloads_by_part)
+        part_by_old_id: dict[str, int] = {}
+        for index, context in enumerate(contexts):
+            old_id = str(context.get("llm_id") or f"ctx_{index}")
+            part_by_old_id[old_id] = self._context_part_for_group(
+                context, available_parts
+            )
+
+        part1_contexts = [
+            context
+            for index, context in enumerate(contexts)
+            if part_by_old_id.get(str(context.get("llm_id") or f"ctx_{index}")) == 1
+        ]
+        part1_context_ids = {
+            str(context.get("llm_id") or f"ctx_{index}")
+            for index, context in enumerate(contexts)
+            if part_by_old_id.get(str(context.get("llm_id") or f"ctx_{index}")) == 1
+        }
+        part1_questions = [
+            question
+            for question in questions
+            if str(question.get("llm_context_id") or "") in part1_context_ids
+        ]
+        context_image_map = self._part1_context_image_map(
+            part1_contexts,
+            part1_questions,
+            part1_image_paths,
+        )
+
+        id_map: dict[str, str] = {}
+        for index, context in enumerate(contexts):
+            old_id = str(context.get("llm_id") or f"ctx_{index}")
+            part = part_by_old_id.get(old_id, 1)
+            new_id = f"part{part}_{old_id}"
+            id_map[old_id] = new_id
+            context["llm_id"] = new_id
+            context["part"] = part
+
+            if part == 1:
+                context["context_type"] = "IMAGE_DIAGRAM"
+                content = context.get("content")
+                if not isinstance(content, dict):
+                    content = {"text": str(content or "")}
+                content.setdefault("text", "")
+                image_path = context_image_map.get(old_id)
+                if image_path:
+                    self._override_context_image(content, image_path)
+                context["content"] = content
+            elif part == 2:
+                part2_payload = payloads_by_part.get(2)
+                context["context_type"] = "STANDALONE"
+                context["content"] = {
+                    "text": (
+                        part2_payload.context_text.strip()
+                        if part2_payload
+                        else ImportQuestionsAgentViewModel.DEFAULT_PART2_CONTEXT
+                    )
+                }
+
+        for question in questions:
+            old_ref = str(question.get("llm_context_id") or "")
+            if old_ref in id_map:
+                question["llm_context_id"] = id_map[old_ref]
+            part = part_by_old_id.get(old_ref)
+            if part == 1:
+                question["question_type"] = "MULTIPLE_CHOICE"
+                question["content"] = (
+                    "Look at the picture and choose the statement that best describes it."
+                )
+
+        self._append_missing_part1_image_contexts(
+            contexts,
+            questions,
+            part1_image_paths,
+            set(context_image_map.values()),
+        )
+        self._renumber_part1_questions(
+            [
+                question
+                for question in questions
+                if str(question.get("llm_context_id") or "").startswith("part1_")
+            ]
+        )
+
+    def _override_context_image(self, content: dict, image_path: str) -> None:
+        image_filename = Path(image_path).name
+        content["_source_image_path"] = image_path
+        content["image_path"] = image_path
+        content["image_filename"] = image_filename
+
+    def _append_missing_part1_image_contexts(
+        self,
+        contexts: list[dict],
+        questions: list[dict],
+        image_paths: list[str],
+        used_image_paths: set[str],
+    ) -> None:
+        if not image_paths:
+            return
+
+        next_context_index = len(contexts)
+        next_question_number = self._next_question_number(questions)
+        for image_path in image_paths:
+            if image_path in used_image_paths:
+                continue
+
+            context_id = f"part1_local_image_{next_context_index + 1}"
+            content = {"text": Path(image_path).stem}
+            self._override_context_image(content, image_path)
+            contexts.append(
+                {
+                    "llm_id": context_id,
+                    "part": 1,
+                    "context_type": "IMAGE_DIAGRAM",
+                    "content": content,
+                    "index": next_context_index,
+                    "additional_meta": {
+                        "audio_start": 0.0,
+                        "audio_end": 0.0,
+                        "note": "",
+                    },
+                    "user_id": "None",
+                }
+            )
+            questions.append(
+                {
+                    "llm_context_id": context_id,
+                    "content": (
+                        "Look at the picture and choose the statement that best describes it."
+                    ),
+                    "options": json.dumps(["", "", "", ""], ensure_ascii=False),
+                    "correct_answer": "",
+                    "question_number": next_question_number,
+                    "question_type": "MULTIPLE_CHOICE",
+                    "additional_meta": {"note": ""},
+                    "user_id": "None",
+                }
+            )
+            used_image_paths.add(image_path)
+            next_context_index += 1
+            next_question_number += 1
+
+    def _next_question_number(self, questions: list[dict]) -> int:
+        numbers: list[int] = []
+        for question in questions:
+            try:
+                number = int(question.get("question_number", 0) or 0)
+            except (TypeError, ValueError):
+                number = 0
+            if number > 0:
+                numbers.append(number)
+        return (max(numbers) + 1) if numbers else 1
+
+    def _context_part_for_group(self, context: dict, available_parts: set[int]) -> int:
+        try:
+            part = int(context.get("part") or 0)
+        except (TypeError, ValueError):
+            part = 0
+        if part in available_parts:
+            return part
+        if len(available_parts) == 1:
+            return next(iter(available_parts))
+
+        context_type = str(context.get("context_type", "")).strip().upper()
+        if context_type == "IMAGE_DIAGRAM" and 1 in available_parts:
+            return 1
+        if context_type == "STANDALONE" and 2 in available_parts:
+            return 2
+        return min(available_parts or {1})
 
     def _renumber_part1_questions(self, questions: list[dict]) -> None:
         sorted_questions = sorted(
@@ -460,9 +914,15 @@ class ImportQuestionsAgentWorker(QThread):
         }
 
     def _response_text(self, response) -> str:
+        text = self._response_text_from_parts(response)
+        if text:
+            return text
         text = getattr(response, "text", "")
         if text:
             return str(text).strip()
+        return ""
+
+    def _response_text_from_parts(self, response) -> str:
         candidates = getattr(response, "candidates", None) or []
         chunks: list[str] = []
         for candidate in candidates:
@@ -473,12 +933,96 @@ class ImportQuestionsAgentWorker(QThread):
                     chunks.append(str(part_text))
         return "\n".join(chunks).strip()
 
+    def _save_agent_response_file(self, response, label: str) -> str:
+        response_dir = self._agent_response_dir()
+        response_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        safe_task_id = "".join(
+            char if char.isalnum() or char in "-_" else "_"
+            for char in self.task_id
+        )
+        safe_label = "".join(
+            char if char.isalnum() or char in "-_" else "_"
+            for char in label
+        )
+        path = response_dir / f"{timestamp}_{safe_task_id}_{safe_label}.json"
+        payload = {
+            "task_id": self.task_id,
+            "label": label,
+            "saved_at": datetime.now().isoformat(timespec="seconds"),
+            "response_text": self._response_text_from_parts(response),
+            "candidates": self._dump_response_candidates(response),
+            "response": self._json_safe(response),
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return str(path)
+
+    def _agent_response_dir(self) -> Path:
+        return Path(__file__).resolve().parents[2] / ".codex" / "import_agent_responses"
+
+    def _dump_response_candidates(self, response) -> list[dict]:
+        candidates = getattr(response, "candidates", None) or []
+        dumped_candidates: list[dict] = []
+        for candidate in candidates:
+            content = getattr(candidate, "content", None)
+            dumped_parts = [
+                self._dump_response_part(part)
+                for part in getattr(content, "parts", []) or []
+            ]
+            dumped_candidates.append(
+                {
+                    "finish_reason": self._json_safe(
+                        getattr(candidate, "finish_reason", None)
+                    ),
+                    "content_role": getattr(content, "role", None),
+                    "parts": dumped_parts,
+                }
+            )
+        return dumped_candidates
+
+    def _dump_response_part(self, part) -> dict:
+        fields = (
+            "text",
+            "thought",
+            "thought_signature",
+            "inline_data",
+            "file_data",
+            "function_call",
+            "function_response",
+            "executable_code",
+            "code_execution_result",
+        )
+        return {
+            field: self._json_safe(getattr(part, field))
+            for field in fields
+            if hasattr(part, field) and getattr(part, field) is not None
+        }
+
+    def _json_safe(self, value):
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, bytes):
+            return value.hex()
+        if isinstance(value, (list, tuple)):
+            return [self._json_safe(item) for item in value]
+        if isinstance(value, dict):
+            return {str(key): self._json_safe(item) for key, item in value.items()}
+        if isinstance(value, BaseModel):
+            return self._json_safe(value.model_dump())
+        if hasattr(value, "model_dump"):
+            return self._json_safe(value.model_dump())
+        if hasattr(value, "to_json_dict"):
+            return self._json_safe(value.to_json_dict())
+        return repr(value)
+
 
 class ImportQuestionsAgentViewModel(QObject):
     state_changed = Signal()
+    tasks_changed = Signal()
     progress_message = Signal(str)
     error_message = Signal(str)
     import_ready = Signal()
+    TARGET_LANG = "Vietnamese (vn)"
 
     TOEIC_PARTS = range(1, 8)
     DEFAULT_PART2_CONTEXT = "Mark your answer on your answer sheet"
@@ -486,10 +1030,12 @@ class ImportQuestionsAgentViewModel(QObject):
         1: """
 Analyze ONLY TOEIC Listening Part 1 (Photographs).
 OUTPUT CONSTRAINT: Output ONLY one raw JSON object. No markdown, no code fences, no explanations.
+TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
 
-The attached images are Part 1 photograph question images. Each image is one question.
+The attached transcript pages are TOEIC Part 1 audio transcript pages.
+Part 1 photograph question pages are processed locally with OpenCV and are not attached to Gemini.
 Do NOT infer or create Part 2, Part 3, or Part 4 questions.
-Use question numbers in the order images are attached, starting from 1 unless a printed number is visible.
+Use question numbers in transcript order, starting from 1 unless printed/spoken numbers are visible.
 
 Return this schema:
 {
@@ -500,18 +1046,19 @@ Return this schema:
       "context_type": "IMAGE_DIAGRAM",
       "content": {"text": "Brief description of the photograph."},
       "index": 0,
-      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "Vietnamese translation/description of the photograph."}
-    }
-  ],
-  "questions": [
-    {
-      "context_id": "p1_q1",
-      "question_number": 1,
-      "question_type": "MULTIPLE_CHOICE",
-      "content": "Look at the picture and choose the statement that best describes it.",
-      "options": ["", "", "", ""],
-      "correct_answer": "",
-      "additional_meta": {"note": "Leave empty unless an answer/explanation is visible."}
+      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "REQUIRED. Vietnamese translation/description of the photograph."},
+      "questions": [
+        {
+          "question_number": 1,
+          "question_type": "MULTIPLE_CHOICE",
+          "content": "Look at the picture and choose the statement that best describes it.",
+          "options": ["Flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order."],
+          "correct_answer": "Required get from answer sheet image",
+          "additional_meta": {
+              "note": "REQUIRED. Strictly format this field exactly as follows:\n[Translation of the question content stem into {TARGET_LANG}]\n[Translation of option 1 into {TARGET_LANG}]\n[Translation of option 2 into {TARGET_LANG}]\n[Translation of option 3 into {TARGET_LANG}]\n[Translation of option 4 into {TARGET_LANG} (if applicable)]\n\n[Detailed grammatical/contextual explanation in {TARGET_LANG} explaining why the correct_answer is right based on keywords from the transcript.]"
+          }
+        }
+      ]
     }
   ]
 }
@@ -522,13 +1069,13 @@ STRICT PART 1 RULES:
 3. Every question must reference its own context_id.
 4. Do not use question numbers 11, 12, 13, 14 unless those exact numbers are visibly printed on the image.
 5. Do not create spoken question-response content. That belongs to Part 2, not Part 1.
-""".strip(),
+""".replace("{TARGET_LANG}", TARGET_LANG),
         2: """
 Analyze ONLY TOEIC Listening Part 2 (Question-Response).
 OUTPUT CONSTRAINT: Output ONLY one raw JSON object. No markdown, no code fences, no explanations.
+TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
 
 The attached transcript pages are Part 2 audio transcript pages. The fixed context text is provided separately.
-Do NOT infer or create Part 1 photograph, Part 3 conversation, or Part 4 talk questions.
 
 Return this schema:
 {
@@ -539,31 +1086,33 @@ Return this schema:
       "context_type": "STANDALONE",
       "content": {"text": "Mark your answer on your answer sheet"},
       "index": 0,
-      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": ""}
-    }
-  ],
-  "questions": [
-    {
-      "context_id": "p2_q11",
-      "question_number": 11,
-      "question_type": "MULTIPLE_CHOICE",
-      "content": "Spoken question or statement.",
-      "options": ["Response A", "Response B", "Response C"],
-      "correct_answer": "",
-      "additional_meta": {"note": "Vietnamese translation and explanation if available."}
+      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
+      "questions": [
+        {
+          "question_number": 11,
+          "question_type": "MULTIPLE_CHOICE",
+          "content": "Spoken question or statement.",
+          "options": ["Response A", "Response B", "Response C"],
+          "correct_answer": "Required get from answer sheet image",
+          "additional_meta": {
+              "note": "REQUIRED. Strictly format this field exactly as follows:\n[Translation of the question content stem into {TARGET_LANG}]\n[Translation of option 1 into {TARGET_LANG}]\n[Translation of option 2 into {TARGET_LANG}]\n[Translation of option 3 into {TARGET_LANG}]\n[Translation of option 4 into {TARGET_LANG} (if applicable)]\n\n[Detailed grammatical/contextual explanation in {TARGET_LANG} explaining why the correct_answer is right based on keywords from the transcript.]"
+          }
+        }
+      ]
     }
   ]
 }
 
 STRICT PART 2 RULES:
 1. Every context_type must be STANDALONE.
-2. Every Part 2 question must have its own dedicated context.
-3. Extract only Part 2 question-response items.
-4. Options must contain exactly 3 responses A, B, C.
-""".strip(),
+2. questions.content: Put the spoken Question/Statement here (e.g., "Where is the meeting room?").
+3. questions.options: Put the 3 spoken response choices (A, B, C) here,Stripped of prefixes like (A), B., C) and keep original order.
+4. Never leave questions.additional_meta.note empty, even when correct_answer is unknown.
+""".replace("{TARGET_LANG}", TARGET_LANG),
         3: """
 Analyze ONLY TOEIC Listening Part 3 (Conversations).
 OUTPUT CONSTRAINT: Output ONLY one raw JSON object. No markdown, no code fences, no explanations.
+TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
 
 The attached pages contain Part 3 question pages and/or transcript pages.
 Do NOT infer or create Part 1, Part 2, or Part 4 questions.
@@ -583,18 +1132,25 @@ Return this schema:
       "context_type": "AUDIO_SRT",
       "content": {"text": "Full conversation transcript for questions 41-43."},
       "index": 0,
-      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "Vietnamese translation/summary of the conversation."}
-    }
-  ],
-  "questions": [
-    {
-      "context_id": "p3_41_43",
-      "question_number": 41,
-      "question_type": "MULTIPLE_CHOICE",
-      "content": "Printed Part 3 question stem.",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correct_answer": "",
-      "additional_meta": {"note": "Vietnamese translation and explanation if available."}
+      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "REQUIRED. Vietnamese translation or summary of the conversation."},
+      "questions": [
+        {
+          "question_number": 41,
+          "question_type": "MULTIPLE_CHOICE",
+          "content": "Printed Part 3 question stem.",
+          "options": ["Option A", "Option B", "Option C", "Option D"],
+          "correct_answer": "",
+          "additional_meta": {"note": "REQUIRED. Vietnamese translation of the question stem, Vietnamese translation of options A-D, blank line, then Vietnamese explanation using conversation keywords."}
+        },
+        {
+          "question_number": 42,
+          "question_type": "MULTIPLE_CHOICE",
+          "content": "Printed Part 3 question stem.",
+          "options": ["Option A", "Option B", "Option C", "Option D"],
+          "correct_answer": "",
+          "additional_meta": {"note": "REQUIRED. Vietnamese translation of the question stem, Vietnamese translation of options A-D, blank line, then Vietnamese explanation using conversation keywords."}
+        }
+      ]
     }
   ]
 }
@@ -602,17 +1158,19 @@ Return this schema:
 STRICT PART 3 RULES:
 1. Every context part must be 3.
 2. Every context_type must be AUDIO_SRT.
-3. Questions sharing one conversation must reference the same context_id.
+3. Questions sharing one conversation must be nested in the same context's questions array.
 4. Extract only Part 3 conversation questions.
 5. Preserve printed question numbers when visible.
 6. Use transcript start-number/range labels to group questions; do not split questions from one label into separate contexts.
 7. If a label says 41-43, only questions 41, 42, and 43 may reference that context.
-8. The top-level JSON object must contain exactly "contexts" and "questions" arrays.
+8. The top-level JSON object must contain exactly one "contexts" array; do not add a top-level "questions" array.
 9. Do not return nested groups, markdown tables, CSV, or any schema other than the JSON object above.
-""".strip(),
+10. Never leave contexts.additional_meta.note or questions.additional_meta.note empty.
+""".replace("{TARGET_LANG}", TARGET_LANG),
         4: """
 Analyze ONLY TOEIC Listening Part 4 (Talks).
 OUTPUT CONSTRAINT: Output ONLY one raw JSON object. No markdown, no code fences, no explanations.
+TRANSLATION TARGET LANGUAGE: {TARGET_LANG}
 
 The attached pages contain Part 4 question pages and/or transcript pages.
 Do NOT infer or create Part 1, Part 2, or Part 3 questions.
@@ -632,18 +1190,25 @@ Return this schema:
       "context_type": "AUDIO_SRT",
       "content": {"text": "Full talk transcript for questions 71-73."},
       "index": 0,
-      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "Vietnamese translation/summary of the talk."}
-    }
-  ],
-  "questions": [
-    {
-      "context_id": "p4_71_73",
-      "question_number": 71,
-      "question_type": "MULTIPLE_CHOICE",
-      "content": "Printed Part 4 question stem.",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correct_answer": "",
-      "additional_meta": {"note": "Vietnamese translation and explanation if available."}
+      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "REQUIRED. Vietnamese translation or summary of the talk."},
+      "questions": [
+        {
+          "question_number": 71,
+          "question_type": "MULTIPLE_CHOICE",
+          "content": "Printed Part 4 question stem.",
+          "options": ["Option A", "Option B", "Option C", "Option D"],
+          "correct_answer": "",
+          "additional_meta": {"note": "REQUIRED. Vietnamese translation of the question stem, Vietnamese translation of options A-D, blank line, then Vietnamese explanation using talk keywords."}
+        },
+        {
+          "question_number": 72,
+          "question_type": "MULTIPLE_CHOICE",
+          "content": "Printed Part 4 question stem.",
+          "options": ["Option A", "Option B", "Option C", "Option D"],
+          "correct_answer": "",
+          "additional_meta": {"note": "REQUIRED. Vietnamese translation of the question stem, Vietnamese translation of options A-D, blank line, then Vietnamese explanation using talk keywords."}
+        }
+      ]
     }
   ]
 }
@@ -651,19 +1216,26 @@ Return this schema:
 STRICT PART 4 RULES:
 1. Every context part must be 4.
 2. Every context_type must be AUDIO_SRT.
-3. Questions sharing one talk must reference the same context_id.
+3. Questions sharing one talk must be nested in the same context's questions array.
 4. Extract only Part 4 talk questions.
 5. Preserve printed question numbers when visible.
 6. Use transcript start-number/range labels to group questions; do not split questions from one label into separate contexts.
 7. If a label says 71-73, only questions 71, 72, and 73 may reference that context.
-8. The top-level JSON object must contain exactly "contexts" and "questions" arrays.
+8. The top-level JSON object must contain exactly one "contexts" array; do not add a top-level "questions" array.
 9. Do not return nested groups, markdown tables, CSV, or any schema other than the JSON object above.
-""".strip(),
+10. Never leave contexts.additional_meta.note or questions.additional_meta.note empty.
+""".replace("{TARGET_LANG}", TARGET_LANG),
     }
 
-    def __init__(self, parser: ImportQuestionsViewModel | None = None, parent=None):
+    def __init__(
+        self,
+        parser: ImportQuestionsViewModel | None = None,
+        task_repo: ImportAgentTaskRepository | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.parser = parser or ImportQuestionsViewModel(self)
+        self.task_repo = task_repo or ImportAgentTaskRepository()
         self.part_payloads: dict[int, AgentPartPayload] = {
             part: AgentPartPayload(part=part, prompt=self._default_part_prompt(part))
             for part in self.TOEIC_PARTS
@@ -676,7 +1248,12 @@ STRICT PART 4 RULES:
         self.result_questions: list[dict] = []
         self.result_answer_key: dict[int, str] = {}
         self.is_loading = False
+        self.current_task_id: str | None = None
         self._worker: ImportQuestionsAgentWorker | None = None
+        self._retry_timer = QTimer(self)
+        self._retry_timer.setInterval(60_000)
+        self._retry_timer.timeout.connect(self._run_next_retryable_task)
+        self._retry_timer.start()
 
     def _default_part_prompt(self, part: int) -> str:
         return self.PART_PROMPTS.get(part, self.parser.READING_PROMPT_TEXT)
@@ -737,22 +1314,37 @@ STRICT PART 4 RULES:
     def can_send(self) -> bool:
         if self.is_loading:
             return False
-        return any(
-            (payload.part != 2 and payload.question_pages) or payload.transcript_pages
-            for payload in self.part_payloads.values()
-        ) or bool(
-            self.answer_sheet.listening_image_path
-            or self.answer_sheet.reading_image_path
-        )
+        if not self._parts_with_input():
+            return False
+        return not self._missing_required_answer_sheets()
 
     def send_to_agent(self) -> None:
         if self.is_loading:
             return
-        if not self.can_send():
-            self.error_message.emit("Select PDF pages or answer sheet images first.")
+        if not self._parts_with_input():
+            self.error_message.emit("Select PDF pages first.")
             return
 
-        payload = AgentImportPayload(
+        missing_sheets = self._missing_required_answer_sheets()
+        if missing_sheets:
+            self.error_message.emit(
+                "Select required answer sheet image(s): "
+                + ", ".join(missing_sheets)
+                + "."
+            )
+            return
+
+        task = self.create_agent_task()
+        self._start_task(task.id)
+
+    def create_agent_task(self) -> ImportAgentTask:
+        payload = self._build_agent_payload()
+        task = self.task_repo.create_task(payload.model_dump())
+        self.tasks_changed.emit()
+        return task
+
+    def _build_agent_payload(self) -> AgentImportPayload:
+        return AgentImportPayload(
             parts=[
                 payload.model_copy(
                     update={"prompt": self._effective_part_prompt(part, payload.prompt)}
@@ -761,17 +1353,25 @@ STRICT PART 4 RULES:
             ],
             answer_sheet=self.answer_sheet,
         )
-        self.is_loading = True
-        self.state_changed.emit()
 
-        self._worker = ImportQuestionsAgentWorker(payload, self.parser)
+    def _start_task(self, task_id: str) -> bool:
+        if self.is_loading:
+            return False
+        self.is_loading = True
+        self.current_task_id = task_id
+        self.state_changed.emit()
+        self.tasks_changed.emit()
+
+        self._worker = ImportQuestionsAgentWorker(task_id, self.parser, self.task_repo)
         self._worker.progress.connect(self.progress_message.emit)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.run()
+        return True
 
-    def _on_finished(self, result: dict) -> None:
+    def _on_finished(self, task_id: str, result: dict) -> None:
         self.is_loading = False
+        self.current_task_id = None
         self.result_contexts = list(result.get("contexts", []))
         self.result_questions = list(result.get("questions", []))
         raw_answer_key = result.get("answer_key", {}) or {}
@@ -779,30 +1379,75 @@ STRICT PART 4 RULES:
             int(key): str(value) for key, value in raw_answer_key.items()
         }
         self.state_changed.emit()
+        self.tasks_changed.emit()
         self.import_ready.emit()
 
-    def _on_error(self, message: str) -> None:
+    def _on_error(self, task_id: str, message: str) -> None:
         self.is_loading = False
-        self.error_message.emit(message)
+        self.current_task_id = None
+        task = self.task_repo.get_task(task_id)
+        if task and task.status == "queued":
+            self.progress_message.emit(
+                f"Agent request queued for retry after error: {message}"
+            )
+        else:
+            self.error_message.emit(message)
         self.state_changed.emit()
+        self.tasks_changed.emit()
 
     def run_with_manual_provider(
         self, provider: Callable[[AgentImportPayload], AgentImportResult]
     ) -> None:
-        payload = AgentImportPayload(
-            parts=[
-                payload.model_copy(
-                    update={"prompt": self._effective_part_prompt(part, payload.prompt)}
-                )
-                for part, payload in self.part_payloads.items()
-            ],
-            answer_sheet=self.answer_sheet,
-        )
+        payload = self._build_agent_payload()
         result = provider(payload)
         self.result_contexts = result.contexts
         self.result_questions = result.questions
         self.result_answer_key = result.answer_key
         self.import_ready.emit()
+
+    def list_agent_tasks(self) -> list[ImportAgentTask]:
+        return self.task_repo.list_tasks()
+
+    def retry_agent_task(self, task_id: str) -> None:
+        task = self.task_repo.queue_for_retry(task_id)
+        if task is None:
+            self.error_message.emit("Could not retry the selected request.")
+            return
+        self.tasks_changed.emit()
+        self._start_task(task.id)
+
+    def remove_agent_task(self, task_id: str) -> None:
+        if not self.task_repo.delete_task(task_id):
+            self.error_message.emit("Could not remove a running or missing request.")
+            return
+        self.tasks_changed.emit()
+
+    def _run_next_retryable_task(self) -> None:
+        if self.is_loading:
+            return
+        task = self.task_repo.next_retryable_task()
+        if task:
+            self.progress_message.emit(f"Retrying agent request {task.id}...")
+            self._start_task(task.id)
+
+    def _parts_with_input(self) -> list[int]:
+        return [
+            part
+            for part, payload in self.part_payloads.items()
+            if (payload.part != 2 and payload.question_pages)
+            or payload.transcript_pages
+        ]
+
+    def _missing_required_answer_sheets(self) -> list[str]:
+        parts = self._parts_with_input()
+        missing: list[str] = []
+        if any(part in (1, 2, 3, 4) for part in parts):
+            if not self.answer_sheet.listening_image_path:
+                missing.append("Listening")
+        if any(part in (5, 6, 7) for part in parts):
+            if not self.answer_sheet.reading_image_path:
+                missing.append("Reading/Writing")
+        return missing
 
     def _effective_part_prompt(self, part: int, user_prompt: str) -> str:
         base_prompt = self._default_part_prompt(part)

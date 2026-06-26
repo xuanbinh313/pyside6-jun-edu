@@ -1,4 +1,5 @@
-﻿from shiboken6 import isValid
+﻿from src.models.exam import QuestionAdditionalMeta
+from shiboken6 import isValid
 import html
 import json
 
@@ -139,16 +140,11 @@ class OptionQuestionItem(QWidget):
         return (
             f"{html.escape(summary)}<br>"
             f'<span style="font-weight:normal; color:#3c4043;">'
-            f"Note: {safe_note}</span>"
+            f"{safe_note}</span>"
         )
 
     def _answer_note(self) -> str:
-        meta = (
-            self.question.additional_meta
-            if isinstance(self.question.additional_meta, dict)
-            else {}
-        )
-        return str(meta.get("note", "")).strip()
+        return self.question.additional_meta.note
 
     def _on_check(self):
         selected = self.btn_group.checkedButton()

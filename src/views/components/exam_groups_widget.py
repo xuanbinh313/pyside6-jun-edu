@@ -1,4 +1,5 @@
-﻿import html
+﻿from src.models.exam import ExamContext
+import html
 import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt, QUrl
 from PySide6.QtGui import QCursor
@@ -28,10 +29,7 @@ from src.views.components.option_question_item import OptionQuestionItem
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
 
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # ExamGroupsWidget â€” main Groups & Questions tab
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class ExamGroupsWidget(QWidget):
     def __init__(self, viewmodel, parent=None):
         super().__init__(parent)
@@ -98,9 +96,7 @@ class ExamGroupsWidget(QWidget):
         self.ui.q_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.ui.q_list.customContextMenuRequested.connect(self._on_q_list_context_menu)
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Public: populate from viewmodel
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def populate(self):
         self.player.stop()
         self.populate_tags()
@@ -118,7 +114,7 @@ class ExamGroupsWidget(QWidget):
             if path.exists():
                 self.player.setSource(QUrl.fromLocalFile(str(path)))
 
-        contexts = getattr(self.viewmodel, "contexts", [])
+        contexts: list[ExamContext] = getattr(self.viewmodel, "contexts", [])
         self._populate_q_list(contexts)
         self._render_question_page(contexts)
 
@@ -372,7 +368,7 @@ class ExamGroupsWidget(QWidget):
 
         try:
             answer_updated_numbers = self.viewmodel.update_correct_answers(answer_key)
-            result = {
+            result: dict[str, int | list[int]] = {
                 "context_count": 0,
                 "created_count": 0,
                 "updated_numbers": [],
@@ -382,7 +378,7 @@ class ExamGroupsWidget(QWidget):
                 result = self.viewmodel.import_contexts_and_questions(
                     contexts_data, questions_data
                 )
-                duplicate_numbers = result.get("duplicate_numbers", [])
+                duplicate_numbers = result["duplicate_numbers"]
                 if duplicate_numbers:
                     duplicate_text = ", ".join(
                         f"Q{number}" for number in duplicate_numbers
@@ -395,9 +391,9 @@ class ExamGroupsWidget(QWidget):
                     )
                     return
 
-            n_ctx = result.get("context_count", 0)
-            created_count = result.get("created_count", 0)
-            updated_numbers = result.get("updated_numbers", [])
+            n_ctx = result["context_count"]
+            created_count = result["created_count"]
+            updated_numbers = result["updated_numbers"]
             updated_text = ""
             if updated_numbers:
                 duplicate_text = ", ".join(f"Q{number}" for number in updated_numbers)
@@ -482,9 +478,6 @@ class ExamGroupsWidget(QWidget):
                     item.setData(Qt.ItemDataRole.UserRole, updated_q)
                     break
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Helpers
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def on_question_checked(self, question):
         context_id = getattr(question, "context_id", None)
         if not context_id:
@@ -557,7 +550,7 @@ class ExamGroupsWidget(QWidget):
             return f"Question {numbers[0]} - {type_label}"
         return f"Questions {numbers[0]}-{numbers[-1]} - {type_label}"
 
-    def _render_question_page(self, contexts):
+    def _render_question_page(self, contexts: list[ExamContext]):
         """Render all visible contexts and questions into one scrollable page."""
         self._clear_options()
         self.ui.passage_browser.setVisible(False)

@@ -1,8 +1,10 @@
-import datetime
+from google.auth import default
+from datetime import timezone
+from datetime import datetime
 import uuid
 from typing import List, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.util.typing import TypedDict
 
@@ -23,14 +25,8 @@ class Exam(Base):
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="")
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
-    )
-    updated_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime,
-        default=lambda: datetime.datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
-    )
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
 
     srt_chunks: Mapped[List["ExamSrtChunk"]] = relationship(
         "ExamSrtChunk", back_populates="exam", cascade="all, delete-orphan"
@@ -83,7 +79,7 @@ class ExamContext(Base):
 
     exam: Mapped["Exam"] = relationship("Exam", back_populates="contexts")
     questions: Mapped[List["ExamQuestion"]] = relationship(
-        "ExamQuestion", back_populates="context"
+        "ExamQuestion", back_populates="context", cascade="all, delete-orphan"
     )
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 
@@ -111,7 +107,7 @@ class ExamQuestion(Base):
         "ExamContext", back_populates="questions"
     )
     answers: Mapped[List["UserAnswer"]] = relationship(
-        "UserAnswer", back_populates="question"
+        "UserAnswer", back_populates="question", cascade="all, delete-orphan"
     )
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 
@@ -124,9 +120,7 @@ class UserQuestionTag(Base):
         ForeignKey("exam_questions.id"), nullable=False
     )
     tag_name: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
-    )
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
     dirty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 
@@ -141,9 +135,7 @@ class ExamAttempt(Base):
     final_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
-    )
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
     dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     exam: Mapped["Exam"] = relationship("Exam", back_populates="attempts")
@@ -180,14 +172,32 @@ class MediaFile(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
     filename: Mapped[str] = mapped_column(Text, nullable=False)
-    updated_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime,
-        default=lambda: datetime.datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
+    updated_at: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        default=lambda: str(datetime.now(timezone.utc)),
     )
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    created_at: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        default=lambda: str(datetime.now(timezone.utc)),
     )
     dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class ImportAgentTaskLocal(Base):
+    __tablename__ = "import_agent_tasks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="queued")
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    auto_retry: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    error_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    next_retry_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)

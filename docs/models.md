@@ -12,7 +12,8 @@ repository implementations.
 
 ## `src/models/exam.py`
 
-This module contains framework-agnostic dataclasses:
+This module contains framework-agnostic domain dataclasses plus Pydantic schemas
+for external agent response contracts:
 
 | Class | Purpose |
 |---|---|
@@ -23,6 +24,10 @@ This module contains framework-agnostic dataclasses:
 | `UserQuestionTag` | Per-user tag assigned to a question. |
 | `ExamAttempt` | Completed learner attempt summary. |
 | `UserAnswer` | Per-question answer for an attempt. |
+| `ImportAgentTask` | Persisted Gemini import-agent request payload, status, attempts, error, and result for retry tracking. |
+| `ExamImportResponseSchema` | Pydantic response schema used by `google-genai` for agent-import JSON. |
+| `ExamImportContextSchema` | Pydantic context schema containing nested imported questions. |
+| `ExamImportQuestionSchema` | Pydantic imported-question schema used inside each imported context. |
 
 `AdditionalMeta` stores context-level audio timing:
 
@@ -38,7 +43,9 @@ This module contains framework-agnostic dataclasses:
 |---|---|
 | `note` | `str` |
 
-`src/models/exam.py` must not import SQLAlchemy or PySide6.
+`src/models/exam.py` must not import SQLAlchemy or PySide6. Pydantic schemas in
+this file are API contracts only; repositories still map database rows to the
+domain dataclasses above before returning data to ViewModels.
 
 ## Repository Interfaces
 
@@ -77,6 +84,12 @@ factory, and schema initialization.
 `src/repositories/sqlite/sqlite_repo.py` maps ORM rows to pure dataclasses before
 returning data to ViewModels. Repository methods open, commit/rollback, and close
 their own sessions.
+
+`src/repositories/sqlite/import_agent_task_repo.py` owns persisted Gemini
+agent-import request tasks. It stores the request payload before the worker
+starts, updates `queued` / `running` / `succeeded` / `failed` status, tracks
+attempt counts, schedules retryable busy-service failures, and deletes
+non-running tasks when requested from the status dialog.
 
 ## Supabase Repository
 

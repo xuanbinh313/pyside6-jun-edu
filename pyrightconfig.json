@@ -1,0 +1,15 @@
+{
+    "typeCheckingMode": "strict",
+    "reportUnknownVariableType": true,
+    "reportUnknownMemberType": true,
+    "reportUnknownParameterType": true,
+    "reportUnknownArgumentType": true,
+    "reportUnknownLambdaType": true,
+    "reportMissingTypeArgument": true,
+    "reportMissingParameterType": true,
+    "reportUntypedFunctionDecorator": true,
+    "reportUntypedBaseClass": true,
+    "reportUnusedImport": true,
+    "reportUnusedVariable": true,
+    "pythonVersion": "3.13"
+}
