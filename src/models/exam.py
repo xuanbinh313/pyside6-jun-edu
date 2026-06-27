@@ -1,8 +1,8 @@
-from pydantic import Field
+from pydantic import ConfigDict, Field
 import datetime
 import json
 import uuid
-from typing import Optional
+from typing import Optional, List, Any
 
 from pydantic import BaseModel, field_validator
 
@@ -12,6 +12,7 @@ def generate_uuid() -> str:
 
 
 class AdditionalMeta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     audio_start: float = 0.0
     audio_end: float = 0.0
     note: str = ""
@@ -20,16 +21,19 @@ class AdditionalMeta(BaseModel):
 
 
 class QuestionAdditionalMeta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     note: str = ""
 
 
 class ContextContent(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     text: str
     image_path: Optional[str] = None
     image_filename: Optional[str] = None
 
 
 class ExamSrtChunk(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     index: int
     start_time: float = 0.0
     end_time: float = 0.0
@@ -40,7 +44,40 @@ class ExamSrtChunk(BaseModel):
     user_id: Optional[str] = None
 
 
+class ExamQuestion(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    context_id: str
+    question_number: int
+    content: str
+    correct_answer: str
+    id: str = Field(default_factory=generate_uuid)
+    question_type: str = "MULTIPLE_CHOICE"
+    options: list[str] = Field(default_factory=list)
+    additional_meta: QuestionAdditionalMeta = Field(
+        default_factory=lambda: QuestionAdditionalMeta(note="")
+    )
+    user_id: Optional[str] = None
+    @field_validator("options", mode="before")
+    @classmethod
+    def normalize_options(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                return [value] if value else []
+            if isinstance(decoded, list):
+                decoded_list: list[object] = decoded
+                return [str(option) for option in decoded_list]
+            return [str(decoded)] if decoded is not None else []
+        if isinstance(value, list):
+            value_list: list[object] = value
+            return [str(option) for option in value_list]
+        return [str(value)] if value is not None else []
+
 class ExamContext(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     exam_id: str
     context_type: str
     content: ContextContent
@@ -56,42 +93,11 @@ class ExamContext(BaseModel):
         )
     )
     user_id: Optional[str] = None
-    questions: list["ExamQuestion"] = Field(default_factory=list)
-
-
-class ExamQuestion(BaseModel):
-    context_id: str
-    question_number: int
-    content: str
-    correct_answer: str
-    id: str = Field(default_factory=generate_uuid)
-    question_type: str = "MULTIPLE_CHOICE"
-    options: list[str] = Field(default_factory=list)
-    additional_meta: QuestionAdditionalMeta = Field(
-        default_factory=lambda: QuestionAdditionalMeta(note="")
-    )
-    user_id: Optional[str] = None
-    context: Optional[ExamContext] = None
-
-    @field_validator("options", mode="before")
-    @classmethod
-    def normalize_options(cls, value):
-        if value is None:
-            return []
-        if isinstance(value, str):
-            try:
-                decoded = json.loads(value)
-            except json.JSONDecodeError:
-                return [value] if value else []
-            if isinstance(decoded, list):
-                return [str(option) for option in decoded]
-            return [str(decoded)] if decoded is not None else []
-        if isinstance(value, list):
-            return [str(option) for option in value]
-        return value
+    questions: list[ExamQuestion] = []
 
 
 class UserQuestionTag(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     question_id: str
     tag_name: str
     id: str = Field(default_factory=generate_uuid)
@@ -103,6 +109,7 @@ class UserQuestionTag(BaseModel):
 
 
 class UserAnswer(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     attempt_id: str
     question_id: str
     is_correct: bool
@@ -114,6 +121,7 @@ class UserAnswer(BaseModel):
 
 
 class ExamAttempt(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     exam_id: str
     id: str = Field(default_factory=generate_uuid)
     total_correct: int = 0
@@ -125,7 +133,7 @@ class ExamAttempt(BaseModel):
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
     dirty: bool = False
-    answers: list[UserAnswer] = Field(default_factory=list)
+    answers: list[UserAnswer] = []
 
 
 class ImportAgentTask(BaseModel):
@@ -147,6 +155,7 @@ class ImportAgentTask(BaseModel):
 
 
 class Exam(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     title: str
     id: str = Field(default_factory=generate_uuid)
     description: Optional[str] = None
@@ -160,6 +169,46 @@ class Exam(BaseModel):
     updated_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
-    srt_chunks: list[ExamSrtChunk] = Field(default_factory=list)
-    contexts: list[ExamContext] = Field(default_factory=list)
-    attempts: list[ExamAttempt] = Field(default_factory=list)
+    srt_chunks: list[ExamSrtChunk] = []
+    contexts: list[ExamContext] = []
+    attempts: list[ExamAttempt] = []
+
+
+# --- TẦNG CÂU HỎI (QUESTION) ---
+class QuestionMetaSchema(BaseModel):
+    note: str = Field(
+        default="", 
+        description="Dịch nghĩa câu hỏi, các lựa chọn và giải thích chi tiết ngữ pháp bằng tiếng Việt."
+    )
+
+class QuestionSchema(BaseModel):
+    question_number: int = Field(description="Số thứ tự câu hỏi (ví dụ: 101, 102).")
+    question_type: str = Field(default="MULTIPLE_CHOICE", description="Loại câu hỏi.")
+    content: str = Field(description="Nội dung câu hỏi tiếng Anh chứa phần điền khuyết '-------'.")
+    options: list[str] = Field(description="Danh sách các phương án lựa chọn (thường có 4 đáp án).")
+    correct_answer: str = Field(description="Đáp án đúng (A, B, C hoặc D).")
+    additional_meta: QuestionMetaSchema = Field(default_factory=QuestionMetaSchema)
+
+
+# --- TẦNG NGỮ CẢNH (CONTEXT) ---
+class ContextContentSchema(BaseModel):
+    text: str = Field(default="", description="Văn bản đoạn văn nếu có. Với Part 5 để chuỗi rỗng ''.")
+
+class ContextMetaSchema(BaseModel):
+    audio_start: float = Field(default=0.0, description="Thời gian bắt đầu audio (mặc định 0.0 với Reading).")
+    audio_end: float = Field(default=0.0, description="Thời gian kết thúc audio (mặc định 0.0 với Reading).")
+    note: str = Field(default="", description="Ghi chú ngữ cảnh phụ nếu có.")
+
+class ContextSchema(BaseModel):
+    id: str = Field(description="Mã định danh context tự sinh theo format 'ctx_101'.")
+    part: int = Field(default=5, description="Số Part của bài thi TOEIC (ví dụ: 5).")
+    context_type: str = Field(default="STANDALONE", description="Loại ngữ cảnh (ví dụ: STANDALONE cho Part 5).")
+    content: ContextContentSchema = Field(default_factory=ContextContentSchema)
+    index: int = Field(description="Chỉ mục sắp xếp tăng dần từ 0.")
+    additional_meta: ContextMetaSchema = Field(default_factory=ContextMetaSchema)
+    questions: List[QuestionSchema] = Field(description="Danh sách câu hỏi thuộc ngữ cảnh này.")
+
+
+# --- TẦNG ĐẦU RA TỔNG (RESPONSE) ---
+class ToeicPartResponseSchema(BaseModel):
+    contexts: List[ContextSchema] = Field(description="Mảng chứa toàn bộ các ngữ cảnh và câu hỏi của đề thi.")

@@ -3,7 +3,7 @@ from sqlalchemy import select
 from typing import cast
 from sqlalchemy.orm import joinedload
 
-from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
+from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk, QuestionAdditionalMeta
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite.database import get_session
 from src.repositories.sqlite import orm_models as orm
@@ -14,64 +14,22 @@ from src.utils.helpers import (
     optimize_image_to_webp_file,
     unique_media_filename,
 )
-
+import datetime
 
 def _exam_from_orm(db_exam: orm.Exam) -> Exam:
-    return Exam(
-        id=db_exam.id,  # type: ignore
-        title=db_exam.title,  # type: ignore
-        description=db_exam.description,  # type: ignore
-        audio_name=db_exam.audio_name,  # type: ignore
-        duration_minutes=db_exam.duration_minutes,  # type: ignore
-        is_published=db_exam.is_published,  # type: ignore
-        user_id=db_exam.user_id,  # type: ignore
-        created_at=db_exam.created_at,  # type: ignore
-        updated_at=db_exam.updated_at,  # type: ignore
-    )
+    return Exam.model_validate(db_exam)
 
 
 def _chunk_from_orm(db_chunk: orm.ExamSrtChunk) -> ExamSrtChunk:
-    return ExamSrtChunk(
-        id=db_chunk.id,  # type: ignore
-        exam_id=db_chunk.exam_id,  # type: ignore
-        index=db_chunk.index,  # type: ignore
-        start_time=db_chunk.start_time,  # type: ignore
-        end_time=db_chunk.end_time,  # type: ignore
-        text=db_chunk.text,  # type: ignore
-        hint=db_chunk.hint,  # type: ignore
-        user_id=db_chunk.user_id,  # type: ignore
-    )
+    return ExamSrtChunk.model_validate(db_chunk)
 
 
 def _context_from_orm(db_context: orm.ExamContext) -> ExamContext:
-    return ExamContext(
-        id=db_context.id,  # type: ignore
-        exam_id=db_context.exam_id,  # type: ignore
-        part=db_context.part,  # type: ignore
-        context_type=db_context.context_type,  # type: ignore
-        content=db_context.content,  # type: ignore
-        index=db_context.index,  # type: ignore
-        additional_meta=db_context.additional_meta  # type: ignore
-        or {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
-        user_id=db_context.user_id,  # type: ignore
-    )
+    return ExamContext.model_validate(db_context)
 
 
 def _question_from_orm(db_question: orm.ExamQuestion) -> ExamQuestion:
-    question = ExamQuestion(
-        id=db_question.id,  # type: ignore
-        context_id=db_question.context_id,  # type: ignore
-        question_number=db_question.question_number,  # type: ignore
-        question_type=db_question.question_type,  # type: ignore
-        content=db_question.content,  # type: ignore
-        options=db_question.options or [],  # type: ignore
-        correct_answer=db_question.correct_answer,  # type: ignore
-        additional_meta=db_question.additional_meta or {"note": ""},  # type: ignore
-        user_id=db_question.user_id,  # type: ignore
-    )
-    if db_question.context:
-        question.context = _context_from_orm(db_question.context)
-    return question
+    return ExamQuestion.model_validate(db_question)
 
 
 def _save_imported_diagram_media(ctx_data: dict) -> str:
@@ -198,6 +156,9 @@ class SQLiteExamRepository(IExamRepository):
             db_exam.duration_minutes = duration_minutes
             db_exam.is_published = is_published
             db_exam.audio_name = audio_name
+            db_exam.updated_at = str(datetime.datetime.now(datetime.timezone.utc))
+            if not db_exam.created_at:
+                db_exam.created_at = str(datetime.datetime.now(datetime.timezone.utc))
             if audio_name:
                 existing_media = (
                     session.query(orm.MediaFile)
@@ -565,7 +526,7 @@ class SQLiteExamRepository(IExamRepository):
                 db_q.content = q_data["content"]
                 db_q.options = q_data["options"]
                 db_q.correct_answer = q_data.get("correct_answer", "")
-                db_q.additional_meta = additional_meta
+                db_q.additional_meta = QuestionAdditionalMeta.model_validate(additional_meta)
                 db_q.user_id = q_data.get("user_id")
 
             session.commit()

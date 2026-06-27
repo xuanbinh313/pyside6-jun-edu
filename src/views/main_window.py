@@ -61,7 +61,7 @@ class MainWindow(QMainWindow):
         self.setup_mvvm_connections()
         self.auth_viewmodel.check_saved_session()
 
-    def navigate_to_details(self, exam_id):
+    def navigate_to_details(self, exam_id: str):
         if exam_id == "EXTERNAL":
             self.ext_viewmodel = ExamAddExternalViewModel()
             self.ext_view = ExamAddExternalView(
@@ -77,7 +77,7 @@ class MainWindow(QMainWindow):
             self.stacked_widget.addWidget(self.details_view)
             self.stacked_widget.setCurrentWidget(self.details_view)
 
-    def navigate_to_take_exam(self, exam_id):
+    def navigate_to_take_exam(self, exam_id:str):
         self.take_viewmodel = ExamTakeViewModel(exam_id)
         self.take_view = ExamTakeView(self.take_viewmodel, self.navigate_to_list)
         self.stacked_widget.addWidget(self.take_view)

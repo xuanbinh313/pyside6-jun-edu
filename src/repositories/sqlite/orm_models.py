@@ -8,6 +8,7 @@ from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.util.typing import TypedDict
 
+from src.models.exam import QuestionAdditionalMeta
 from src.repositories.sqlite.database import Base
 
 
@@ -56,10 +57,6 @@ class ExamSrtChunk(Base):
 class AdditionalMeta(TypedDict):
     audio_start: float
     audio_end: float
-    note: str
-
-
-class QuestionAdditionalMeta(TypedDict):
     note: str
 
 

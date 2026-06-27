@@ -124,7 +124,7 @@ class TimeAdjustWidget(QWidget):
             pass
 
 class ExamTranscriptWidget(QWidget):
-    def __init__(self, viewmodel, parent=None):
+    def __init__(self, viewmodel , parent=None):
         super().__init__(parent)
         self.viewmodel = viewmodel
         

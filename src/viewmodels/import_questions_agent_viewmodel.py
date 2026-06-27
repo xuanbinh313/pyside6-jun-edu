@@ -11,11 +11,11 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from PySide6.QtCore import QObject, QThread, Signal
 
-from src.models.exam import ImportAgentTask
+from src.models.exam import ImportAgentTask, ToeicPartResponseSchema
 from src.repositories.sqlite.import_agent_task_repo import ImportAgentTaskRepository
 from src.utils.helpers import get_local_media_dir
 from src.viewmodels.import_questions_viewmodel import ImportQuestionsViewModel
-
+from google.genai import types
 load_dotenv()
 
 
@@ -343,7 +343,13 @@ class ImportQuestionsAgentWorker(QThread):
         print(f"len(files)={len(files)}")
         response = client.models.generate_content(
             model=model_name,
-            contents=["\n".join(prompt_parts), *files]
+            contents=["\n".join(prompt_parts), *files],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=ToeicPartResponseSchema,
+                temperature=0.1,
+                thinking_config=types.ThinkingConfig(thinking_budget=0)
+            ),
         )
         dump_path = self._save_agent_response_file(
             response, f"part_{payload.part}"
@@ -455,7 +461,13 @@ class ImportQuestionsAgentWorker(QThread):
         print(f"len(files)={len(files)}")
         response = client.models.generate_content(
             model=model_name,
-            contents=["\n".join(prompt_parts), *files]
+            contents=["\n".join(prompt_parts), *files],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=ToeicPartResponseSchema,
+                temperature=0.1,
+                thinking_config=types.ThinkingConfig(thinking_budget=0)
+            ),
         )
         dump_path = self._save_agent_response_file(response, "parts_1_2")
         self.progress.emit(f"Saved agent response: {dump_path}")

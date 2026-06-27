@@ -11,5 +11,18 @@
     "reportUntypedBaseClass": true,
     "reportUnusedImport": true,
     "reportUnusedVariable": true,
-    "pythonVersion": "3.13"
+    "pythonVersion": "3.9",
+    "exclude": [
+        ".venv",
+        "venv",
+        ".venv39",
+        "venv39",
+        ".venv313",
+        "venv313",
+        ".env",
+        "__pycache__",
+        "*.pyc",
+        ".idea",
+        ".vscode"
+    ]
 }

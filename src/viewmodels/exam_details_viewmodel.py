@@ -13,11 +13,11 @@ class ExamDetailsViewModel(QObject):
     data_loaded = Signal()
     data_saved = Signal()
 
-    def __init__(self, exam_id=None, repo: IExamRepository | None = None):
+    def __init__(self, exam_id: Optional[str] = None, repo: Optional[IExamRepository] = None):
         super().__init__()
-        self.repo = repo or SQLiteExamRepository()
+        self.repo: IExamRepository = repo or SQLiteExamRepository()
         self.exam_id = exam_id
-        self.exam: Optional[Exam] = None
+        self.exam = None
         self.srt_chunks: list[ExamSrtChunk] = []
         self.contexts: list[ExamContext] = []
         self.questions: list[ExamQuestion] = []
@@ -35,7 +35,7 @@ class ExamDetailsViewModel(QObject):
         self.data_loaded.emit()
 
     def save_exam(
-        self, title, description, duration_minutes, is_published, audio_name=None
+        self, title: str, description: str, duration_minutes: int, is_published: bool, audio_name: Optional[str] = None
     ):
         self.exam_id = self.repo.save_exam(
             exam_id=self.exam_id,
@@ -62,12 +62,12 @@ class ExamDetailsViewModel(QObject):
     def set_question_tag(self, question_id: str, tag_name: str, enabled: bool) -> None:
         self.repo.set_question_tag(question_id, tag_name, enabled)
 
-    def list_contexts(self, selected_tags: list[str] | None = None):
+    def list_contexts(self, selected_tags: list[str] | None = None) -> list[ExamContext]:
         if not self.exam_id:
             return []
         return self.repo.list_contexts(self.exam_id, selected_tags)
 
-    def list_questions_for_context(self, context_id: str):
+    def list_questions_for_context(self, context_id: str) -> list[ExamQuestion]:
         return self.repo.list_questions_for_context(context_id)
 
     def context_question_numbers(self, context_id: str) -> list[int]:
