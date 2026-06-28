@@ -1,14 +1,11 @@
-from google.auth import default
-from datetime import timezone
-from datetime import datetime
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.util.typing import TypedDict
 
-from src.models.exam import QuestionAdditionalMeta
 from src.repositories.sqlite.database import Base
 
 
@@ -18,7 +15,6 @@ def generate_uuid() -> str:
 
 class Exam(Base):
     __tablename__ = "exams"
-
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -39,10 +35,8 @@ class Exam(Base):
         "ExamAttempt", back_populates="exam", cascade="all, delete-orphan"
     )
 
-
 class ExamSrtChunk(Base):
     __tablename__ = "exam_srt_chunks"
-
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
     exam_id: Mapped[str] = mapped_column(ForeignKey("exams.id"), nullable=False)
     index: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -60,6 +54,32 @@ class AdditionalMeta(TypedDict):
     note: str
 
 
+class QuestionAdditionalMeta(TypedDict):
+    note: str
+
+class ExamContent(TypedDict):
+    text: str
+    image_path: Optional[str]
+    image_filename: Optional[str]
+
+class AnswerSheet(TypedDict):
+    listening_image_path: str
+    reading_image_path: str
+    prompt: str
+class Part(TypedDict):
+    part: int
+    question_pdf_path: str
+    question_pages: List[int]
+    transcript_pdf_path: str
+    transcript_pages: List[int]
+    prompt: str
+    context_text: str
+
+class Payload(TypedDict):
+    answer_sheet: AnswerSheet
+    parts: List[Part]
+
+
 class ExamContext(Base):
     __tablename__ = "exam_contexts"
 
@@ -67,7 +87,7 @@ class ExamContext(Base):
     exam_id: Mapped[str] = mapped_column(ForeignKey("exams.id"), nullable=False)
     part: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     context_type: Mapped[str] = mapped_column(String, nullable=False)
-    content: Mapped[dict] = mapped_column(JSON, nullable=False)
+    content: Mapped[ExamContent] = mapped_column(JSON, nullable=False)
     index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     additional_meta: Mapped[AdditionalMeta] = mapped_column(
         JSON,
@@ -189,7 +209,7 @@ class ImportAgentTaskLocal(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
     status: Mapped[str] = mapped_column(String, nullable=False, default="queued")
-    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    payload: Mapped[Payload] = mapped_column(JSON, nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     auto_retry: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

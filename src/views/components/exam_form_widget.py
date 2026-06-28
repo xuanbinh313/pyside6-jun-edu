@@ -1,7 +1,13 @@
 ﻿import os
 
-from PySide6.QtWidgets import QFileDialog, QLabel, QMessageBox, QPushButton, QTextEdit, QWidget
-
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTextEdit,
+    QWidget,
+)
 from src.utils.helpers import get_local_media_path, local_media_filename_from_source
 from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
 from ui_gen.ui_exam_form_widget import Ui_ExamFormWidget

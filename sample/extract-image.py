@@ -1,6 +1,7 @@
-import cv2
-import numpy as np
 from pathlib import Path
+
+import cv2
+
 
 def process_and_split_png_folder(input_folder_path: str, output_folder_path: str):
     input_dir = Path(input_folder_path)

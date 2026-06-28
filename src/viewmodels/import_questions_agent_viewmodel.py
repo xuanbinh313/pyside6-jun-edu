@@ -8,14 +8,14 @@ from pathlib import Path
 from typing import Callable
 
 from dotenv import load_dotenv
+from google.genai import types
 from pydantic import BaseModel, Field
 from PySide6.QtCore import QObject, QThread, Signal
-
 from src.models.exam import ImportAgentTask, ToeicPartResponseSchema
 from src.repositories.sqlite.import_agent_task_repo import ImportAgentTaskRepository
 from src.utils.helpers import get_local_media_dir
 from src.viewmodels.import_questions_viewmodel import ImportQuestionsViewModel
-from google.genai import types
+
 load_dotenv()
 
 
@@ -117,38 +117,7 @@ class ImportQuestionsAgentWorker(QThread):
 
         result = AgentImportResult()
         with get_local_media_dir() as tmp_dir:
-            grouped_part_payloads = {
-                payload.part: payload
-                for payload in self.payload.parts
-                if payload.part in (1, 2) and self._has_part_input(payload)
-            }
-            if grouped_part_payloads:
-                parts_text = ", ".join(
-                    f"Part {part}" for part in sorted(grouped_part_payloads)
-                )
-                self.progress.emit(f"Preparing grouped {parts_text} files...")
-                grouped_result = self._generate_parts_1_2(
-                    client,
-                    model_name,
-                    grouped_part_payloads.get(1),
-                    grouped_part_payloads.get(2),
-                    tmp_dir,
-                )
-                contexts, questions = self._parse_agent_response(
-                    grouped_result.response_text
-                )
-                self._normalize_contexts_for_parts_1_2(
-                    grouped_part_payloads,
-                    contexts,
-                    questions,
-                    grouped_result.image_paths,
-                )
-                result.contexts.extend(contexts)
-                result.questions.extend(questions)
-
             for part_payload in self.payload.parts:
-                if part_payload.part in (1, 2):
-                    continue
                 if not self._has_part_input(part_payload):
                     continue
                 self.progress.emit(f"Preparing Part {part_payload.part} files...")
@@ -360,120 +329,6 @@ class ImportQuestionsAgentWorker(QThread):
             raise ValueError(
                 f"Gemini returned an empty response for Part {payload.part}."
             )
-        return AgentPartResult(
-            response_text=text,
-            image_paths=[str(path) for path in part1_image_paths],
-        )
-
-    def _generate_parts_1_2(
-        self,
-        client,
-        model_name: str,
-        part1_payload: AgentPartPayload | None,
-        part2_payload: AgentPartPayload | None,
-        tmp_dir: Path,
-    ) -> AgentPartResult:
-        files = []
-        part1_image_paths: list[Path] = []
-        prompt_parts = [
-            "Analyze ONLY TOEIC Listening Part 1 (Photographs) and Part 2 "
-            "(Question-Response).",
-            "OUTPUT CONSTRAINT: Output ONLY one raw JSON object. No markdown, "
-            "no code fences, no explanations.",
-            "Return only the raw JSON object with one top-level contexts array. "
-            "Each context must contain its own nested questions array.",
-            self._vietnamese_note_contract(),
-        ]
-
-        if part1_payload and self._has_part_input(part1_payload):
-            prompt_parts.extend(
-                [
-                    "\nPART 1 PROMPT:",
-                    part1_payload.prompt.strip(),
-                    "\nPART 1 FILES:",
-                    "Part 1 selected question PDF pages are NOT attached. They "
-                    "are processed locally with OpenCV first so image contexts can "
-                    "be saved later. Do not expect Part 1 photograph images in "
-                    "this request; use only the selected transcript pages.",
-                ]
-            )
-            if part1_payload.question_pdf_path and part1_payload.question_pages:
-                image_paths = self._prepare_part1_question_images(
-                    part1_payload.question_pdf_path,
-                    part1_payload.question_pages,
-                    tmp_dir / "part_1_question_images",
-                )
-                part1_image_paths = image_paths
-                prompt_parts.append(
-                    "Part 1 photograph image crops were created locally for saving "
-                    "only and are not attached to Gemini."
-                )
-
-            if part1_payload.transcript_pdf_path and part1_payload.transcript_pages:
-                path = self._slice_pdf(
-                    part1_payload.transcript_pdf_path,
-                    part1_payload.transcript_pages,
-                    tmp_dir / "part_1_transcript.pdf",
-                )
-                files.append(client.files.upload(file=path))
-                prompt_parts.append("Part 1 transcript pages are attached as a PDF.")
-
-        if part2_payload and self._has_part_input(part2_payload):
-            prompt_parts.extend(
-                [
-                    "\nPART 2 PROMPT:",
-                    part2_payload.prompt.strip(),
-                    "\nPART 2 FILES:",
-                ]
-            )
-            if part2_payload.context_text.strip():
-                prompt_parts.append(
-                    "\nPart 2 default/context text:\n"
-                    f"{part2_payload.context_text.strip()}"
-                )
-            if part2_payload.transcript_pdf_path and part2_payload.transcript_pages:
-                path = self._slice_pdf(
-                    part2_payload.transcript_pdf_path,
-                    part2_payload.transcript_pages,
-                    tmp_dir / "part_2_transcript.pdf",
-                )
-                files.append(client.files.upload(file=path))
-                prompt_parts.append("Part 2 transcript pages are attached as a PDF.")
-
-        answer_sheet_path = self._answer_sheet_path_for_part(1)
-        if answer_sheet_path:
-            files.append(client.files.upload(file=answer_sheet_path))
-            prompt_parts.append(
-                "Listening answer sheet image is attached. Use it to set "
-                "correct_answer for Part 1 and Part 2 questions and to support "
-                "the Vietnamese explanation notes."
-            )
-
-        prompt_parts.append(
-            "\nFINAL GROUPED PART 1/2 GUARDRAIL: Output ONLY TOEIC Part 1 and "
-            "Part 2 data. Do not include Part 3, Part 4, or any reading parts. "
-            "Set each context.part to 1 or 2 accurately. Part 1 contexts must be "
-            "IMAGE_DIAGRAM with one question each. Part 2 contexts must be "
-            "STANDALONE with one question each."
-        )
-
-        self.progress.emit("Sending grouped Part 1/2 to Gemini...")
-        print(f"len(files)={len(files)}")
-        response = client.models.generate_content(
-            model=model_name,
-            contents=["\n".join(prompt_parts), *files],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=ToeicPartResponseSchema,
-                temperature=0.1,
-                thinking_config=types.ThinkingConfig(thinking_budget=0)
-            ),
-        )
-        dump_path = self._save_agent_response_file(response, "parts_1_2")
-        self.progress.emit(f"Saved agent response: {dump_path}")
-        text = self._response_text(response)
-        if not text:
-            raise ValueError("Gemini returned an empty response for Part 1/2.")
         return AgentPartResult(
             response_text=text,
             image_paths=[str(path) for path in part1_image_paths],
@@ -702,97 +557,6 @@ TRANSLATION TARGET LANGUAGE: {target_lang}
             )
             self._renumber_part1_questions(questions)
 
-    def _normalize_contexts_for_parts_1_2(
-        self,
-        payloads_by_part: dict[int, AgentPartPayload],
-        contexts: list[dict],
-        questions: list[dict],
-        part1_image_paths: list[str],
-    ) -> None:
-        available_parts = set(payloads_by_part)
-        part_by_old_id: dict[str, int] = {}
-        for index, context in enumerate(contexts):
-            old_id = str(context.get("llm_id") or f"ctx_{index}")
-            part_by_old_id[old_id] = self._context_part_for_group(
-                context, available_parts
-            )
-
-        part1_contexts = [
-            context
-            for index, context in enumerate(contexts)
-            if part_by_old_id.get(str(context.get("llm_id") or f"ctx_{index}")) == 1
-        ]
-        part1_context_ids = {
-            str(context.get("llm_id") or f"ctx_{index}")
-            for index, context in enumerate(contexts)
-            if part_by_old_id.get(str(context.get("llm_id") or f"ctx_{index}")) == 1
-        }
-        part1_questions = [
-            question
-            for question in questions
-            if str(question.get("llm_context_id") or "") in part1_context_ids
-        ]
-        context_image_map = self._part1_context_image_map(
-            part1_contexts,
-            part1_questions,
-            part1_image_paths,
-        )
-
-        id_map: dict[str, str] = {}
-        for index, context in enumerate(contexts):
-            old_id = str(context.get("llm_id") or f"ctx_{index}")
-            part = part_by_old_id.get(old_id, 1)
-            new_id = f"part{part}_{old_id}"
-            id_map[old_id] = new_id
-            context["llm_id"] = new_id
-            context["part"] = part
-
-            if part == 1:
-                context["context_type"] = "IMAGE_DIAGRAM"
-                content = context.get("content")
-                if not isinstance(content, dict):
-                    content = {"text": str(content or "")}
-                content.setdefault("text", "")
-                image_path = context_image_map.get(old_id)
-                if image_path:
-                    self._override_context_image(content, image_path)
-                context["content"] = content
-            elif part == 2:
-                part2_payload = payloads_by_part.get(2)
-                context["context_type"] = "STANDALONE"
-                context["content"] = {
-                    "text": (
-                        part2_payload.context_text.strip()
-                        if part2_payload
-                        else ImportQuestionsAgentViewModel.DEFAULT_PART2_CONTEXT
-                    )
-                }
-
-        for question in questions:
-            old_ref = str(question.get("llm_context_id") or "")
-            if old_ref in id_map:
-                question["llm_context_id"] = id_map[old_ref]
-            part = part_by_old_id.get(old_ref)
-            if part == 1:
-                question["question_type"] = "MULTIPLE_CHOICE"
-                question["content"] = (
-                    "Look at the picture and choose the statement that best describes it."
-                )
-
-        self._append_missing_part1_image_contexts(
-            contexts,
-            questions,
-            part1_image_paths,
-            set(context_image_map.values()),
-        )
-        self._renumber_part1_questions(
-            [
-                question
-                for question in questions
-                if str(question.get("llm_context_id") or "").startswith("part1_")
-            ]
-        )
-
     def _override_context_image(self, content: dict, image_path: str) -> None:
         image_filename = Path(image_path).name
         content["_source_image_path"] = image_path
@@ -861,23 +625,6 @@ TRANSLATION TARGET LANGUAGE: {target_lang}
             if number > 0:
                 numbers.append(number)
         return (max(numbers) + 1) if numbers else 1
-
-    def _context_part_for_group(self, context: dict, available_parts: set[int]) -> int:
-        try:
-            part = int(context.get("part") or 0)
-        except (TypeError, ValueError):
-            part = 0
-        if part in available_parts:
-            return part
-        if len(available_parts) == 1:
-            return next(iter(available_parts))
-
-        context_type = str(context.get("context_type", "")).strip().upper()
-        if context_type == "IMAGE_DIAGRAM" and 1 in available_parts:
-            return 1
-        if context_type == "STANDALONE" and 2 in available_parts:
-            return 2
-        return min(available_parts or {1})
 
     def _renumber_part1_questions(self, questions: list[dict]) -> None:
         sorted_questions = sorted(
@@ -1384,12 +1131,8 @@ STRICT PART 4 RULES:
     def _build_agent_request_payloads(self) -> list[AgentImportPayload]:
         selected_parts = set(self._parts_with_input())
         payloads: list[AgentImportPayload] = []
-        listening_parts = [part for part in (1, 2) if part in selected_parts]
-        if listening_parts:
-            payloads.append(self._payload_for_parts(listening_parts))
-
         for part in self.TOEIC_PARTS:
-            if part in (1, 2) or part not in selected_parts:
+            if part not in selected_parts:
                 continue
             payloads.append(self._payload_for_parts([part]))
         return payloads

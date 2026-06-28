@@ -8,10 +8,18 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject, QSize)
-from PySide6.QtWidgets import (QFrame, QHBoxLayout,
-    QLabel, QPushButton, QSizePolicy, QSpacerItem,
-    QTextEdit, QVBoxLayout)
+from PySide6.QtCore import QCoreApplication, QMetaObject, QSize
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QSpacerItem,
+    QTextEdit,
+    QVBoxLayout,
+)
+
 
 class Ui_ImportQuestionsDialog(object):
     def setupUi(self, ImportQuestionsDialog):

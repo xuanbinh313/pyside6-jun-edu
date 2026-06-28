@@ -1,8 +1,14 @@
+# Import the icon management library.
+import qtawesome as qta
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QBrush, QColor
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -12,17 +18,9 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
-    QHeaderView,
 )
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PySide6.QtCore import QUrl, Qt, QTimer, QSize
-from PySide6.QtGui import QBrush, QColor
-
-# Import the icon management library.
-import qtawesome as qta
-
-from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
 from src.utils.helpers import get_local_media_path
+from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
 
 
 class SelectExamContextDialog(QDialog):

@@ -1,7 +1,6 @@
 ﻿from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
-
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
 

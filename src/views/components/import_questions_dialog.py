@@ -1,11 +1,12 @@
 from typing import Optional
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
-    QDialog,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -14,7 +15,6 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
 )
-
 from src.viewmodels.import_questions_viewmodel import ImportQuestionsViewModel
 from ui_gen.ui_import_questions_dialog import Ui_ImportQuestionsDialog
 

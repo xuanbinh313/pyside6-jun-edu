@@ -3,7 +3,6 @@
 from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
-
 from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository

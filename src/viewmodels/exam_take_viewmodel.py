@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from PySide6.QtCore import QObject, Signal
-
 from src.repositories.sqlite.database import get_session
 from src.repositories.sqlite.orm_models import (
     Exam,
@@ -16,7 +15,6 @@ from src.repositories.sqlite.orm_models import (
     UserAnswer,
     UserQuestionTag,
 )
-
 
 LETTERS = ["A", "B", "C", "D"]
 

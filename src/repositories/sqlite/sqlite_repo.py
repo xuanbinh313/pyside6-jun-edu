@@ -1,12 +1,15 @@
 ﻿from __future__ import annotations
-from sqlalchemy import select
+
+import datetime
 from typing import cast
+
+from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
-from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk, QuestionAdditionalMeta
+from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
 from src.repositories.base_repo import IExamRepository
-from src.repositories.sqlite.database import get_session
 from src.repositories.sqlite import orm_models as orm
+from src.repositories.sqlite.database import get_session
 from src.utils.helpers import (
     decode_data_url,
     extension_from_data_url,
@@ -14,7 +17,7 @@ from src.utils.helpers import (
     optimize_image_to_webp_file,
     unique_media_filename,
 )
-import datetime
+
 
 def _exam_from_orm(db_exam: orm.Exam) -> Exam:
     return Exam.model_validate(db_exam)
@@ -509,7 +512,9 @@ class SQLiteExamRepository(IExamRepository):
                     real_ctx_id = new_ctx.id
 
                 additional_meta = q_data.get("additional_meta") or {"note": ""}
-                additional_meta = {"note": str(additional_meta.get("note", ""))}
+                additional_meta = orm.QuestionAdditionalMeta(
+                    note=str(additional_meta.get("note", ""))
+                )
                 question_number = int(q_data.get("question_number", idx + 1))
 
                 db_q = existing_by_number.get(question_number)
@@ -526,7 +531,7 @@ class SQLiteExamRepository(IExamRepository):
                 db_q.content = q_data["content"]
                 db_q.options = q_data["options"]
                 db_q.correct_answer = q_data.get("correct_answer", "")
-                db_q.additional_meta = QuestionAdditionalMeta.model_validate(additional_meta)
+                db_q.additional_meta = additional_meta
                 db_q.user_id = q_data.get("user_id")
 
             session.commit()

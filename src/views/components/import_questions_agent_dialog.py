@@ -1,7 +1,5 @@
 from __future__ import annotations
-from src.viewmodels.import_questions_agent_viewmodel import (
-    ImportQuestionsAgentViewModel,
-)
+
 from pathlib import Path
 
 import qtawesome as qta
@@ -9,27 +7,31 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QFileDialog,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
-    QHeaderView,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
-    QTabWidget,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
-
-
+from src.utils.helpers import get_local_media_dir
+from src.viewmodels.import_questions_agent_viewmodel import (
+    ImportQuestionsAgentViewModel,
+)
 from src.views.components.add_exam_question_dialog import ImageDropArea
 from src.views.components.pdf_page_selector_dialog import PdfPageSelectorDialog
+from src.views.components.prompt_input_dialog import PromptInputDialog
 
 
 class AgentRequestStatusDialog(QDialog):
@@ -174,6 +176,20 @@ class ImportQuestionsAgentDialog(QDialog):
         super().__init__(parent)
         self.viewmodel = viewmodel or ImportQuestionsAgentViewModel(parent=self)
         self._part_widgets: dict[int, dict[str, object]] = {}
+        self._answer_widgets: dict[str, dict[str, object]] = {}
+        self._overall_widgets: dict[str, dict[str, dict[str, object]]] = {}
+        self._overall_pdf_paths = {
+            section: {"questions": "", "transcripts": ""}
+            for section in ("listening", "reading")
+        }
+        self._overall_source_paths = {
+            section: {"questions": "", "transcripts": ""}
+            for section in ("listening", "reading")
+        }
+        self._overall_source_pages: dict[str, dict[str, list[int]]] = {
+            section: {"questions": [], "transcripts": []}
+            for section in ("listening", "reading")
+        }
         self._build_ui()
         self._connect_signals()
         self._refresh_ui()
@@ -203,12 +219,16 @@ class ImportQuestionsAgentDialog(QDialog):
         title.setStyleSheet("font-weight: bold; font-size: 16px; color: #202124;")
         main_layout.addWidget(title)
 
-        main_layout.addWidget(self._build_answer_sheet_panel())
-
-        self.tabs = QTabWidget(self)
-        for part in self.viewmodel.TOEIC_PARTS:
-            self.tabs.addTab(self._build_part_tab(part), f"Part {part}")
-        main_layout.addWidget(self.tabs, 1)
+        self.section_tabs = QTabWidget(self)
+        self.section_tabs.addTab(
+            self._build_section_tab("listening", [1, 2, 3, 4]),
+            "Listening",
+        )
+        self.section_tabs.addTab(
+            self._build_section_tab("reading", [5, 6, 7]),
+            "Reading",
+        )
+        main_layout.addWidget(self.section_tabs, 1)
 
         self.progress_label = QLabel("", self)
         self.progress_label.setStyleSheet("color: #5f6368; font-size: 12px;")
@@ -232,34 +252,61 @@ class ImportQuestionsAgentDialog(QDialog):
         )
         main_layout.addWidget(self.button_box)
 
-    def _build_part_tab(self, part: int) -> QWidget:
+    def _build_section_tab(self, section: str, parts: list[int]) -> QWidget:
         tab = QWidget(self)
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        pdf_group = QGroupBox("PDF page selections", tab)
+        layout.addWidget(self._build_steps_area(section, parts), 1)
+        return tab
+
+    def _build_steps_area(self, section: str, parts: list[int]) -> QScrollArea:
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        steps_container = QWidget(scroll)
+        steps_layout = QVBoxLayout(steps_container)
+        steps_layout.setContentsMargins(0, 0, 0, 0)
+        steps_layout.setSpacing(10)
+        steps_layout.addWidget(self._build_answer_sheet_panel(section))
+        steps_layout.addWidget(self._build_overall_pdf_panel(section))
+        for part in parts:
+            steps_layout.addWidget(self._build_part_block(part))
+        steps_layout.addStretch(1)
+        scroll.setWidget(steps_container)
+        return scroll
+
+    def _build_part_block(self, part: int) -> QGroupBox:
+        block = QGroupBox(f"Part {part}", self)
+        layout = QVBoxLayout(block)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        pdf_group = QGroupBox("PDF page selections", block)
         form = QFormLayout(pdf_group)
         form.setSpacing(8)
 
-        question_label = QLabel("No PDF selected", pdf_group)
+        question_label = None
         transcript_label = QLabel("No PDF selected", pdf_group)
         question_button_text = (
             "Select question pages (split 2/page)"
             if part == 1
             else "Select question pages"
         )
-        question_button = QPushButton(question_button_text, pdf_group)
+        question_button = None
+        if part != 2:
+            question_label = QLabel("No PDF selected", pdf_group)
+            question_button = QPushButton(question_button_text, pdf_group)
+            question_button.setIcon(qta.icon("fa5s.file-pdf", color="#ea4335"))
         transcript_button = QPushButton("Select transcript pages", pdf_group)
-        question_button.setIcon(qta.icon("fa5s.file-pdf", color="#ea4335"))
         transcript_button.setIcon(qta.icon("fa5s.file-alt", color="#5f6368"))
 
-        if part != 2:
+        if question_button is not None and question_label is not None:
             form.addRow(question_button, question_label)
         form.addRow(transcript_button, transcript_label)
-        layout.addWidget(pdf_group)
 
-        context_edit = QTextEdit(tab)
+        context_edit = QTextEdit(block)
         context_edit.setMinimumHeight(58)
         context_edit.setPlaceholderText("Context text for this part")
         context_edit.setPlainText(self.viewmodel.part_payloads[part].context_text)
@@ -268,15 +315,25 @@ class ImportQuestionsAgentDialog(QDialog):
         else:
             context_edit.hide()
 
-        prompt_edit = QTextEdit(tab)
-        prompt_edit.setMinimumHeight(250)
-        prompt_edit.setPlainText(self.viewmodel.part_payloads[part].prompt)
-        prompt_edit.setStyleSheet(
-            "border: 1px solid #dadce0; border-radius: 4px; "
-            "font-family: monospace; font-size: 11px;"
+        layout.addWidget(pdf_group)
+
+        prompt_row = QHBoxLayout()
+        prompt_label = QLabel("Prompt", block)
+        prompt_label.setStyleSheet("color: #5f6368;")
+        prompt_button = QPushButton("Edit Prompt", block)
+        prompt_button.setIcon(qta.icon("fa5s.edit", color="#1a73e8"))
+        prompt_row.addWidget(prompt_label)
+        prompt_row.addStretch(1)
+        prompt_row.addWidget(prompt_button)
+        layout.addLayout(prompt_row)
+
+        current_prompt = QLabel(self._prompt_preview(part), block)
+        current_prompt.setWordWrap(True)
+        current_prompt.setStyleSheet(
+            "color: #5f6368; border: 1px solid #dadce0; border-radius: 4px; "
+            "padding: 6px; background: #fafafa;"
         )
-        layout.addWidget(QLabel("Prompt", tab))
-        layout.addWidget(prompt_edit, 1)
+        layout.addWidget(current_prompt)
 
         self._part_widgets[part] = {
             "question_label": question_label,
@@ -284,48 +341,103 @@ class ImportQuestionsAgentDialog(QDialog):
             "question_button": question_button,
             "transcript_button": transcript_button,
             "context_edit": context_edit,
-            "prompt_edit": prompt_edit,
+            "prompt_label": current_prompt,
+            "prompt_button": prompt_button,
         }
-        if part != 2:
+        if question_button is not None:
             question_button.clicked.connect(
                 lambda checked=False, p=part: self._select_pdf_pages(p, "questions")
             )
         transcript_button.clicked.connect(
             lambda checked=False, p=part: self._select_pdf_pages(p, "transcripts")
         )
-        return tab
+        prompt_button.clicked.connect(
+            lambda checked=False, p=part: self._edit_part_prompt(p)
+        )
+        return block
 
-    def _build_answer_sheet_panel(self) -> QGroupBox:
-        panel = QGroupBox("Answer sheets", self)
+    def _build_answer_sheet_panel(self, section: str) -> QGroupBox:
+        panel = QGroupBox("Answer sheet", self)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
 
-        images_row = QHBoxLayout()
-        self.listening_drop = self._build_answer_drop("Listening answer sheet")
-        self.reading_drop = self._build_answer_drop("Reading/Writing answer sheet")
-        images_row.addWidget(self.listening_drop)
-        images_row.addWidget(self.reading_drop)
-        layout.addLayout(images_row)
+        lane = "listening" if section == "listening" else "reading"
+        title = (
+            "Listening answer sheet"
+            if section == "listening"
+            else "Reading/Writing answer sheet"
+        )
+        drop = self._build_answer_drop(title)
+        layout.addWidget(drop)
 
         buttons_row = QHBoxLayout()
-        self.paste_listening_btn = QPushButton("Paste Listening", panel)
-        self.paste_reading_btn = QPushButton("Paste Reading/Writing", panel)
-        self.paste_listening_btn.setIcon(qta.icon("fa5s.paste", color="#1a73e8"))
-        self.paste_reading_btn.setIcon(qta.icon("fa5s.paste", color="#1a73e8"))
-        buttons_row.addWidget(self.paste_listening_btn)
-        buttons_row.addWidget(self.paste_reading_btn)
+        paste_btn = QPushButton(
+            "Paste Listening"
+            if section == "listening"
+            else "Paste Reading/Writing",
+            panel,
+        )
+        paste_btn.setIcon(qta.icon("fa5s.paste", color="#1a73e8"))
+        buttons_row.addWidget(paste_btn)
         buttons_row.addStretch(1)
         layout.addLayout(buttons_row)
 
-        self.paste_listening_btn.clicked.connect(
-            lambda: self._paste_answer_sheet("listening")
-        )
-        self.paste_reading_btn.clicked.connect(
-            lambda: self._paste_answer_sheet("reading")
-        )
+        paste_btn.clicked.connect(lambda: self._paste_answer_sheet(lane))
         shortcut = QShortcut(QKeySequence.StandardKey.Paste, panel)
-        shortcut.activated.connect(lambda: self._paste_answer_sheet("listening"))
+        shortcut.activated.connect(lambda: self._paste_answer_sheet(lane))
+        self._answer_widgets[section] = {
+            "drop": drop,
+            "paste_button": paste_btn,
+            "lane": lane,
+        }
+        if section == "listening":
+            self.listening_drop = drop
+            self.paste_listening_btn = paste_btn
+        else:
+            self.reading_drop = drop
+            self.paste_reading_btn = paste_btn
+        return panel
+
+    def _build_overall_pdf_panel(self, section: str) -> QGroupBox:
+        panel = QGroupBox("Overall PDF Source Files", self)
+        form = QFormLayout(panel)
+        form.setContentsMargins(10, 10, 10, 10)
+        form.setSpacing(8)
+
+        questions_label = QLabel("No question source PDF selected", panel)
+        transcripts_label = QLabel(
+            "No transcript source PDF selected", panel
+        )
+        questions_btn = QPushButton("Select Question PDF", panel)
+        transcripts_btn = QPushButton(
+            "Select Transcript PDF", panel
+        )
+        questions_btn.setIcon(
+            qta.icon("fa5s.file-pdf", color="#ea4335")
+        )
+        transcripts_btn.setIcon(
+            qta.icon("fa5s.file-alt", color="#5f6368")
+        )
+        form.addRow(questions_btn, questions_label)
+        form.addRow(transcripts_btn, transcripts_label)
+
+        questions_btn.clicked.connect(
+            lambda: self._select_overall_pdf(section, "questions")
+        )
+        transcripts_btn.clicked.connect(
+            lambda: self._select_overall_pdf(section, "transcripts")
+        )
+        self._overall_widgets[section] = {
+            "questions": {
+                "label": questions_label,
+                "button": questions_btn,
+            },
+            "transcripts": {
+                "label": transcripts_label,
+                "button": transcripts_btn,
+            },
+        }
         return panel
 
     def _build_answer_drop(self, title: str) -> ImageDropArea:
@@ -346,18 +458,24 @@ class ImportQuestionsAgentDialog(QDialog):
         self.viewmodel.import_ready.connect(self.accept)
 
     def _select_pdf_pages(self, part: int, lane: str) -> None:
-        current_path = self._current_pdf_path(part, lane)
-        start_dir = str(Path(current_path).parent) if current_path else ""
-        pdf_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select PDF",
-            start_dir,
-            "PDF Files (*.pdf);;All Files (*)",
-        )
+        section = self._section_for_part(part)
+        pdf_path = self._overall_pdf_paths[section].get(lane, "")
         if not pdf_path:
+            QMessageBox.warning(
+                self,
+                "Source PDF Required",
+                "Create the overall source PDF before selecting part pages.",
+            )
             return
 
-        selected_pages_by_part = self._current_pages_by_part(pdf_path, lane, part)
+        allowed_parts = self._parts_for_section(section)
+        if lane == "questions":
+            allowed_parts = [
+                target_part for target_part in allowed_parts if target_part != 2
+            ]
+        selected_pages_by_part = self._current_pages_by_part(
+            pdf_path, lane, part, allowed_parts
+        )
         selected_pages = selected_pages_by_part.get(part, [])
         lane_label = "question pages" if lane == "questions" else "transcript pages"
         action_text = (
@@ -371,6 +489,7 @@ class ImportQuestionsAgentDialog(QDialog):
             initial_part=part,
             selected_pages_by_part=selected_pages_by_part,
             lane_label=lane_label,
+            allowed_parts=allowed_parts,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -379,12 +498,96 @@ class ImportQuestionsAgentDialog(QDialog):
                 continue
             if page_indices:
                 self.viewmodel.set_part_pdf(target_part, lane, pdf_path, page_indices)
+        self._refresh_ui()
+
+    def _select_overall_pdf(self, section: str, lane: str) -> None:
+        current_path = self._overall_source_paths[section].get(lane, "")
+        start_dir = str(Path(current_path).parent) if current_path else ""
+        title = (
+            f"Select {section.title()} Question PDF"
+            if lane == "questions"
+            else f"Select {section.title()} Transcript PDF"
+        )
+        pdf_path, _ = QFileDialog.getOpenFileName(
+            self,
+            title,
+            start_dir,
+            "PDF Files (*.pdf);;All Files (*)",
+        )
+        if not pdf_path:
+            return
+
+        selected_pages = []
+        if self._overall_source_paths[section].get(lane) == pdf_path:
+            selected_pages = list(self._overall_source_pages[section].get(lane, []))
+        action_text = (
+            f"Create {section} question source PDF"
+            if lane == "questions"
+            else f"Create {section} transcript source PDF"
+        )
+        dialog = PdfPageSelectorDialog(
+            pdf_path,
+            selected_pages,
+            self,
+            action_text=action_text,
+            lane_label="source pages",
+            allow_part_assignment=False,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        target_name = f"temp_{section}_{lane}_pdf.pdf"
+        target_path = get_local_media_dir() / target_name
+        try:
+            self._extract_pdf_pages(pdf_path, dialog.selected_pages, target_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "PDF Error", str(exc))
+            return
+
+        self._overall_source_paths[section][lane] = pdf_path
+        self._overall_source_pages[section][lane] = list(dialog.selected_pages)
+        self._overall_pdf_paths[section][lane] = str(target_path)
+        self._sync_part_source_pdf(section, lane, str(target_path))
+        self._refresh_ui()
+
+    def _extract_pdf_pages(
+        self, pdf_path: str, page_indices: list[int], target_path: Path
+    ) -> None:
+        try:
+            from pypdf import PdfReader, PdfWriter
+        except ImportError as exc:
+            raise ImportError("pypdf is required for PDF page extraction.") from exc
+
+        reader = PdfReader(pdf_path)
+        writer = PdfWriter()
+        page_count = len(reader.pages)
+        for page_index in sorted(set(page_indices)):
+            if page_index < 0 or page_index >= page_count:
+                raise ValueError(
+                    f"Page {page_index + 1} is outside {Path(pdf_path).name}."
+                )
+            writer.add_page(reader.pages[page_index])
+        if not writer.pages:
+            raise ValueError("Select at least one page.")
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with target_path.open("wb") as handle:
+            writer.write(handle)
+
+    def _sync_part_source_pdf(self, section: str, lane: str, pdf_path: str) -> None:
+        for part in self._parts_for_section(section):
+            if part == 2 and lane == "questions":
+                continue
+            self.viewmodel.set_part_pdf(part, lane, pdf_path, [])
 
     def _current_pages_by_part(
-        self, pdf_path: str, lane: str, default_part: int
+        self,
+        pdf_path: str,
+        lane: str,
+        default_part: int,
+        allowed_parts: list[int],
     ) -> dict[int, list[int]]:
         pages_by_part: dict[int, list[int]] = {}
-        for part in self.viewmodel.TOEIC_PARTS:
+        for part in allowed_parts:
             current_path = self._current_pdf_path(part, lane)
             if current_path and Path(current_path) != Path(pdf_path):
                 continue
@@ -392,7 +595,7 @@ class ImportQuestionsAgentDialog(QDialog):
             if pages:
                 pages_by_part[part] = list(pages)
 
-        if default_part not in pages_by_part:
+        if default_part in allowed_parts and default_part not in pages_by_part:
             pages_by_part[default_part] = list(self._current_pages(default_part, lane))
         return pages_by_part
 
@@ -419,48 +622,108 @@ class ImportQuestionsAgentDialog(QDialog):
 
     def _send_to_agent(self) -> None:
         for part, widgets in self._part_widgets.items():
-            prompt_edit = widgets["prompt_edit"]
             context_edit = widgets["context_edit"]
-            if isinstance(prompt_edit, QTextEdit):
-                self.viewmodel.set_part_prompt(part, prompt_edit.toPlainText())
             if isinstance(context_edit, QTextEdit):
                 self.viewmodel.set_part_context_text(part, context_edit.toPlainText())
 
-        if self.listening_drop.image_path:
-            self.viewmodel.set_answer_sheet_image(
-                "listening", self.listening_drop.image_path
-            )
-        if self.reading_drop.image_path:
-            self.viewmodel.set_answer_sheet_image(
-                "reading", self.reading_drop.image_path
-            )
+        for section, widgets in self._answer_widgets.items():
+            drop = widgets["drop"]
+            lane = widgets["lane"]
+            if isinstance(drop, ImageDropArea) and isinstance(lane, str):
+                if drop.image_path:
+                    self.viewmodel.set_answer_sheet_image(lane, drop.image_path)
         self.viewmodel.send_to_agent()
 
     def _refresh_ui(self) -> None:
+        for section, lanes in self._overall_widgets.items():
+            for lane, widgets in lanes.items():
+                label = widgets["label"]
+                if isinstance(label, QLabel):
+                    label.setText(self._overall_pdf_summary(section, lane))
         for part, widgets in self._part_widgets.items():
             question_label = widgets["question_label"]
             transcript_label = widgets["transcript_label"]
+            prompt_label = widgets["prompt_label"]
             if isinstance(question_label, QLabel):
                 question_label.setText(self.viewmodel.pdf_summary(part, "questions"))
             if isinstance(transcript_label, QLabel):
                 transcript_label.setText(
                     self.viewmodel.pdf_summary(part, "transcripts")
                 )
+            if isinstance(prompt_label, QLabel):
+                prompt_label.setText(self._prompt_preview(part))
 
         self.send_btn.setEnabled(self.viewmodel.can_send())
         self.cancel_btn.setEnabled(not self.viewmodel.is_loading)
         self.requests_btn.setEnabled(True)
-        for widgets in self._part_widgets.values():
-            for key in ("question_button", "transcript_button"):
+        for part, widgets in self._part_widgets.items():
+            section = self._section_for_part(part)
+            for key, lane in (
+                ("question_button", "questions"),
+                ("transcript_button", "transcripts"),
+            ):
                 button = widgets[key]
                 if isinstance(button, QPushButton):
+                    button.setEnabled(
+                        not self.viewmodel.is_loading
+                        and bool(self._overall_pdf_paths[section].get(lane))
+                    )
+        for widgets in self._answer_widgets.values():
+            button = widgets["paste_button"]
+            if isinstance(button, QPushButton):
+                button.setEnabled(not self.viewmodel.is_loading)
+        for lanes in self._overall_widgets.values():
+            for widgets in lanes.values():
+                button = widgets["button"]
+                if isinstance(button, QPushButton):
                     button.setEnabled(not self.viewmodel.is_loading)
-        self.paste_listening_btn.setEnabled(not self.viewmodel.is_loading)
-        self.paste_reading_btn.setEnabled(not self.viewmodel.is_loading)
         if self.viewmodel.is_loading:
             self.send_btn.setText("Sending...")
         else:
             self.send_btn.setText("Send to agent")
+
+    def _overall_pdf_summary(self, section: str, lane: str) -> str:
+        source_path = self._overall_source_paths[section].get(lane, "")
+        temp_path = self._overall_pdf_paths[section].get(lane, "")
+        if not source_path or not temp_path:
+            return (
+                "No question source PDF selected"
+                if lane == "questions"
+                else "No transcript source PDF selected"
+            )
+        pages = ", ".join(
+            str(index + 1)
+            for index in self._overall_source_pages[section].get(lane, [])
+        )
+        return f"{Path(source_path).name}: pages {pages} -> {Path(temp_path).name}"
+
+    def _section_for_part(self, part: int) -> str:
+        return "listening" if part in (1, 2, 3, 4) else "reading"
+
+    def _parts_for_section(self, section: str) -> list[int]:
+        if section == "listening":
+            return [1, 2, 3, 4]
+        return [5, 6, 7]
+
+    def _prompt_preview(self, part: int) -> str:
+        prompt = self.viewmodel.part_payloads[part].prompt.strip()
+        if not prompt:
+            return "Prompt is empty"
+        single_line = " ".join(prompt.split())
+        if len(single_line) <= 220:
+            return single_line
+        return f"{single_line[:220]}..."
+
+    def _edit_part_prompt(self, part: int) -> None:
+        dialog = PromptInputDialog(
+            self.viewmodel.part_payloads[part].prompt,
+            self,
+            title=f"Edit Part {part} Prompt",
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self.viewmodel.set_part_prompt(part, dialog.prompt_text())
+        self._refresh_ui()
 
     def _show_progress(self, message: str) -> None:
         self.progress_label.setText(message)

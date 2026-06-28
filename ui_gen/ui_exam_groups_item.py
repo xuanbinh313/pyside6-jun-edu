@@ -8,9 +8,9 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject, QRect)
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton,
-    QWidget)
+from PySide6.QtCore import QCoreApplication, QMetaObject, QRect
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+
 
 class Ui_ExamGroupsItem(object):
     def setupUi(self, ExamGroupsItem):

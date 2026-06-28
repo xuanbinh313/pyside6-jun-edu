@@ -17,13 +17,42 @@ files = [
 ]
 
 [tool.pyright]
-# Ép Pyright/Pyrefly nhận thư mục gốc làm Import Root thay vì tự đoán là `src`
+# Cấu hình phạm vi quét dữ liệu
 include = ["src", "ui_gen", "main.py"]
 extraPaths = ["."]
+pythonVersion = "3.9"
+
+# 🔥 BẬT CHẾ ĐỘ ULTRA-STRICT NHƯNG BỎ QUA LỖI STUB QTAWESOME
+typeCheckingMode = "strict"
+reportMissingTypeStubs = "none" # <-- Giải quyết triệt để lỗi qtawesome gạch đỏ
+
+reportUnknownVariableType = true
+reportUnknownMemberType = true
+reportUnknownParameterType = true
+reportUnknownArgumentType = true
+reportUnknownLambdaType = true
+reportMissingTypeArgument = true
+reportMissingParameterType = true
+reportUntypedFunctionDecorator = true
+reportUntypedBaseClass = true
+reportUnusedImport = true
+reportUnusedVariable = true
+
+exclude = [
+    ".venv", "venv", ".venv39", "venv39", ".venv313", "venv313",
+    ".env", "__pycache__", "*.pyc", ".idea", ".vscode"
+]
 
 [tool.ruff]
 src = ["src", "ui_gen"]
-extend-exclude = ["ui_gen"]
+fix = true                  # <-- Luôn tự động sửa lỗi (bao gồm xóa import thừa) khi chạy lệnh `ruff check`
+
+[tool.ruff.lint]
+# 🔥 CHỈ ĐỊNH RUFF QUÉT LỖI IMPORT THỪA (F401) VÀ SẮP XẾP IMPORT (I)
+select = [
+    "F401", # Khử unused imports
+    "I",    # Tự động sắp xếp import theo bảng chữ cái (isort)
+]
 
 [project.optional-dependencies]
 dev = [

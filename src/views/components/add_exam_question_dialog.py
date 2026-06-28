@@ -3,7 +3,6 @@ import tempfile
 from pathlib import Path
 
 import qtawesome as qta
-from src.repositories.sqlite import orm_models as exam_model
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
@@ -24,6 +23,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from src.repositories.sqlite import orm_models as exam_model
 from src.repositories.sqlite.database import get_session
 from src.utils.helpers import get_local_media_path, optimize_image_to_webp_file
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
@@ -630,9 +630,7 @@ class AddExamQuestionDialog(QDialog):
                 db_q.content = value["content"]
                 db_q.options = value["options"]
                 db_q.correct_answer = value["correct_answer"]
-                db_q.additional_meta = exam_model.QuestionAdditionalMeta(
-                    note=value["note"],
-                )
+                db_q.additional_meta = {"note": str(value["note"])}
                 saved_questions.append(db_q)
 
             session.commit()

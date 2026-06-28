@@ -8,10 +8,18 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject)
-from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout,
-    QLabel, QListWidget, QPushButton,
-    QSizePolicy, QSpacerItem, QVBoxLayout)
+from PySide6.QtCore import QCoreApplication, QMetaObject
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QSizePolicy,
+    QSpacerItem,
+    QVBoxLayout,
+)
+
 
 class Ui_SelectTranscriptDialog(object):
     def setupUi(self, SelectTranscriptDialog):

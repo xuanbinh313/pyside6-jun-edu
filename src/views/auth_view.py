@@ -1,7 +1,6 @@
 from PySide6.QtWidgets import QDialog, QMessageBox
-
-from ui_gen.ui_auth_view import Ui_AuthView
 from src.viewmodels.auth_viewmodel import AuthViewModel
+from ui_gen.ui_auth_view import Ui_AuthView
 
 
 class AuthView(QDialog):

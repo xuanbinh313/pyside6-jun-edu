@@ -6,9 +6,8 @@ from typing import Any
 from sqlalchemy import select
 
 from src.models.exam import ImportAgentTask
-from src.repositories.sqlite.database import get_session
 from src.repositories.sqlite import orm_models as orm
-
+from src.repositories.sqlite.database import get_session
 
 RETRY_DELAY_SECONDS = 60
 

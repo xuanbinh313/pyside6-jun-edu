@@ -8,9 +8,17 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject, QSize)
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton,
-    QSizePolicy, QSpacerItem, QTabWidget, QVBoxLayout)
+from PySide6.QtCore import QCoreApplication, QMetaObject, QSize
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QSpacerItem,
+    QTabWidget,
+    QVBoxLayout,
+)
+
 
 class Ui_ExamDetailsView(object):
     def setupUi(self, ExamDetailsView):

@@ -8,10 +8,17 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject)
-from PySide6.QtWidgets import (QHBoxLayout, QLabel,
-    QPushButton, QSizePolicy, QSpacerItem, QTextEdit,
-    QVBoxLayout)
+from PySide6.QtCore import QCoreApplication, QMetaObject
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QSpacerItem,
+    QTextEdit,
+    QVBoxLayout,
+)
+
 
 class Ui_EditContextDialog(object):
     def setupUi(self, EditContextDialog):

@@ -1,10 +1,9 @@
-from pydantic import ConfigDict, Field
 import datetime
 import json
 import uuid
-from typing import Optional, List, Any
+from typing import Any, List, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def generate_uuid() -> str:

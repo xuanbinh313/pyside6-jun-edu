@@ -1,5 +1,4 @@
 from PySide6.QtCore import QObject, QThread, Signal
-
 from src.repositories.supabase.sync import (
     sync_sqlite_to_supabase,
     sync_supabase_to_sqlite,

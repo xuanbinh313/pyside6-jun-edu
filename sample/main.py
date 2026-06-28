@@ -1,5 +1,7 @@
 from pathlib import Path
+
 import fitz  # PyMuPDF
+
 
 def extract_images_from_pdf(pdf_path: Path, output_dir: Path):
     output_dir.mkdir(parents=True, exist_ok=True)

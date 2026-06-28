@@ -8,9 +8,9 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject)
-from PySide6.QtWidgets import (QLabel, QLineEdit,
-    QVBoxLayout)
+from PySide6.QtCore import QCoreApplication, QMetaObject
+from PySide6.QtWidgets import QLabel, QLineEdit, QVBoxLayout
+
 
 class Ui_TagMenuDialog(object):
     def setupUi(self, TagMenuDialog):

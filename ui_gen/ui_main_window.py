@@ -8,11 +8,17 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject, QRect)
-from PySide6.QtGui import (QAction)
-from PySide6.QtWidgets import (QMenu, QMenuBar,
-    QStackedWidget, QStatusBar, QVBoxLayout,
-    QWidget)
+from PySide6.QtCore import QCoreApplication, QMetaObject, QRect
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (
+    QMenu,
+    QMenuBar,
+    QStackedWidget,
+    QStatusBar,
+    QVBoxLayout,
+    QWidget,
+)
+
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):

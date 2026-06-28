@@ -1,5 +1,5 @@
-﻿from src.models.exam import ExamContext
-import html
+﻿import html
+
 import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt, QUrl
 from PySide6.QtGui import QCursor
@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QWidget,
 )
-
+from src.models.exam import ExamContext
 from src.utils.helpers import get_audio_meta, get_local_media_path
 from src.utils.qt import clear_layout
 from src.views.components.add_exam_question_dialog import AddExamQuestionDialog
@@ -23,11 +23,14 @@ from src.views.components.exam_context_section import (
     ExamContextSection,
     context_audio_range,
 )
-from src.views.components.import_questions_agent_dialog import ImportQuestionsAgentDialog
+from src.views.components.import_questions_agent_dialog import (
+    ImportQuestionsAgentDialog,
+)
 from src.views.components.import_questions_dialog import ImportQuestionsDialog
 from src.views.components.option_question_item import OptionQuestionItem
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
+
 
 # ExamGroupsWidget â€” main Groups & Questions tab
 class ExamGroupsWidget(QWidget):

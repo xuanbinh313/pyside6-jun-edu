@@ -1,9 +1,8 @@
-from typing import Union
-from botocore.config import Config
-
 import os
 from pathlib import Path
+from typing import Union
 
+from botocore.config import Config
 from dotenv import load_dotenv
 
 load_dotenv()

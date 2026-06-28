@@ -1,6 +1,5 @@
 ﻿from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QDialog
-
 from src.utils.qt import clear_layout
 from ui_gen.ui_tag_menu_dialog import Ui_TagMenuDialog
 

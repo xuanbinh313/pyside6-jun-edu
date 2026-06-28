@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-
 ICON_BUTTON_STYLE = """
     QPushButton { border: none; background-color: transparent; }
     QPushButton:hover { background-color: #e8f0fe; border-radius: 12px; }

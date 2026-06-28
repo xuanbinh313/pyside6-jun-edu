@@ -1,4 +1,5 @@
-from PySide6.QtCore import QObject, Signal, QTimer
+from PySide6.QtCore import QObject, QTimer, Signal
+
 
 class ReminderViewModel(QObject):
     # Signals for View binding

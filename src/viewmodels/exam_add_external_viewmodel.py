@@ -1,9 +1,10 @@
 ﻿import os
 import time
-import requests
 import time as time_module
-from PySide6.QtCore import QObject, Signal, QThread
+
+import requests
 from dotenv import load_dotenv
+from PySide6.QtCore import QObject, QThread, Signal
 from src.repositories.sqlite.database import get_session
 from src.repositories.sqlite.orm_models import Exam, ExamSrtChunk, MediaFile
 from src.utils.helpers import get_local_media_path, unique_media_filename

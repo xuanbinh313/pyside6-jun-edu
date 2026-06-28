@@ -8,9 +8,19 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject)
-from PySide6.QtWidgets import (QCheckBox, QFormLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QSpinBox, QTextEdit, QVBoxLayout)
+from PySide6.QtCore import QCoreApplication, QMetaObject
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+    QTextEdit,
+    QVBoxLayout,
+)
+
 
 class Ui_ExamFormWidget(object):
     def setupUi(self, ExamFormWidget):

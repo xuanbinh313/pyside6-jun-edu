@@ -5,7 +5,6 @@ from collections.abc import Callable
 from typing import Any
 
 from PySide6.QtCore import QObject, QThread, Signal
-
 from src.repositories.supabase.auth import (
     AuthResult,
     login_with_password,

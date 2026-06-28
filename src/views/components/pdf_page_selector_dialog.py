@@ -41,10 +41,14 @@ class PdfPageSelectorDialog(QDialog):
         initial_part: int = 1,
         selected_pages_by_part: dict[int, list[int]] | None = None,
         lane_label: str = "pages",
+        allow_part_assignment: bool = True,
+        allowed_parts: list[int] | None = None,
     ):
         super().__init__(parent)
         self.pdf_path = pdf_path
         self.initial_part = initial_part
+        self.allow_part_assignment = allow_part_assignment
+        self.allowed_parts = allowed_parts or list(range(1, 8))
         self.selected_pages_by_part: dict[int, list[int]] = {
             int(part): sorted(set(pages))
             for part, pages in (selected_pages_by_part or {}).items()
@@ -60,6 +64,7 @@ class PdfPageSelectorDialog(QDialog):
         self._thumbnail_document = None
         self._updating_part_selection = False
         self._syncing_preview_selection = False
+        self._jumping_from_thumbnail = False
         self._build_ui(action_text, lane_label)
         self._load_pdf()
 
@@ -91,12 +96,16 @@ class PdfPageSelectorDialog(QDialog):
         actions_row.addWidget(self.clear_all_btn)
         left_layout.addLayout(actions_row)
 
-        part_row = QHBoxLayout()
-        part_row.addWidget(QLabel("Save to", left_panel))
+        self.part_row_widget = QWidget(left_panel)
+        part_row = QHBoxLayout(self.part_row_widget)
+        part_row.setContentsMargins(0, 0, 0, 0)
+        part_row.addWidget(QLabel("Save to", self.part_row_widget))
         self.part_combo = QComboBox(left_panel)
-        for part in range(1, 8):
+        for part in self.allowed_parts:
             self.part_combo.addItem(f"Part {part}", part)
-        initial_index = max(0, self.initial_part - 1)
+        initial_index = 0
+        if self.initial_part in self.allowed_parts:
+            initial_index = self.allowed_parts.index(self.initial_part)
         self.part_combo.setCurrentIndex(initial_index)
         self.add_selected_btn = QPushButton("Add Selected", left_panel)
         self.add_selected_btn.setToolTip(
@@ -104,7 +113,8 @@ class PdfPageSelectorDialog(QDialog):
         )
         part_row.addWidget(self.part_combo, 1)
         part_row.addWidget(self.add_selected_btn)
-        left_layout.addLayout(part_row)
+        left_layout.addWidget(self.part_row_widget)
+        self.part_row_widget.setVisible(self.allow_part_assignment)
 
         self.page_list = QListWidget(left_panel)
         self.page_list.setIconSize(QSize(64, 90))
@@ -232,23 +242,45 @@ class PdfPageSelectorDialog(QDialog):
     def _preview_page(self, row: int) -> None:
         if row < 0 or self._syncing_preview_selection:
             return
+        item = self.page_list.item(row)
+        if item is None:
+            return
+        page_index = int(item.data(Qt.ItemDataRole.UserRole))
+        self._jumping_from_thumbnail = True
         navigator = self.preview.pageNavigator()
-        navigator.jump(row, QPointF(0, 0))
+        navigator.jump(page_index, QPointF(0, 0))
+        QTimer.singleShot(120, self._finish_thumbnail_jump)
 
     def _select_thumbnail_for_page(self, page_index: int) -> None:
-        if page_index < 0 or page_index >= self.page_list.count():
+        if self._jumping_from_thumbnail:
+            return
+        row = self._row_for_page(page_index)
+        if row < 0:
             return
 
         self._syncing_preview_selection = True
         try:
-            self.page_list.setCurrentRow(page_index)
-            item = self.page_list.item(page_index)
+            self.page_list.setCurrentRow(row)
+            item = self.page_list.item(row)
             if item is not None:
                 self.page_list.scrollToItem(
                     item, QAbstractItemView.ScrollHint.PositionAtCenter
                 )
         finally:
             self._syncing_preview_selection = False
+
+    def _finish_thumbnail_jump(self) -> None:
+        self._jumping_from_thumbnail = False
+
+    def _row_for_page(self, page_index: int) -> int:
+        for row in range(self.page_list.count()):
+            item = self.page_list.item(row)
+            if (
+                item is not None
+                and int(item.data(Qt.ItemDataRole.UserRole)) == page_index
+            ):
+                return row
+        return -1
 
     def _on_item_changed(self, item: QListWidgetItem) -> None:
         if self._updating_part_selection:
@@ -317,6 +349,7 @@ class PdfPageSelectorDialog(QDialog):
             self.page_list.item(row).setCheckState(Qt.CheckState.Unchecked)
         self.page_list.blockSignals(False)
         self.selected_pages = []
+        self.selected_pages_by_part.pop(self._current_part(), None)
         self._refresh_status()
 
     def _refresh_status(self) -> None:
@@ -326,6 +359,15 @@ class PdfPageSelectorDialog(QDialog):
         self.send_btn.setEnabled(
             count > 0 or any(self.selected_pages_by_part.values())
         )
+        if not self.allow_part_assignment:
+            if not count:
+                self.status_label.setText("No pages selected")
+                return
+            page_text = ", ".join(str(index + 1) for index in self.selected_pages)
+            self.status_label.setText(
+                f"{count} page(s) selected: {page_text}"
+            )
+            return
         if not count:
             saved_parts = self._saved_parts_text()
             suffix = f" Saved: {saved_parts}" if saved_parts else ""
@@ -350,10 +392,21 @@ class PdfPageSelectorDialog(QDialog):
         return "; ".join(parts)
 
     def _accept_if_selected(self) -> None:
+        if not self.allow_part_assignment:
+            if not self.selected_pages:
+                QMessageBox.warning(self, "No Pages", "Select at least one page.")
+                return
+            self.selected_pages_by_part = {
+                self.initial_part: sorted(set(self.selected_pages))
+            }
+            self.accept()
+            return
         if self.selected_pages:
             self.selected_pages_by_part[self._current_part()] = sorted(
                 set(self.selected_pages)
             )
+        else:
+            self.selected_pages_by_part.pop(self._current_part(), None)
         if not any(self.selected_pages_by_part.values()):
             QMessageBox.warning(self, "No Pages", "Select at least one page.")
             return

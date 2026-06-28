@@ -1,7 +1,7 @@
 import html
 
 import qtawesome as qta
-from PySide6.QtCore import QSize, QTimer, Qt
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
 from src.utils.qt import clear_layout
 from ui_gen.ui_exam_take_view import Ui_ExamTakeView
 

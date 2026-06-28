@@ -8,8 +8,6 @@ from sqlalchemy import DateTime
 from sqlalchemy.inspection import inspect
 from supabase import Client
 
-from src.repositories.supabase.auth import restore_session
-from src.repositories.supabase.client import get_supabase_client
 from src.repositories.sqlite.database import get_session
 from src.repositories.sqlite.orm_models import (
     Exam,
@@ -21,6 +19,8 @@ from src.repositories.sqlite.orm_models import (
     UserAnswer,
     UserQuestionTag,
 )
+from src.repositories.supabase.auth import restore_session
+from src.repositories.supabase.client import get_supabase_client
 from src.utils.helpers import get_local_media_path
 from src.utils.r2_service import download_media_file, upload_media_file
 
