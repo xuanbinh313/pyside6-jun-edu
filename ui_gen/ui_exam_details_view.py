@@ -17,26 +17,27 @@ from PySide6.QtWidgets import (
     QSpacerItem,
     QTabWidget,
     QVBoxLayout,
+    QWidget
 )
 
 
 class Ui_ExamDetailsView(object):
-    def setupUi(self, ExamDetailsView):
-        if not ExamDetailsView.objectName():
-            ExamDetailsView.setObjectName(u"ExamDetailsView")
-        ExamDetailsView.resize(900, 650)
-        self.main_layout = QVBoxLayout(ExamDetailsView)
+    def setupUi(self,target_widget: QWidget):
+        if not target_widget.objectName():
+            target_widget.setObjectName(u"ExamDetailsView")
+        target_widget.resize(900, 650)
+        self.main_layout = QVBoxLayout(target_widget)
         self.main_layout.setObjectName(u"main_layout")
         self.header_layout = QHBoxLayout()
         self.header_layout.setObjectName(u"header_layout")
-        self.back_btn = QPushButton(ExamDetailsView)
+        self.back_btn = QPushButton(target_widget)
         self.back_btn.setObjectName(u"back_btn")
         self.back_btn.setMinimumSize(QSize(80, 0))
         self.back_btn.setMaximumSize(QSize(80, 16777215))
 
         self.header_layout.addWidget(self.back_btn)
 
-        self.title_label = QLabel(ExamDetailsView)
+        self.title_label = QLabel(target_widget)
         self.title_label.setObjectName(u"title_label")
         self.title_label.setStyleSheet(u"font-size: 20px; font-weight: bold; color: #1a73e8;")
 
@@ -49,7 +50,7 @@ class Ui_ExamDetailsView(object):
 
         self.main_layout.addLayout(self.header_layout)
 
-        self.tabs = QTabWidget(ExamDetailsView)
+        self.tabs = QTabWidget(target_widget)
         self.tabs.setObjectName(u"tabs")
         self.tabs.setStyleSheet(u"QTabBar::tab { padding: 10px 20px; font-weight: bold; }\n"
 "QTabBar::tab:selected { background-color: #1a73e8; color: white; border-radius: 4px; }")
@@ -57,13 +58,13 @@ class Ui_ExamDetailsView(object):
         self.main_layout.addWidget(self.tabs)
 
 
-        self.retranslateUi(ExamDetailsView)
+        self.retranslateUi(target_widget)
 
-        QMetaObject.connectSlotsByName(ExamDetailsView)
+        QMetaObject.connectSlotsByName(target_widget)
     # setupUi
 
-    def retranslateUi(self, ExamDetailsView):
-        ExamDetailsView.setWindowTitle(QCoreApplication.translate("ExamDetailsView", u"Exam Management", None))
+    def retranslateUi(self, target_widget: QWidget):
+        target_widget.setWindowTitle(QCoreApplication.translate("ExamDetailsView", u"Exam Management", None))
         self.back_btn.setText(QCoreApplication.translate("ExamDetailsView", u"Back", None))
         self.title_label.setText(QCoreApplication.translate("ExamDetailsView", u"Exam Management", None))
     # retranslateUi

@@ -1,4 +1,6 @@
+from typing import Callable
 from PySide6.QtWidgets import QWidget
+from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from src.views.components.exam_form_widget import ExamFormWidget
 from src.views.components.exam_groups_widget import ExamGroupsWidget
 from src.views.components.exam_transcript_widget import ExamTranscriptWidget
@@ -6,7 +8,9 @@ from ui_gen.ui_exam_details_view import Ui_ExamDetailsView
 
 
 class ExamDetailsView(QWidget):
-    def __init__(self, viewmodel, go_back_callback):
+    def __init__(
+        self, viewmodel: ExamDetailsViewModel, go_back_callback: Callable[[], None]
+    ):
         super().__init__()
         self.viewmodel = viewmodel
         self.go_back_callback = go_back_callback
@@ -17,8 +21,7 @@ class ExamDetailsView(QWidget):
 
     def setup_ui(self):
         self.ui = Ui_ExamDetailsView()
-        self.ui.setupUi(self)
-
+        self.ui.setupUi(self) 
         self.tabs = self.ui.tabs
         self.ui.back_btn.clicked.connect(self.go_back_callback)
 

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QWidget,
 )
-from src.models.exam import ExamContext
+from src.models.exam import ExamContext, ExamQuestion
 from src.utils.helpers import get_audio_meta, get_local_media_path
 from src.utils.qt import clear_layout
 from src.views.components.add_exam_question_dialog import AddExamQuestionDialog
@@ -52,9 +52,7 @@ class ExamGroupsWidget(QWidget):
         self._context_note_labels = {}
         self.setup_ui()
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # UI construction
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def setup_ui(self):
         self.ui = Ui_ExamGroupsWidget()
         self.ui.setupUi(self)
@@ -648,7 +646,7 @@ class ExamGroupsWidget(QWidget):
         self._context_note_labels[ctx.id] = section.note_label
         return section
 
-    def _questions_for_context(self, context_id):
+    def _questions_for_context(self, context_id: str) -> list[ExamQuestion]:
         return self.viewmodel.list_questions_for_context(context_id)
 
     def _clear_options(self):

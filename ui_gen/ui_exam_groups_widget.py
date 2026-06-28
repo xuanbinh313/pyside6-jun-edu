@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 
 
 class Ui_ExamGroupsWidget(object):
-    def setupUi(self, ExamGroupsWidget):
+    def setupUi(self, ExamGroupsWidget:QWidget):
         if not ExamGroupsWidget.objectName():
             ExamGroupsWidget.setObjectName(u"ExamGroupsWidget")
         ExamGroupsWidget.resize(800, 600)
@@ -232,7 +232,7 @@ class Ui_ExamGroupsWidget(object):
         QMetaObject.connectSlotsByName(ExamGroupsWidget)
     # setupUi
 
-    def retranslateUi(self, ExamGroupsWidget):
+    def retranslateUi(self, ExamGroupsWidget:QWidget):
         ExamGroupsWidget.setWindowTitle(QCoreApplication.translate("ExamGroupsWidget", u"Groups & Questions", None))
         self.q_label.setText(QCoreApplication.translate("ExamGroupsWidget", u"Exam Questions", None))
 #if QT_CONFIG(tooltip)

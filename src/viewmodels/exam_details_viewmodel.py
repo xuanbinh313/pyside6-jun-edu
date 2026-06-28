@@ -1,6 +1,4 @@
-﻿from __future__ import annotations
-
-from typing import Optional
+﻿from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
 from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
@@ -90,7 +88,7 @@ class ExamDetailsViewModel(QObject):
         return self.repo.update_correct_answers(self.exam_id, answer_key)
 
     def import_contexts_and_questions(
-        self, contexts_data: list[dict], questions_data: list[dict]
+        self, contexts_data: list[ExamContext], questions_data: list[ExamQuestion]
     ) -> dict:
         if not self.exam_id:
             raise ValueError("Cannot import questions before the exam is saved.")
@@ -98,7 +96,7 @@ class ExamDetailsViewModel(QObject):
             self.exam_id, contexts_data, questions_data
         )
 
-    def duplicate_chunk(self, chunk):
+    def duplicate_chunk(self, chunk: ExamSrtChunk):
         list_idx = self.srt_chunks.index(chunk)
         max_idx = max((c.index for c in self.srt_chunks), default=0)
 
@@ -113,7 +111,7 @@ class ExamDetailsViewModel(QObject):
         self.srt_chunks.insert(list_idx + 1, new_chunk)
         return list_idx + 1, new_chunk
 
-    def merge_chunk(self, chunk):
+    def merge_chunk(self, chunk: ExamSrtChunk):
         list_idx = self.srt_chunks.index(chunk)
         if list_idx >= len(self.srt_chunks) - 1:
             return None, None

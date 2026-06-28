@@ -137,22 +137,22 @@ class ExamTakeViewModel(QObject):
     result_ready = Signal()
     error_message = Signal(str)
 
-    def __init__(self, exam_id, user_id=None, parent=None):
-        super().__init__(parent)
+    def __init__(self, exam_id: str, user_id: Optional[str] = None):
+        super().__init__()
         self.exam_id = exam_id
         self.user_id = user_id
-        self.exam = None
-        self.contexts = []
-        self.questions = []
-        self.attempts = []
-        self.parts = []
-        self.tags = []
-        self.mode = "practice"
-        self.active_questions = []
-        self.started_at = None
-        self.completed_attempt_id = None
-        self.total_correct = 0
-        self.final_score = None
+        self.exam: Optional[Exam] = None
+        self.contexts: List[ExamContext] = []
+        self.questions: List[ExamQuestion] = []
+        self.attempts: List[ExamAttempt] = []
+        self.parts: list[int] = []
+        self.tags: List[UserQuestionTag] = []
+        self.mode: str = "practice"
+        self.active_questions: List[QuestionSession] = []
+        self.started_at: Optional[float] = None
+        self.completed_attempt_id: Optional[str] = None
+        self.total_correct: int = 0
+        self.final_score: Optional[float] = None
 
     def load_exam(self):
         session = get_session()
@@ -229,10 +229,10 @@ class ExamTakeViewModel(QObject):
         self.final_score = None
         self.test_started.emit()
 
-    def start_review_questions(self, question_ids):
+    def start_review_questions(self, question_ids: list[str]):
         self.start_test("practice", question_ids=question_ids)
 
-    def submit_answer(self, question_id, display_index):
+    def submit_answer(self, question_id: str, display_index: int):
         question = self._active_question(question_id)
         if not question:
             return
@@ -242,7 +242,7 @@ class ExamTakeViewModel(QObject):
                 question.skipped = False
                 return
 
-    def skip_question(self, question_id):
+    def skip_question(self, question_id: str):
         question = self._active_question(question_id)
         if question:
             question.user_choice = None
@@ -459,7 +459,7 @@ class ExamTakeViewModel(QObject):
             )
         return breakdown
 
-    def _active_question(self, question_id):
+    def _active_question(self, question_id: str):
         for question in self.active_questions:
             if question.question_id == question_id:
                 return question

@@ -1,20 +1,19 @@
-﻿from __future__ import annotations
-
-from src.models.exam import ExamSrtChunk
+﻿from typing import Optional
+from src.models.exam import Exam, ExamContext, ExamSrtChunk
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
 
 
 class ExamTranscriptViewModel:
-    def __init__(self, exam=None, repo: IExamRepository | None = None):
-        self.repo = repo or SQLiteExamRepository()
-        self.exam = exam
-        self.srt_chunks = []
+    def __init__(self, exam: Optional[Exam] = None, repo: Optional[IExamRepository] = None):
+        self.repo: IExamRepository = repo or SQLiteExamRepository()
+        self.exam: Optional[Exam] = exam
+        self.srt_chunks: list[ExamSrtChunk] = []
 
-    def load_chunks(self, chunks):
+    def load_chunks(self, chunks: list[ExamSrtChunk]):
         self.srt_chunks = chunks
 
-    def duplicate_chunk(self, chunk):
+    def duplicate_chunk(self, chunk: ExamSrtChunk):
         list_idx = self.srt_chunks.index(chunk)
         max_idx = max((c.index for c in self.srt_chunks), default=0)
 
@@ -29,7 +28,7 @@ class ExamTranscriptViewModel:
         self.srt_chunks.insert(list_idx + 1, new_chunk)
         return list_idx + 1, new_chunk
 
-    def merge_chunk(self, chunk):
+    def merge_chunk(self, chunk: ExamSrtChunk):
         list_idx = self.srt_chunks.index(chunk)
         if list_idx >= len(self.srt_chunks) - 1:
             return None, None
@@ -48,13 +47,14 @@ class ExamTranscriptViewModel:
         self.repo.replace_srt_chunks(self.exam.id, self.srt_chunks)
 
     @property
-    def exam_id(self):
+    def exam_id(self) -> Optional[str]:
         return self.exam.id if self.exam else None
 
-    def list_contexts(self, selected_tags: list[str] | None = None):
-        if not self.exam_id:
+    def list_contexts(self, selected_tags: Optional[list[str]] = None) -> list[ExamContext]:
+        exam_id = self.exam_id
+        if not exam_id:
             return []
-        return self.repo.list_contexts(self.exam_id, selected_tags)
+        return self.repo.list_contexts(exam_id, selected_tags or [])
 
     def context_question_numbers(self, context_id: str) -> list[int]:
         return self.repo.get_context_question_numbers(context_id)

@@ -34,7 +34,8 @@ from ui_gen.ui_example_view import Ui_ExampleView
 6. Put widget behavior in the view. Put state transitions, validation decisions, and model calls in the viewmodel. Put storage and external data concerns in models.
 7. Register navigation in `src/views/main_window.py` only when the new view is a navigable page.
 8. Update docs when the structure, navigation, or integration pattern changes.
-9. Validate with syntax checks, UI setup checks, and Ruff when available.
+9. Follow `pyrightconfig.json` for strict typing expectations while integrating code.
+10. Validate with syntax checks, UI setup checks, Pyright, and Ruff when available.
 
 ## Layer Rules
 
@@ -66,6 +67,14 @@ from ui_gen.ui_example_view import Ui_ExampleView
 - Expose state through plain attributes, return values, dataclasses, and Qt signals.
 - Call model/service functions for persistence and external work.
 - Avoid direct widget access, dialogs, layouts, or generated UI classes.
+
+### Typing
+
+- Treat `pyrightconfig.json` as the source of truth for static typing rules.
+- The project uses Pyright `strict` mode with Python 3.9 compatibility.
+- Add concrete parameter, return, variable, and generic type annotations when new or changed code would otherwise produce unknown or missing types.
+- Avoid unused imports and unused variables; Pyright reports both in this repo.
+- Keep annotations compatible with Python 3.9 syntax. Prefer `Optional[...]` and `Union[...]` for runtime-evaluated annotations unless the file already enables postponed annotations safely.
 
 ### Models
 
@@ -141,6 +150,7 @@ class ExampleViewModel(QObject):
 - Models do not import views, viewmodels, or generated UI modules.
 - Dynamic layouts use `clear_layout` where relevant.
 - Programmatic widget updates block signals where needed.
+- New or changed Python code follows `pyrightconfig.json` strict typing rules.
 - `docs/README.md`, `docs/architecture.md`, or `docs/views.md` are updated for new structure or navigation.
 - Validation commands have been run or their blockers are reported.
 
@@ -150,6 +160,7 @@ Prefer module-style commands from the project root:
 
 ```powershell
 .\.venv\Scripts\python.exe -B -c "import pathlib; [compile(path.read_text(encoding='utf-8-sig'), str(path), 'exec') for root in ('src','ui_gen') for path in pathlib.Path(root).rglob('*.py')]; print('syntax ok')"
+.\.venv\Scripts\python.exe -m pyright
 .\.venv\Scripts\python.exe -m ruff check .
 ```
 

@@ -1,4 +1,5 @@
 ﻿import os
+from typing import Optional
 
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -10,11 +11,12 @@ from PySide6.QtWidgets import (
 )
 from src.utils.helpers import get_local_media_path, local_media_filename_from_source
 from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
+from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from ui_gen.ui_exam_form_widget import Ui_ExamFormWidget
 
 
 class ExamFormWidget(QWidget):
-    def __init__(self, viewmodel, parent=None):
+    def __init__(self, viewmodel: ExamDetailsViewModel, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.viewmodel = viewmodel
         self.external_viewmodel = ExamAddExternalViewModel(target_exam_id=self.viewmodel.exam_id)
@@ -83,10 +85,10 @@ class ExamFormWidget(QWidget):
             self.audio_input.setText(file_path)
             self.external_viewmodel.set_audio_file(file_path)
 
-    def parse_srt(self, file_path):
-        from src.repositories.sqlite.orm_models import ExamSrtChunk
+    def parse_srt(self, file_path: str):
+        from src.models.exam import ExamSrtChunk
 
-        chunks = []
+        chunks: list[ExamSrtChunk] = []
         with open(file_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
@@ -105,7 +107,7 @@ class ExamFormWidget(QWidget):
             elif "-->" in line and current_chunk:
                 times = line.split("-->")
 
-                def parse_time(t_str):
+                def parse_time(t_str: str) -> float:
                     parts = t_str.strip().replace(",", ".").split(":")
                     if len(parts) == 3:
                         return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
@@ -134,9 +136,9 @@ class ExamFormWidget(QWidget):
     def on_import_csv(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select CSV", "", "CSV (*.csv)")
         if file_path:
-            from src.repositories.sqlite.orm_models import ExamSrtChunk
+            from src.models.exam import ExamSrtChunk
 
-            chunks = []
+            chunks: list[ExamSrtChunk] = []
             with open(file_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
             for line in lines[1:]:
@@ -198,13 +200,13 @@ class ExamFormWidget(QWidget):
             if not self.external_progress_label.text().startswith("Imported"):
                 self.external_progress_label.setText("")
 
-    def show_external_progress(self, msg):
+    def show_external_progress(self, msg: str):
         self.external_progress_label.setText(msg)
 
-    def show_external_error(self, msg):
+    def show_external_error(self, msg: str):
         QMessageBox.critical(self, "External Audio Import", msg)
 
-    def on_external_exam_saved(self, exam_id):
+    def on_external_exam_saved(self, exam_id: str):
         if self.external_viewmodel.imported_audio_path:
             self.audio_input.setText(self.external_viewmodel.imported_audio_path)
         count = self.external_viewmodel.imported_chunk_count

@@ -17,26 +17,27 @@ from PySide6.QtWidgets import (
     QSpacerItem,
     QTextEdit,
     QVBoxLayout,
+    QWidget,
 )
 
 
 class Ui_ExamAddExternalView(object):
-    def setupUi(self, ExamAddExternalView):
-        if not ExamAddExternalView.objectName():
-            ExamAddExternalView.setObjectName(u"ExamAddExternalView")
-        ExamAddExternalView.resize(800, 600)
-        self.main_layout = QVBoxLayout(ExamAddExternalView)
+    def setupUi(self, QWidget:QWidget):
+        if not QWidget.objectName():
+            QWidget.setObjectName(u"ExamAddExternalView")
+        QWidget.resize(800, 600)
+        self.main_layout = QVBoxLayout(QWidget)
         self.main_layout.setObjectName(u"main_layout")
         self.header_layout = QHBoxLayout()
         self.header_layout.setObjectName(u"header_layout")
-        self.back_btn = QPushButton(ExamAddExternalView)
+        self.back_btn = QPushButton(QWidget)
         self.back_btn.setObjectName(u"back_btn")
         self.back_btn.setMinimumSize(QSize(80, 0))
         self.back_btn.setMaximumSize(QSize(80, 16777215))
 
         self.header_layout.addWidget(self.back_btn)
 
-        self.title_label = QLabel(ExamAddExternalView)
+        self.title_label = QLabel(QWidget)
         self.title_label.setObjectName(u"title_label")
         self.title_label.setStyleSheet(u"font-size: 20px; font-weight: bold; color: #1a73e8;")
 
@@ -46,7 +47,7 @@ class Ui_ExamAddExternalView(object):
 
         self.header_layout.addItem(self.header_spacer)
 
-        self.reset_btn = QPushButton(ExamAddExternalView)
+        self.reset_btn = QPushButton(QWidget)
         self.reset_btn.setObjectName(u"reset_btn")
 
         self.header_layout.addWidget(self.reset_btn)
@@ -56,12 +57,12 @@ class Ui_ExamAddExternalView(object):
 
         self.file_layout = QHBoxLayout()
         self.file_layout.setObjectName(u"file_layout")
-        self.file_label = QLabel(ExamAddExternalView)
+        self.file_label = QLabel(QWidget)
         self.file_label.setObjectName(u"file_label")
 
         self.file_layout.addWidget(self.file_label)
 
-        self.pick_btn = QPushButton(ExamAddExternalView)
+        self.pick_btn = QPushButton(QWidget)
         self.pick_btn.setObjectName(u"pick_btn")
 
         self.file_layout.addWidget(self.pick_btn)
@@ -69,18 +70,18 @@ class Ui_ExamAddExternalView(object):
 
         self.main_layout.addLayout(self.file_layout)
 
-        self.text_edit = QTextEdit(ExamAddExternalView)
+        self.text_edit = QTextEdit(QWidget)
         self.text_edit.setObjectName(u"text_edit")
 
         self.main_layout.addWidget(self.text_edit)
 
-        self.action_btn = QPushButton(ExamAddExternalView)
+        self.action_btn = QPushButton(QWidget)
         self.action_btn.setObjectName(u"action_btn")
         self.action_btn.setStyleSheet(u"background-color: #1a73e8; color: white; padding: 15px; font-size: 16px; font-weight: bold;")
 
         self.main_layout.addWidget(self.action_btn)
 
-        self.progress_label = QLabel(ExamAddExternalView)
+        self.progress_label = QLabel(QWidget)
         self.progress_label.setObjectName(u"progress_label")
         self.progress_label.setStyleSheet(u"color: #666; font-style: italic;")
         self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -88,13 +89,13 @@ class Ui_ExamAddExternalView(object):
         self.main_layout.addWidget(self.progress_label)
 
 
-        self.retranslateUi(ExamAddExternalView)
+        self.retranslateUi(QWidget)
 
-        QMetaObject.connectSlotsByName(ExamAddExternalView)
+        QMetaObject.connectSlotsByName(QWidget)
     # setupUi
 
-    def retranslateUi(self, ExamAddExternalView):
-        ExamAddExternalView.setWindowTitle(QCoreApplication.translate("ExamAddExternalView", u"Add External Exam", None))
+    def retranslateUi(self, target_widget: QWidget):
+        target_widget.setWindowTitle(QCoreApplication.translate("ExamAddExternalView", u"Add External Exam", None))
         self.back_btn.setText(QCoreApplication.translate("ExamAddExternalView", u"Back", None))
         self.title_label.setText(QCoreApplication.translate("ExamAddExternalView", u"Add External Exam", None))
         self.reset_btn.setText(QCoreApplication.translate("ExamAddExternalView", u"Reset", None))

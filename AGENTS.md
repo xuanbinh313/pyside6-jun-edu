@@ -56,6 +56,14 @@ That skill covers the expected flow across:
 - Use `src.utils.qt.clear_layout()` for dynamic layout cleanup.
 - Do not edit `ui_gen/` by hand. Edit the matching `.ui` file in `ui/`, then regenerate.
 
+## Typing Rules
+
+- Treat `pyrightconfig.json` as the source of truth for static typing expectations.
+- The project uses Pyright `strict` mode with Python 3.9 compatibility.
+- New or changed code must include concrete parameter, return, variable, and generic type annotations where Pyright would otherwise report unknown or missing types.
+- Avoid introducing unused imports or unused variables; Pyright reports both.
+- Keep annotations compatible with Python 3.9 syntax. Use `Optional[...]` / `Union[...]` instead of PEP 604 `|` unions in runtime-evaluated annotations unless the file already enables postponed annotations safely.
+
 ## Common Commands
 
 Regenerate one UI module:
@@ -76,6 +84,12 @@ Run Ruff when installed:
 .\.venv\Scripts\python.exe -m ruff check .
 ```
 
+Run Pyright when installed:
+
+```powershell
+.\.venv\Scripts\python.exe -m pyright
+```
+
 ## Change Checklist
 
 - Read the closest existing implementation before adding a new pattern.
@@ -83,5 +97,6 @@ Run Ruff when installed:
 - Keep hand-written behavior in `src/views/`.
 - Keep ViewModels free of `QtWidgets`.
 - Keep database and external data work out of views.
+- Follow `pyrightconfig.json` strict typing rules for new or changed Python code.
 - Update `docs/` when structure, navigation, or integration behavior changes.
 - Report validation commands that passed, failed, or could not run.

@@ -3,6 +3,7 @@ import os
 import sys
 
 import qtawesome as qta
+from typing import Optional
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
@@ -33,7 +34,7 @@ from ui_gen.ui_main_window import Ui_MainWindow
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QMainWindow] = None):
         super().__init__(parent)
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
@@ -41,7 +42,7 @@ class MainWindow(QMainWindow):
         self.auth_viewmodel = AuthViewModel()
         self.reminder_viewmodel = ReminderViewModel()
         self.sync_viewmodel = SyncViewModel()
-        self.auth_dialog = None
+        self.auth_dialog: Optional[AuthView] = None
 
         self.stacked_widget = self.ui.stacked_widget
 
@@ -132,7 +133,7 @@ class MainWindow(QMainWindow):
             f"SQLite data synced to Supabase.\n\n{summary}",
         )
 
-    def _on_sync_failed(self, message):
+    def _on_sync_failed(self, message: str):
         self.sync_action.setEnabled(True)
         self.sync_local_action.setEnabled(True)
         self.statusBar().showMessage("Sync failed", 5000)
@@ -162,7 +163,7 @@ class MainWindow(QMainWindow):
             f"Supabase data synced to local SQLite.\n\n{summary}",
         )
 
-    def _on_local_sync_failed(self, message):
+    def _on_local_sync_failed(self, message: str):
         self.sync_action.setEnabled(True)
         self.sync_local_action.setEnabled(True)
         self.statusBar().showMessage("Local sync failed", 5000)
@@ -206,7 +207,7 @@ class MainWindow(QMainWindow):
             dialog.deleteLater()
         self.auth_dialog = None
 
-    def _on_authenticated(self, email):
+    def _on_authenticated(self, email: str):
         self.statusBar().showMessage(f"Signed in as {email}", 5000)
         self._update_auth_actions()
 

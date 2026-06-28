@@ -19,11 +19,12 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
+    QWidget,
 )
 
 
 class Ui_ExamFormWidget(object):
-    def setupUi(self, ExamFormWidget):
+    def setupUi(self, ExamFormWidget: QWidget):
         if not ExamFormWidget.objectName():
             ExamFormWidget.setObjectName(u"ExamFormWidget")
         ExamFormWidget.resize(650, 420)
@@ -122,7 +123,7 @@ class Ui_ExamFormWidget(object):
         QMetaObject.connectSlotsByName(ExamFormWidget)
     # setupUi
 
-    def retranslateUi(self, ExamFormWidget):
+    def retranslateUi(self, ExamFormWidget: QWidget):
         ExamFormWidget.setWindowTitle(QCoreApplication.translate("ExamFormWidget", u"Exam Details", None))
         self.title_label.setText(QCoreApplication.translate("ExamFormWidget", u"Title:", None))
         self.description_label.setText(QCoreApplication.translate("ExamFormWidget", u"Description:", None))

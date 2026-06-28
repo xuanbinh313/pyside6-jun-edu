@@ -29,7 +29,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (or `SUPABASE_KEY`) in `.env` for login/register/logout. Set `TTS_AGENT_URL` when using the external audio import flow. The default API base URL is `https://api.jun-edu.shop`.
+Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (or `SUPABASE_KEY`) in `.env` for login/register/logout. Set `TTS_AGENT_URL` when using the external audio import flow. The default API base URL is `https://api.jun-edu.xyz`.
 
 ## Agent Checklist
 
@@ -42,6 +42,7 @@ Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (or `SUPABASE_KEY`) in `.env` for log
 7. Pass repository interfaces into ViewModels instead of importing concrete database sessions there.
 8. Use `blockSignals(True)` around programmatic UI updates that would otherwise retrigger slots.
 9. Use `src.utils.qt.clear_layout()` when clearing dynamic Qt layouts.
+10. Follow `pyrightconfig.json` for strict Pyright typing rules when adding or changing Python code.
 
 ## Regenerating UI
 

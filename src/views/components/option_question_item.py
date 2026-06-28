@@ -1,5 +1,6 @@
-﻿import html
+import html
 import json
+from typing import Optional, cast
 
 import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt
@@ -9,19 +10,19 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QWidget,
 )
+from PySide6.QtGui import QIcon
 from shiboken6 import isValid
-from src.repositories.sqlite import orm_models as exam_model
 from src.repositories.sqlite.database import get_session
 from src.views.components.tag_menu_dialog import TagMenuDialog
 from ui_gen.ui_option_question_item import Ui_OptionQuestionItem
-
+from src.models.exam import ExamQuestion, UserQuestionTag
 
 class OptionQuestionItem(QWidget):
     """Renders multiple-choice options for one ExamQuestion."""
 
     LETTER_MAP = ["A", "B", "C", "D"]
 
-    def __init__(self, question, exam_id=None, parent=None):
+    def __init__(self, question: ExamQuestion, exam_id: Optional[str] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.question = question
         self.exam_id = exam_id
@@ -33,7 +34,7 @@ class OptionQuestionItem(QWidget):
         self.display_correct_letter = ""
         self._build(question)
 
-    def _build(self, q):
+    def _build(self, q: ExamQuestion):
         self.ui = Ui_OptionQuestionItem()
         self.ui.setupUi(self)
 
@@ -67,7 +68,7 @@ class OptionQuestionItem(QWidget):
 
         self.ui.edit_q_btn.setVisible(False)
 
-        self.ui.tag_btn.setIcon(qta.icon("fa5s.tags", color="#5f6368"))
+        self.ui.tag_btn.setIcon(cast(QIcon, qta.icon("fa5s.tags", color="#5f6368")))    
         self.ui.tag_btn.setToolTip("Manage tags for this question")
         self.ui.tag_btn.setFixedSize(24, 24)
         self.ui.tag_btn.setStyleSheet(icon_btn_style)
@@ -206,11 +207,11 @@ class OptionQuestionItem(QWidget):
         session = get_session()
         try:
             rows = (
-                session.query(exam_model.UserQuestionTag.tag_name)
+                session.query(UserQuestionTag.tag_name)
                 .filter(
-                    exam_model.UserQuestionTag.question_id == self.question.id,
+                    UserQuestionTag.question_id == self.question.id,
                 )
-                .order_by(exam_model.UserQuestionTag.tag_name.asc())
+                .order_by(UserQuestionTag.tag_name.asc())
                 .all()
             )
             return [row[0] for row in rows]
@@ -231,7 +232,7 @@ class OptionQuestionItem(QWidget):
             else "Manage tags for this question"
         )
 
-        self.ui.tag_btn.setIcon(qta.icon("fa5s.tags", color=color))
+        self.ui.tag_btn.setIcon(qta.icon("fa5s.tags", color=color))  # type: ignore
         self.ui.tag_btn.setToolTip(tooltip)
 
         self.tags_label.setVisible(has_tags)

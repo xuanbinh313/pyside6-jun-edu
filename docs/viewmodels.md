@@ -162,7 +162,7 @@ All HTTP calls run on a background `QThread` via the internal `Worker` class.
 
 | Variable | Default | Description |
 |---|---|---|
-| `TTS_AGENT_URL` | `https://api.jun-edu.shop` | Base URL of the TTS/alignment API service |
+| `TTS_AGENT_URL` | `https://api.jun-edu.xyz` | Base URL of the TTS/alignment API service |
 
 ### Signals
 

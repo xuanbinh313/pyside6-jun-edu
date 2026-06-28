@@ -17,11 +17,12 @@ from PySide6.QtWidgets import (
     QSpacerItem,
     QStackedWidget,
     QVBoxLayout,
+    QWidget,
 )
 
 
 class Ui_ExamTakeView(object):
-    def setupUi(self, ExamTakeView):
+    def setupUi(self, ExamTakeView: QWidget):
         if not ExamTakeView.objectName():
             ExamTakeView.setObjectName(u"ExamTakeView")
         ExamTakeView.resize(980, 700)
@@ -77,7 +78,7 @@ class Ui_ExamTakeView(object):
         QMetaObject.connectSlotsByName(ExamTakeView)
     # setupUi
 
-    def retranslateUi(self, ExamTakeView):
+    def retranslateUi(self, ExamTakeView: QWidget):
         ExamTakeView.setWindowTitle(QCoreApplication.translate("ExamTakeView", u"Exam", None))
         self.back_btn.setText(QCoreApplication.translate("ExamTakeView", u"Back", None))
         self.title_label.setText(QCoreApplication.translate("ExamTakeView", u"Exam", None))

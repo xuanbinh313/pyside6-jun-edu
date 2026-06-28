@@ -25,17 +25,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from src.utils.qt import clear_layout
+from typing import Optional, Callable
+from src.viewmodels.exam_take_viewmodel import ExamTakeViewModel
 from ui_gen.ui_exam_take_view import Ui_ExamTakeView
 
 
 class ExamTakeView(QWidget):
-    def __init__(self, viewmodel, go_back_callback, parent=None):
+    def __init__(self, viewmodel: ExamTakeViewModel, go_back_callback: Callable[[], None], parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.viewmodel = viewmodel
-        self.go_back_callback = go_back_callback
-        self._part_checks = []
-        self._tag_checks = []
-        self._answer_groups = {}
+        self.viewmodel: ExamTakeViewModel = viewmodel
+        self.go_back_callback: Callable[[], None] = go_back_callback
+        self._part_checks: list[QCheckBox] = []
+        self._tag_checks: list[QCheckBox] = []
+        self._answer_groups: dict[int, QButtonGroup] = {}
         self._current_analytics = None
 
         self.ui = Ui_ExamTakeView()

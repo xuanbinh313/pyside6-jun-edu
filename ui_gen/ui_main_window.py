@@ -11,6 +11,7 @@
 from PySide6.QtCore import QCoreApplication, QMetaObject, QRect
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QMainWindow,
     QMenu,
     QMenuBar,
     QStackedWidget,
@@ -21,7 +22,7 @@ from PySide6.QtWidgets import (
 
 
 class Ui_MainWindow(object):
-    def setupUi(self, MainWindow):
+    def setupUi(self, MainWindow: QMainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
         MainWindow.resize(1000, 700)
@@ -56,7 +57,7 @@ class Ui_MainWindow(object):
         QMetaObject.connectSlotsByName(MainWindow)
     # setupUi
 
-    def retranslateUi(self, MainWindow):
+    def retranslateUi(self, MainWindow: QMainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"Jun Edu - Exam Management", None))
         self.action_settings.setText(QCoreApplication.translate("MainWindow", u"Settings", None))
         self.menu_main.setTitle(QCoreApplication.translate("MainWindow", u"Menu", None))
