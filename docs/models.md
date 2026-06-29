@@ -28,6 +28,8 @@ for external agent response contracts:
 | `ExamImportResponseSchema` | Pydantic response schema used by `google-genai` for agent-import JSON. |
 | `ExamImportContextSchema` | Pydantic context schema containing nested imported questions. |
 | `ExamImportQuestionSchema` | Pydantic imported-question schema used inside each imported context. |
+| `SrtChunkMapping` | Pydantic structured-output row mapping one context ID to a start/end SRT chunk index. |
+| `SrtMappingResponseSchema` | Top-level Gemini response schema for transcript audio auto-detection. |
 
 `AdditionalMeta` stores context-level audio timing:
 

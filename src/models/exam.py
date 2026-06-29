@@ -211,3 +211,17 @@ class ContextSchema(BaseModel):
 # --- TẦNG ĐẦU RA TỔNG (RESPONSE) ---
 class ToeicPartResponseSchema(BaseModel):
     contexts: List[ContextSchema] = Field(description="Mảng chứa toàn bộ các ngữ cảnh và câu hỏi của đề thi.")
+
+
+class SrtChunkMapping(BaseModel):
+    """One exam context mapped to a detected SRT chunk window."""
+
+    context_id: str
+    start_chunk_index: int
+    end_chunk_index: int
+
+
+class SrtMappingResponseSchema(BaseModel):
+    """Structured output returned by the SRT mapping agent."""
+
+    mappings: List[SrtChunkMapping]

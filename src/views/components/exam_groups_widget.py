@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from src.models.exam import ExamContext, ExamQuestion
 from src.utils.helpers import get_audio_meta, get_local_media_path
 from src.utils.qt import clear_layout
+from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from src.views.components.add_exam_question_dialog import AddExamQuestionDialog
 from src.views.components.exam_context_html import context_content_html
 from src.views.components.exam_context_section import (
@@ -31,7 +32,7 @@ from src.views.components.import_questions_dialog import ImportQuestionsDialog
 from src.views.components.option_question_item import OptionQuestionItem
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
-from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
+
 
 # ExamGroupsWidget â€” main Groups & Questions tab
 class ExamGroupsWidget(QWidget):
@@ -116,7 +117,8 @@ class ExamGroupsWidget(QWidget):
             if path.exists():
                 self.player.setSource(QUrl.fromLocalFile(str(path)))
 
-        contexts: list[ExamContext] =self.viewmodel.contexts
+        contexts = self.viewmodel.list_contexts()
+        self.viewmodel.contexts = contexts
         self._populate_q_list(contexts)
         self._render_question_page(contexts)
 
@@ -690,6 +692,7 @@ class ExamGroupsWidget(QWidget):
         self._clear_options()
 
         contexts = self.viewmodel.list_contexts(selected_tags)
+        self.viewmodel.contexts = contexts
         self._populate_q_list(contexts)
         self._render_question_page(contexts)
 

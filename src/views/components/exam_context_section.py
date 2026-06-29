@@ -18,7 +18,17 @@ ICON_BUTTON_STYLE = """
 def context_audio_meta(ctx) -> dict:
     if not ctx:
         return {}
-    return ctx.additional_meta if isinstance(ctx.additional_meta, dict) else {}
+    meta = ctx.additional_meta or {}
+    if isinstance(meta, dict):
+        return meta
+    if hasattr(meta, "model_dump"):
+        dumped = meta.model_dump()
+        return dumped if isinstance(dumped, dict) else {}
+    return {
+        "audio_start": getattr(meta, "audio_start", 0.0),
+        "audio_end": getattr(meta, "audio_end", 0.0),
+        "note": getattr(meta, "note", ""),
+    }
 
 
 def context_audio_range(ctx) -> tuple[float, float]:

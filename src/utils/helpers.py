@@ -10,6 +10,7 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote
 from urllib.request import Request, urlopen
 
@@ -31,10 +32,17 @@ def get_audio_meta(question):
     return _meta_float(meta, "audio_start"), _meta_float(meta, "audio_end")
 
 
-def _meta_float(meta, key):
+def _meta_float(meta: Any, key: str) -> float:
     try:
-        return float(meta.get(key, 0.0) or 0.0)
-    except (TypeError, ValueError):
+        if isinstance(meta, dict):
+            value = meta.get(key, 0.0)
+        elif hasattr(meta, "model_dump"):
+            dumped = meta.model_dump()
+            value = dumped.get(key, 0.0) if isinstance(dumped, dict) else 0.0
+        else:
+            value = getattr(meta, key, 0.0)
+        return float(value or 0.0)
+    except (AttributeError, TypeError, ValueError):
         return 0.0
 
 

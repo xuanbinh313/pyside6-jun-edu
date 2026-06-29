@@ -295,6 +295,36 @@ Each send creates one `ImportAgentTask` row per selected TOEIC part. The ViewMod
 
 ---
 
+## `SrtMappingAgentViewModel`
+
+**File:** [`src/viewmodels/srt_mapping_agent_viewmodel.py`](../src/viewmodels/srt_mapping_agent_viewmodel.py)
+
+Coordinates the Gemini-backed transcript alignment flow used by
+`ExamTranscriptWidget`. It sends all current SRT chunks plus every exam context
+and context question-number list to Gemini, asks for structured
+`SrtMappingResponseSchema` JSON, saves the raw response under
+`.codex/srt_mapping_responses/`, and emits mappings for the view to preview.
+
+### Signals
+
+| Signal | Payload | Emitted When |
+|---|---|---|
+| `mapping_ready` | `list[SrtChunkMapping]` | Gemini returns a valid mapping response |
+| `progress_message` | `str` | Worker preparation, request, or response-save status changes |
+| `error_message` | `str` | Validation, dependency, Gemini, or parsing fails |
+
+### Methods
+
+| Method | Description |
+|---|---|
+| `start_mapping(chunks, contexts, questions_by_context)` | Starts the background Gemini worker unless another mapping request is running. |
+| `resolve_times(mappings, chunks)` | Converts returned chunk indexes into `(context_id, audio_start, audio_end)` tuples and silently skips invalid or unresolved mappings. |
+
+The ViewModel owns the API/background work only. The preview table, confirmation
+button, and final calls to `update_context_audio_segment()` stay in the view.
+
+---
+
 ## `ReminderViewModel`
 
 **File:** [`src/viewmodels/reminder_viewmodel.py`](../src/viewmodels/reminder_viewmodel.py)

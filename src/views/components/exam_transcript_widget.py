@@ -1,5 +1,6 @@
 # Import the icon management library.
 from typing import Optional
+
 import qtawesome as qta
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QBrush, QColor
@@ -16,13 +17,15 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
-from src.models.exam import ExamSrtChunk
+from src.models.exam import ExamContext, ExamSrtChunk, SrtChunkMapping
 from src.utils.helpers import get_local_media_path
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
+from src.viewmodels.srt_mapping_agent_viewmodel import SrtMappingAgentViewModel
 from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
 
 
@@ -80,6 +83,92 @@ class SelectExamContextDialog(QDialog):
         self.accept()
 
 
+class SrtMappingPreviewDialog(QDialog):
+    def __init__(
+        self,
+        results: list[tuple[str, float, float]],
+        viewmodel: ExamDetailsViewModel,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.results = results
+        self.viewmodel = viewmodel
+
+        self.setWindowTitle("Preview Auto-detected Audio")
+        self.resize(760, 480)
+
+        layout = QVBoxLayout(self)
+        self.table = QTableWidget(self)
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(
+            ["Context", "Questions", "Start (s)", "End (s)"]
+        )
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.ResizeToContents
+        )
+        layout.addWidget(self.table)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        apply_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        if apply_button is not None:
+            apply_button.setText("Apply All")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._populate()
+
+    def _populate(self) -> None:
+        contexts = {context.id: context for context in self.viewmodel.list_contexts()}
+        self.table.setRowCount(len(self.results))
+        for row, (context_id, start_time, end_time) in enumerate(self.results):
+            context = contexts.get(context_id)
+            questions = self.viewmodel.context_question_numbers(context_id)
+            values = [
+                self._context_label(context, context_id, questions),
+                ", ".join(str(number) for number in questions),
+                f"{start_time:.3f}",
+                f"{end_time:.3f}",
+            ]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.table.setItem(row, column, item)
+
+    def _context_label(
+        self,
+        context: Optional[ExamContext],
+        context_id: str,
+        numbers: list[int],
+    ) -> str:
+        if context is None:
+            return f"Context {context_id}"
+        type_label = context.context_type.replace("_", " ").title()
+        if len(numbers) == 1:
+            prefix = f"Question {numbers[0]}"
+        elif numbers:
+            prefix = f"Questions {numbers[0]}-{numbers[-1]}"
+        else:
+            prefix = f"Context {context.index}"
+        return f"{prefix} - Part {context.part} - {type_label}"
+
+
 class TimeAdjustWidget(QWidget):
     def __init__(self, value, on_change, parent=None):
         super().__init__(parent)
@@ -128,6 +217,7 @@ class ExamTranscriptWidget(QWidget):
     def __init__(self, viewmodel:ExamDetailsViewModel , parent=None):
         super().__init__(parent)
         self.viewmodel = viewmodel
+        self._srt_mapping_vm = SrtMappingAgentViewModel(self)
         
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
@@ -162,6 +252,22 @@ class ExamTranscriptWidget(QWidget):
             "QPushButton:hover:!disabled { background-color: #188038; }"
         )
         self.ui.add_to_question_btn.clicked.connect(self._on_add_to_question_clicked)
+
+        self.auto_detect_audio_btn = QPushButton("Auto-detect Audio", self)
+        self.auto_detect_audio_btn.setIcon(qta.icon('fa5s.robot', color='white'))
+        self.auto_detect_audio_btn.setIconSize(QSize(16, 16))
+        self.auto_detect_audio_btn.setStyleSheet(
+            "QPushButton { background-color: #673ab7; color: white; "
+            "padding: 4px 12px; border-radius: 4px; font-weight: bold; }"
+            "QPushButton:disabled { background-color: #dadce0; color: #5f6368; }"
+            "QPushButton:hover:!disabled { background-color: #512da8; }"
+        )
+        self.auto_detect_audio_btn.clicked.connect(self._on_auto_detect_audio_clicked)
+        self.ui.audio_controls.insertWidget(4, self.auto_detect_audio_btn)
+
+        self._srt_mapping_vm.mapping_ready.connect(self._on_mapping_ready)
+        self._srt_mapping_vm.progress_message.connect(self._show_mapping_progress)
+        self._srt_mapping_vm.error_message.connect(self._show_mapping_error)
         
         self.ui.save_btn.setIcon(qta.icon('fa5s.save', color='white'))
         self.ui.save_btn.setIconSize(QSize(16, 16))
@@ -420,6 +526,71 @@ class ExamTranscriptWidget(QWidget):
 
         self.ui.table.clearSelection()
         self._update_add_to_question_enabled()
+
+    def _on_auto_detect_audio_clicked(self) -> None:
+        if not getattr(self.viewmodel, "exam_id", None):
+            QMessageBox.warning(self, "No Exam", "Could not determine the exam.")
+            return
+
+        contexts = self.viewmodel.list_contexts()
+        questions_by_context = {
+            context.id: self.viewmodel.context_question_numbers(context.id)
+            for context in contexts
+        }
+        self.auto_detect_audio_btn.setEnabled(False)
+        self._srt_mapping_vm.start_mapping(
+            chunks=self.viewmodel.srt_chunks,
+            contexts=contexts,
+            questions_by_context=questions_by_context,
+        )
+
+    def _show_mapping_progress(self, message: str) -> None:
+        self.ui.title_label.setText(f"Transcript Chunks - {message}")
+
+    def _show_mapping_error(self, message: str) -> None:
+        self.auto_detect_audio_btn.setEnabled(True)
+        self.ui.title_label.setText("Transcript Chunks")
+        QMessageBox.critical(self, "Auto-detect Audio Failed", message)
+
+    def _on_mapping_ready(self, mappings: list[SrtChunkMapping]) -> None:
+        self.auto_detect_audio_btn.setEnabled(True)
+        self.ui.title_label.setText("Transcript Chunks")
+        results = self._srt_mapping_vm.resolve_times(
+            mappings, self.viewmodel.srt_chunks
+        )
+        if not results:
+            QMessageBox.information(
+                self,
+                "No Audio Detected",
+                "No matching audio segments were returned.",
+            )
+            return
+
+        dialog = SrtMappingPreviewDialog(results, self.viewmodel, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        saved_count = 0
+        try:
+            for context_id, start_time, end_time in results:
+                updated_context = self.viewmodel.update_context_audio_segment(
+                    context_id, start_time, end_time
+                )
+                if updated_context is not None:
+                    saved_count += 1
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Error Saving",
+                f"Could not save auto-detected segments:\n{exc}",
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Audio Segments Saved",
+            f"Saved audio segments for {saved_count} context(s).",
+        )
 
     def _update_time(self, chunk, field, value):
         if field == 'start':

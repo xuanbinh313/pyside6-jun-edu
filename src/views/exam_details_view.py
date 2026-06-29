@@ -1,4 +1,5 @@
 from typing import Callable
+
 from PySide6.QtWidgets import QWidget
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from src.views.components.exam_form_widget import ExamFormWidget
@@ -32,8 +33,13 @@ class ExamDetailsView(QWidget):
         self.tabs.addTab(self.form_tab, "Exam Details")
         self.tabs.addTab(self.groups_tab, "Groups & Questions")
         self.tabs.addTab(self.transcript_tab, "Transcript")
+        self.tabs.currentChanged.connect(self._on_tab_changed)
 
     def on_data_loaded(self):
         self.form_tab.populate()
         self.groups_tab.populate()
         self.transcript_tab.populate()
+
+    def _on_tab_changed(self, index: int):
+        if self.tabs.widget(index) == self.groups_tab and self.viewmodel.exam_id:
+            self.viewmodel.load_exam()
