@@ -4,18 +4,20 @@ from typing import Optional, cast
 
 import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QButtonGroup,
     QLabel,
     QRadioButton,
     QWidget,
 )
-from PySide6.QtGui import QIcon
 from shiboken6 import isValid
+from src.models.exam import ExamQuestion
+from src.repositories.sqlite import orm_models
 from src.repositories.sqlite.database import get_session
 from src.views.components.tag_menu_dialog import TagMenuDialog
 from ui_gen.ui_option_question_item import Ui_OptionQuestionItem
-from src.models.exam import ExamQuestion, UserQuestionTag
+
 
 class OptionQuestionItem(QWidget):
     """Renders multiple-choice options for one ExamQuestion."""
@@ -207,11 +209,11 @@ class OptionQuestionItem(QWidget):
         session = get_session()
         try:
             rows = (
-                session.query(UserQuestionTag.tag_name)
+                session.query(orm_models.UserQuestionTag.tag_name)
                 .filter(
-                    UserQuestionTag.question_id == self.question.id,
+                    orm_models.UserQuestionTag.question_id == self.question.id,
                 )
-                .order_by(UserQuestionTag.tag_name.asc())
+                .order_by(orm_models.UserQuestionTag.tag_name.asc())
                 .all()
             )
             return [row[0] for row in rows]

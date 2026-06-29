@@ -20,11 +20,12 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget
 )
 
 
 class Ui_ExamTranscriptWidget(object):
-    def setupUi(self, ExamTranscriptWidget):
+    def setupUi(self, ExamTranscriptWidget:QWidget):
         if not ExamTranscriptWidget.objectName():
             ExamTranscriptWidget.setObjectName(u"ExamTranscriptWidget")
         ExamTranscriptWidget.resize(600, 400)
@@ -121,7 +122,7 @@ class Ui_ExamTranscriptWidget(object):
         QMetaObject.connectSlotsByName(ExamTranscriptWidget)
     # setupUi
 
-    def retranslateUi(self, ExamTranscriptWidget):
+    def retranslateUi(self, ExamTranscriptWidget:QWidget):
         ExamTranscriptWidget.setWindowTitle(QCoreApplication.translate("ExamTranscriptWidget", u"Exam Transcript", None))
         self.play_pause_btn.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Play/Pause", None))
         self.delay_label.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Delay (s):", None))

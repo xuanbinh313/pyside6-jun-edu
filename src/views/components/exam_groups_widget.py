@@ -1,4 +1,5 @@
 ﻿import html
+from typing import Optional
 
 import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt, QUrl
@@ -30,11 +31,11 @@ from src.views.components.import_questions_dialog import ImportQuestionsDialog
 from src.views.components.option_question_item import OptionQuestionItem
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
-
+from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 
 # ExamGroupsWidget â€” main Groups & Questions tab
 class ExamGroupsWidget(QWidget):
-    def __init__(self, viewmodel, parent=None):
+    def __init__(self, viewmodel: ExamDetailsViewModel, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.viewmodel = viewmodel
 
@@ -115,7 +116,7 @@ class ExamGroupsWidget(QWidget):
             if path.exists():
                 self.player.setSource(QUrl.fromLocalFile(str(path)))
 
-        contexts: list[ExamContext] = getattr(self.viewmodel, "contexts", [])
+        contexts: list[ExamContext] =self.viewmodel.contexts
         self._populate_q_list(contexts)
         self._render_question_page(contexts)
 

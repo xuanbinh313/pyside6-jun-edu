@@ -1,4 +1,5 @@
 # Import the icon management library.
+from typing import Optional
 import qtawesome as qta
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QBrush, QColor
@@ -19,7 +20,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from src.models.exam import ExamSrtChunk
 from src.utils.helpers import get_local_media_path
+from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
 
 
@@ -122,7 +125,7 @@ class TimeAdjustWidget(QWidget):
             pass
 
 class ExamTranscriptWidget(QWidget):
-    def __init__(self, viewmodel , parent=None):
+    def __init__(self, viewmodel:ExamDetailsViewModel , parent=None):
         super().__init__(parent)
         self.viewmodel = viewmodel
         
@@ -210,26 +213,26 @@ class ExamTranscriptWidget(QWidget):
         self.ui.play_pause_btn.setIconSize(QSize(16, 16))
             
     @staticmethod
-    def _fmt_time(ms):
+    def _fmt_time(ms: int) -> str:
         # s = int(ms / 1000)
         # m, s = divmod(s, 60)
         return f"{ms / 1000.0:.3f}"
 
-    def _on_duration_changed(self, duration_ms):
+    def _on_duration_changed(self, duration_ms: int):
         self.ui.seek_slider.setMaximum(max(duration_ms, 1))
         self.ui.time_total_label.setText(self._fmt_time(duration_ms))
 
     def _on_slider_pressed(self):
         self._slider_dragging = True
 
-    def _on_slider_moved(self, value):
+    def _on_slider_moved(self, value:int):
         self.ui.time_current_label.setText(self._fmt_time(value))
 
     def _on_slider_released(self):
         self._slider_dragging = False
         self.player.setPosition(self.ui.seek_slider.value())
 
-    def _on_position_changed(self, pos_ms):
+    def _on_position_changed(self, pos_ms: int):
         if self.play_until and pos_ms >= self.play_until:
             self.player.pause()
             
@@ -274,7 +277,7 @@ class ExamTranscriptWidget(QWidget):
         if chunk:
             self.play_range(chunk.start_time, chunk.end_time, loop_idx)
             
-    def play_range(self, start_time, end_time, loop_idx=None):
+    def play_range(self, start_time: float, end_time: float, loop_idx: Optional[int] = None):
         self.looping_chunk_idx = loop_idx
         if loop_idx is not None:
             self.play_until = int(end_time * 1000)
@@ -298,7 +301,7 @@ class ExamTranscriptWidget(QWidget):
         self.ui.table.blockSignals(False)
         self._update_add_to_question_enabled()
 
-    def _insert_chunk_row(self, row, chunk):
+    def _insert_chunk_row(self, row: int, chunk:ExamSrtChunk):
         self.ui.table.insertRow(row)
         
         idx_item = QTableWidgetItem(str(chunk.index))

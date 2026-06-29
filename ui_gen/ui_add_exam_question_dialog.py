@@ -24,11 +24,12 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
+    QDialog
 )
 
 
 class Ui_AddExamQuestionDialog(object):
-    def setupUi(self, AddExamQuestionDialog):
+    def setupUi(self, AddExamQuestionDialog:QDialog):
         if not AddExamQuestionDialog.objectName():
             AddExamQuestionDialog.setObjectName(u"AddExamQuestionDialog")
         AddExamQuestionDialog.resize(720, 760)
@@ -300,7 +301,7 @@ class Ui_AddExamQuestionDialog(object):
         QMetaObject.connectSlotsByName(AddExamQuestionDialog)
     # setupUi
 
-    def retranslateUi(self, AddExamQuestionDialog):
+    def retranslateUi(self, AddExamQuestionDialog:QDialog):
         AddExamQuestionDialog.setWindowTitle(QCoreApplication.translate("AddExamQuestionDialog", u"Add Exam Question", None))
         self.header_label.setText(QCoreApplication.translate("AddExamQuestionDialog", u"Create Context and Question", None))
         self.context_group.setTitle(QCoreApplication.translate("AddExamQuestionDialog", u"Context", None))

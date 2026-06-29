@@ -1,6 +1,7 @@
 import json
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import qtawesome as qta
 from PySide6.QtCore import Qt
@@ -133,7 +134,7 @@ class AddExamQuestionDialog(QDialog):
     QUESTION_TYPES = ["MULTIPLE_CHOICE", "FILL_IN_THE_BLANK", "ESSAY", "RECORDING"]
     LETTERS = ["", "A", "B", "C", "D"]
 
-    def __init__(self, exam_id, context=None, parent=None):
+    def __init__(self, exam_id: str, context=None, parent=None):
         super().__init__(parent)
         self.exam_id = exam_id
         self.context = context
@@ -382,6 +383,32 @@ class AddExamQuestionDialog(QDialog):
         finally:
             session.close()
 
+    def _as_plain_dict(self, value: object) -> dict[str, Any]:
+        if isinstance(value, dict):
+            return dict(value)
+
+        model_dump = getattr(value, "model_dump", None)
+        if callable(model_dump):
+            dumped = model_dump()
+            if isinstance(dumped, dict):
+                return dumped
+
+        model_dict = getattr(value, "dict", None)
+        if callable(model_dict):
+            dumped = model_dict()
+            if isinstance(dumped, dict):
+                return dumped
+
+        if isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                return {}
+            if isinstance(decoded, dict):
+                return decoded
+
+        return {}
+
     def _populate_from_context(self):
         ctx = self.context
         if not ctx:
@@ -390,17 +417,20 @@ class AddExamQuestionDialog(QDialog):
         self.ui.context_type_combo.setCurrentIndex(type_idx if type_idx >= 0 else 0)
         self.ui.part_spin.setValue(ctx.part or 1)
         self.ui.context_index_spin.setValue(ctx.index or 0)
-        content = ctx.content if isinstance(ctx.content, dict) else {}
-        meta = ctx.additional_meta if isinstance(ctx.additional_meta, dict) else {}
+        content = self._as_plain_dict(ctx.content)
+        meta = self._as_plain_dict(ctx.additional_meta)
         self.context_audio_start = float(meta.get("audio_start", 0.0) or 0.0)
         self.context_audio_end = float(meta.get("audio_end", 0.0) or 0.0)
         self._refresh_context_audio_ui()
-        self.ui.context_text_edit.setPlainText(content.get("text", ""))
-        self.ui.image_description_edit.setPlainText(content.get("text", ""))
+        context_text = str(content.get("text", "") or "")
+        self.ui.context_text_edit.setPlainText(context_text)
+        self.ui.image_description_edit.setPlainText(context_text)
         image_filename = str(content.get("image_filename", "") or "")
         image_path = ""
         if image_filename:
-            image_path = str(get_local_media_path(image_filename))
+            local_image_path = get_local_media_path(image_filename)
+            if local_image_path.is_file():
+                image_path = str(local_image_path)
         if not image_path:
             image_path = str(content.get("image_path", "") or "")
         self.image_drop_area.set_image_path(image_path, image_filename)
