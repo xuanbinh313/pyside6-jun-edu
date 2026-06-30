@@ -1,3 +1,4 @@
+from typing import Callable
 from PySide6.QtCore import QObject, QThread, Signal
 from src.repositories.supabase.sync import (
     sync_sqlite_to_supabase,
@@ -9,7 +10,7 @@ class SyncWorker(QThread):
     finished = Signal(list)
     error = Signal(str)
 
-    def __init__(self, sync_func):
+    def __init__(self, sync_func: Callable[[], list[str]]):
         super().__init__()
         self.sync_func = sync_func
 

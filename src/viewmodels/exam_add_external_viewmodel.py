@@ -1,7 +1,7 @@
 ﻿import os
 import time
 import time as time_module
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import requests
 from dotenv import load_dotenv
@@ -19,7 +19,12 @@ class Worker(QThread):
     finished = Signal(dict)
     error = Signal(str)
 
-    def __init__(self, func, *args, **kwargs):
+    def __init__(
+        self,
+        func: Callable[[Callable[[str], None], Any], Any],
+        *args: Any,
+        **kwargs: Any,
+    ):
         super().__init__()
         self.func = func
         self.args = args

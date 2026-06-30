@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 import re
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Optional
 
 from PySide6.QtCore import QObject, QThread, Signal
 from src.repositories.supabase.auth import (
@@ -38,13 +36,13 @@ class AuthViewModel(QObject):
     error_message = Signal(str)
     logged_out = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self.is_loading = False
         self.mode = "login"
         self.status_text = ""
         self.current_user_email = ""
-        self._worker: AuthWorker | None = None
+        self._worker: Optional[AuthWorker] = None
 
     @property
     def is_login_mode(self) -> bool:
@@ -116,10 +114,15 @@ class AuthViewModel(QObject):
         self._worker = AuthWorker(func)
         self._worker.finished.connect(on_finished)
         self._worker.finished.connect(self._on_worker_done)
-        self._worker.error.connect(
-            lambda message: self._on_worker_error(message, silent_error=silent_error)
-        )
-        self._worker.error.connect(self._on_worker_done)
+
+        def _on_error(message: str) -> None:
+            self._on_worker_error(message, silent_error=silent_error)
+
+        def _on_done() -> None:
+            self._on_worker_done()
+
+        self._worker.error.connect(_on_error)
+        self._worker.error.connect(_on_done)
         self._worker.start()
 
     def _on_auth_result(self, result: AuthResult) -> None:
@@ -156,7 +159,7 @@ class AuthViewModel(QObject):
         self.error_message.emit(_friendly_error(message))
         self.state_changed.emit()
 
-    def _on_worker_done(self, *_args) -> None:
+    def _on_worker_done(self) -> None:
         self.is_loading = False
         self.state_changed.emit()
 
