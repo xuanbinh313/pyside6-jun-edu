@@ -46,7 +46,7 @@ def context_content_html(ctx) -> str:
         )
 
     safe = re.sub(r"\[\[(\d+)\]\]", replace_placeholder, safe)
-    return safe.replace("\n", "<br>") or "<i>No context text saved.</i>"
+    return safe.replace("\n", "<br>") or ""
 
 
 def audio_srt_context_html(content) -> str:

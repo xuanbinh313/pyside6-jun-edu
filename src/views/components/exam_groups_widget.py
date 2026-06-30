@@ -1,5 +1,5 @@
 ﻿import html
-from typing import Optional
+from typing import Optional, cast
 
 import qtawesome as qta
 from PySide6.QtCore import QPoint, Qt, QUrl
@@ -7,12 +7,14 @@ from PySide6.QtGui import QCursor
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QDialog,
     QLabel,
     QListWidgetItem,
     QMenu,
     QMessageBox,
     QPushButton,
+    QTabBar,
     QWidget,
 )
 from src.models.exam import ExamContext, ExamQuestion
@@ -23,6 +25,7 @@ from src.views.components.add_exam_question_dialog import AddExamQuestionDialog
 from src.views.components.exam_context_html import context_content_html
 from src.views.components.exam_context_section import (
     ExamContextSection,
+    context_audio_meta,
     context_audio_range,
 )
 from src.views.components.import_questions_agent_dialog import (
@@ -52,6 +55,11 @@ class ExamGroupsWidget(QWidget):
 
         self._context_widgets = {}
         self._context_note_labels = {}
+        self._all_contexts: list[ExamContext] = []
+        self._active_part: Optional[int] = None
+        self._questions_by_context: dict[str, list[ExamQuestion]] = {}
+        self._loading_label: Optional[QLabel] = None
+        self._is_loading = False
         self.setup_ui()
 
     # UI construction
@@ -80,6 +88,8 @@ class ExamGroupsWidget(QWidget):
         )
         self.ui.import_q_btn.setIcon(qta.icon("fa5s.file-import", color="#34a853"))
         self.ui.listen_btn.setIcon(qta.icon("fa5s.play", color="white"))
+        self._setup_part_tabs()
+        self._setup_loading_label()
 
         # Setup connections
         self.add_q_btn.clicked.connect(self._on_add_question_clicked)
@@ -99,28 +109,139 @@ class ExamGroupsWidget(QWidget):
         self.ui.q_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.ui.q_list.customContextMenuRequested.connect(self._on_q_list_context_menu)
 
+    def _setup_part_tabs(self) -> None:
+        self.part_tabs = QTabBar(self.ui.right_outer)
+        self.part_tabs.setExpanding(False)
+        self.part_tabs.setDrawBase(False)
+        self.part_tabs.setUsesScrollButtons(True)
+        self.part_tabs.setStyleSheet("""
+            QTabBar::tab {
+                padding: 7px 14px;
+                margin-right: 4px;
+                border: 1px solid #dadce0;
+                border-radius: 4px;
+                color: #3c4043;
+                background: #ffffff;
+                font-weight: bold;
+            }
+            QTabBar::tab:selected {
+                color: #1a73e8;
+                border-color: #1a73e8;
+                background: #e8f0fe;
+            }
+        """)
+        self.ui.title_label.setVisible(False)
+        self.ui.title_outer.insertWidget(0, self.part_tabs)
+        self.part_tabs.currentChanged.connect(self._on_part_tab_changed)
+
+    def _setup_loading_label(self) -> None:
+        label = QLabel("Loading questions...")
+        label.setVisible(False)
+        label.setStyleSheet(
+            "color: #5f6368; padding: 8px 10px; "
+            "border: 1px solid #dadce0; border-radius: 4px; background: #f8f9fa;"
+        )
+        self._loading_label = label
+        self.ui.right_outer_layout.insertWidget(1, label)
+
+    def _set_loading(self, is_loading: bool) -> None:
+        if self._is_loading == is_loading:
+            return
+        self._is_loading = is_loading
+        if self._loading_label is not None:
+            self._loading_label.setVisible(is_loading)
+        self.ui.q_list.setEnabled(not is_loading)
+        self.part_tabs.setEnabled(not is_loading)
+        if is_loading:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        else:
+            QApplication.restoreOverrideCursor()
+        QApplication.processEvents()
+
+    def _populate_part_tabs(self, contexts: list[ExamContext]) -> None:
+        parts = sorted({ctx.part for ctx in contexts})
+        previous_part = self._active_part
+
+        self.part_tabs.blockSignals(True)
+        while self.part_tabs.count() > 0:
+            self.part_tabs.removeTab(0)
+        for part in parts:
+            self.part_tabs.addTab(f"Part {part}")
+            self.part_tabs.setTabData(self.part_tabs.count() - 1, part)
+        self.part_tabs.blockSignals(False)
+
+        if not parts:
+            self._active_part = None
+            return
+
+        target_part = previous_part if previous_part in parts else parts[0]
+        self._set_active_part(target_part)
+
+    def _set_active_part(self, part: int) -> None:
+        self._active_part = part
+        for index in range(self.part_tabs.count()):
+            if self.part_tabs.tabData(index) == part:
+                self.part_tabs.blockSignals(True)
+                self.part_tabs.setCurrentIndex(index)
+                self.part_tabs.blockSignals(False)
+                break
+
+    def _on_part_tab_changed(self, index: int) -> None:
+        part = self.part_tabs.tabData(index)
+        if not isinstance(part, int):
+            return
+        self._active_part = part
+        self._set_loading(True)
+        try:
+            self._render_active_part()
+        finally:
+            self._set_loading(False)
+
+    def _active_contexts(self) -> list[ExamContext]:
+        if self._active_part is None:
+            return []
+        return [ctx for ctx in self._all_contexts if ctx.part == self._active_part]
+
+    def _render_active_part(self) -> None:
+        contexts = self._active_contexts()
+        self.ui.q_list.blockSignals(True)
+        self.ui.q_list.clear()
+        self._questions_by_context.clear()
+        self._render_question_page(contexts)
+        self._populate_q_list(contexts)
+        self.ui.q_list.blockSignals(False)
+        if self._active_part is None:
+            self.ui.title_label.setText("Question Details")
+        else:
+            self.ui.title_label.setText(f"Part {self._active_part}")
+
     # Public: populate from viewmodel
     def populate(self):
-        self.player.stop()
-        self.populate_tags()
-        self.ui.q_list.clear()
-        self._clear_options()
-        self.ui.title_label.setText("Question Details")
-        self.ui.listen_widget.setVisible(False)
-        self.ui.passage_browser.setVisible(False)
-        self.ui.transcript_label.setVisible(False)
-        self.ui.transcript_browser.setVisible(False)
+        self._set_loading(True)
+        try:
+            self.player.stop()
+            self.populate_tags()
+            self.ui.q_list.clear()
+            self._clear_options()
+            self.ui.title_label.setText("Question Details")
+            self.ui.listen_widget.setVisible(False)
+            self.ui.passage_browser.setVisible(False)
+            self.ui.transcript_label.setVisible(False)
+            self.ui.transcript_browser.setVisible(False)
 
-        # Load audio source
-        if self.viewmodel.exam and self.viewmodel.exam.audio_name:
-            path = get_local_media_path(self.viewmodel.exam.audio_name)
-            if path.exists():
-                self.player.setSource(QUrl.fromLocalFile(str(path)))
+            # Load audio source
+            if self.viewmodel.exam and self.viewmodel.exam.audio_name:
+                path = get_local_media_path(self.viewmodel.exam.audio_name)
+                if path.exists():
+                    self.player.setSource(QUrl.fromLocalFile(str(path)))
 
-        contexts = self.viewmodel.list_contexts()
-        self.viewmodel.contexts = contexts
-        self._populate_q_list(contexts)
-        self._render_question_page(contexts)
+            contexts = self.viewmodel.list_contexts()
+            self.viewmodel.contexts = contexts
+            self._all_contexts = contexts
+            self._populate_part_tabs(contexts)
+            self._render_active_part()
+        finally:
+            self._set_loading(False)
 
     # Slots
     def _on_question_selected(self, current, previous):
@@ -206,6 +327,8 @@ class ExamGroupsWidget(QWidget):
 
         item_kind = clicked_item.data(Qt.ItemDataRole.UserRole + 1)
         if item_kind == "separator":
+            return
+        if item_kind != "context":
             return
 
         selected_items = [
@@ -340,13 +463,7 @@ class ExamGroupsWidget(QWidget):
         self.populate()
         saved_context_id = dialog.saved_context_id
         if saved_context_id:
-            for i in range(self.ui.q_list.count()):
-                item = self.ui.q_list.item(i)
-                kind = item.data(Qt.ItemDataRole.UserRole + 1)
-                obj = item.data(Qt.ItemDataRole.UserRole)
-                if kind == "context" and obj and obj.id == saved_context_id:
-                    self.ui.q_list.setCurrentItem(item)
-                    break
+            self._select_context_id(saved_context_id)
         QMessageBox.information(self, "Created", "Question created successfully.")
 
     def _on_import_questions_clicked(self):
@@ -432,16 +549,7 @@ class ExamGroupsWidget(QWidget):
         self.viewmodel.load_exam()
         self.populate()
         saved_context_id = dialog.saved_context_id
-        for i in range(self.ui.q_list.count()):
-            item = self.ui.q_list.item(i)
-            stored = item.data(Qt.ItemDataRole.UserRole)
-            if (
-                item.data(Qt.ItemDataRole.UserRole + 1) == "context"
-                and stored
-                and stored.id == saved_context_id
-            ):
-                self.ui.q_list.setCurrentItem(item)
-                break
+        self._select_context_id(saved_context_id)
 
     def _refresh_ctx_header_item(self, ctx):
         """Find and update the q_list header item for the given context."""
@@ -502,12 +610,9 @@ class ExamGroupsWidget(QWidget):
         label.setVisible(True)
         self.ui.options_scroll.ensureWidgetVisible(label)
 
-    def _context_note_text(self, question):
-        ctx = getattr(question, "context", None)
-        meta = (
-            ctx.additional_meta if ctx and isinstance(ctx.additional_meta, dict) else {}
-        )
-        note = str(meta.get("note", "")).strip()
+    def _context_note_text(self, question: ExamQuestion) -> str:
+        ctx = cast(Optional[ExamContext], getattr(question, "context", None))
+        note = self._note_from_context(ctx)
         if note:
             return note
 
@@ -516,25 +621,17 @@ class ExamGroupsWidget(QWidget):
             return ""
 
         for context in getattr(self.viewmodel, "contexts", []):
-            if context.id == context_id and isinstance(context.additional_meta, dict):
-                return str(context.additional_meta.get("note", "")).strip()
+            if context.id == context_id:
+                return self._note_from_context(context)
         return ""
 
-    def _populate_q_list(self, contexts):
-        """Fill q_list with all ExamContext rows, grouped under Part headers."""
-        current_part = None
-        for ctx in sorted(contexts, key=lambda c: (c.part or 0, c.index or 0)):
-            if ctx.part != current_part:
-                current_part = ctx.part
-                part_item = QListWidgetItem(f"Part {current_part}")
-                part_item.setFlags(Qt.ItemFlag.NoItemFlags | Qt.ItemFlag.ItemIsEnabled)
-                part_item.setData(Qt.ItemDataRole.UserRole + 1, "separator")
-                font = part_item.font()
-                font.setBold(True)
-                part_item.setFont(font)
-                part_item.setForeground(Qt.GlobalColor.darkGray)
-                self.ui.q_list.addItem(part_item)
+    def _note_from_context(self, ctx: Optional[ExamContext]) -> str:
+        meta = context_audio_meta(ctx)
+        return str(meta.get("note", "")).strip()
 
+    def _populate_q_list(self, contexts: list[ExamContext]):
+        """Fill q_list with contexts and questions for the selected part."""
+        for ctx in sorted(contexts, key=lambda c: (c.part or 0, c.index or 0)):
             item = QListWidgetItem(self._context_item_label(ctx))
             item.setData(Qt.ItemDataRole.UserRole, ctx)
             item.setData(Qt.ItemDataRole.UserRole + 1, "context")
@@ -544,7 +641,7 @@ class ExamGroupsWidget(QWidget):
             item.setForeground(Qt.GlobalColor.darkBlue)
             self.ui.q_list.addItem(item)
 
-    def _context_item_label(self, ctx):
+    def _context_item_label(self, ctx: ExamContext):
         numbers = self.viewmodel.context_question_numbers(ctx.id)
 
         type_label = ctx.context_type.replace("_", " ").title()
@@ -562,23 +659,14 @@ class ExamGroupsWidget(QWidget):
         self.ui.transcript_browser.setVisible(False)
         self.ui.listen_widget.setVisible(False)
 
-        current_part = None
         sorted_contexts = sorted(contexts, key=lambda c: (c.part or 0, c.index or 0))
         for ctx in sorted_contexts:
-            if ctx.part != current_part:
-                current_part = ctx.part
-                part_label = QLabel(f"Part {current_part}")
-                part_label.setStyleSheet(
-                    "font-size: 15px; font-weight: bold; color: #5f6368; "
-                    "padding: 8px 2px 2px 2px;"
-                )
-                self._insert_scroll_widget(part_label)
-
             section = self._create_context_section(ctx)
             self._context_widgets[ctx.id] = section
             self._insert_scroll_widget(section)
 
             questions = self._questions_for_context(ctx.id)
+            self._questions_by_context[ctx.id] = questions
             for question in questions:
                 opt_w = OptionQuestionItem(question, exam_id=self.viewmodel.exam_id)
                 self._question_widgets[question.question_number] = opt_w
@@ -658,10 +746,11 @@ class ExamGroupsWidget(QWidget):
         self._question_widgets.clear()
         self._context_widgets.clear()
         self._context_note_labels.clear()
+        self._questions_by_context.clear()
 
     def populate_tags(self):
         self.ui.tag_filter_list.blockSignals(True)
-        checked_tags = set()
+        checked_tags:set[str] = set()
         for i in range(self.ui.tag_filter_list.count()):
             item = self.ui.tag_filter_list.item(i)
             if item.checkState() == Qt.CheckState.Checked:
@@ -681,23 +770,21 @@ class ExamGroupsWidget(QWidget):
         self.ui.tag_filter_list.blockSignals(False)
 
     def _on_filter_changed(self):
-        selected_tags = []
+        selected_tags:list[str] = []
         for i in range(self.ui.tag_filter_list.count()):
             item = self.ui.tag_filter_list.item(i)
             if item.checkState() == Qt.CheckState.Checked:
                 selected_tags.append(item.text())
 
-        self.ui.q_list.blockSignals(True)
-        self.ui.q_list.clear()
-        self._clear_options()
-
-        contexts = self.viewmodel.list_contexts(selected_tags)
-        self.viewmodel.contexts = contexts
-        self._populate_q_list(contexts)
-        self._render_question_page(contexts)
-
-        self.ui.q_list.blockSignals(False)
-        self.ui.title_label.setText("Question Details")
+        self._set_loading(True)
+        try:
+            contexts = self.viewmodel.list_contexts(selected_tags)
+            self.viewmodel.contexts = contexts
+            self._all_contexts = contexts
+            self._populate_part_tabs(contexts)
+            self._render_active_part()
+        finally:
+            self._set_loading(False)
 
     def on_question_tag_changed(self):
         self.populate_tags()
@@ -712,6 +799,16 @@ class ExamGroupsWidget(QWidget):
         self.populate()
         if not context_id:
             return
+        self._select_context_id(context_id)
+
+    def _select_context_id(self, context_id: Optional[str]) -> None:
+        if not context_id:
+            return
+        for context in self._all_contexts:
+            if context.id == context_id:
+                self._set_active_part(context.part)
+                self._render_active_part()
+                break
         for i in range(self.ui.q_list.count()):
             item = self.ui.q_list.item(i)
             ctx = item.data(Qt.ItemDataRole.UserRole)

@@ -13,6 +13,8 @@
     "reportUnusedImport": true,
     "reportUnusedVariable": true,
     "pythonVersion": "3.9",
+    "venvPath": ".",
+    "venv": ".venv",
     "exclude": [
         ".venv",
         "venv",
@@ -25,5 +27,6 @@
         "*.pyc",
         ".idea",
         ".vscode"
-    ]
+    ],
+    "stubPath": "./src/typings"
 }

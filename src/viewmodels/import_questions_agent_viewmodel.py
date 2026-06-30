@@ -951,7 +951,7 @@ Return this schema:
       "context_type": "AUDIO_SRT",
       "content": {"text": "Full talk transcript for questions 71-73."},
       "index": 0,
-      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "REQUIRED. Vietnamese translation or summary of the talk."},
+      "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": "REQUIRED. Vietnamese translation."},
       "questions": [
         {
           "question_number": 71,

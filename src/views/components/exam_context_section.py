@@ -108,7 +108,7 @@ class ExamContextSection(QWidget):
         """)
         layout.addWidget(self.note_label)
 
-    def _build_header(self, title_text, on_play, on_select_audio, on_edit):
+    def _build_header(self, title_text: str, on_play, on_select_audio, on_edit):
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -145,7 +145,7 @@ class ExamContextSection(QWidget):
         header_layout.addWidget(edit_btn)
         return header_layout
 
-    def _build_body(self, content_html, on_anchor):
+    def _build_body(self, content_html: str, on_anchor):
         body = QLabel(content_html)
         body.setTextFormat(Qt.TextFormat.RichText)
         body.setOpenExternalLinks(False)

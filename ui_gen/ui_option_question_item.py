@@ -9,11 +9,11 @@
 ################################################################################
 
 from PySide6.QtCore import QCoreApplication, QMetaObject
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 
 class Ui_OptionQuestionItem(object):
-    def setupUi(self, OptionQuestionItem):
+    def setupUi(self, OptionQuestionItem: QWidget):
         if not OptionQuestionItem.objectName():
             OptionQuestionItem.setObjectName(u"OptionQuestionItem")
         OptionQuestionItem.resize(400, 200)
@@ -70,7 +70,7 @@ class Ui_OptionQuestionItem(object):
         QMetaObject.connectSlotsByName(OptionQuestionItem)
     # setupUi
 
-    def retranslateUi(self, OptionQuestionItem):
+    def retranslateUi(self, OptionQuestionItem: QWidget):
         OptionQuestionItem.setWindowTitle(QCoreApplication.translate("OptionQuestionItem", u"OptionQuestionItem", None))
         self.stem.setText(QCoreApplication.translate("OptionQuestionItem", u"Question Stem", None))
         self.edit_q_btn.setText("")

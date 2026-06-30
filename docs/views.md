@@ -246,8 +246,8 @@ Named widgets from `.ui` file:
 | `import_q_btn` | `QPushButton` | Import questions from CSV (28×28 icon button) |
 | `filter_label` | `QLabel` | "Filter by Tags:" label |
 | `tag_filter_list` | `QListWidget` | Checkable tag filter list (max height 80px) |
-| `q_list` | `QListWidget` | Question list (supports ExtendedSelection + right-click context menu) |
-| `title_label` | `QLabel` | Right-panel title / selected question detail header |
+| `q_list` | `QListWidget` | Active-part context and question list (supports ExtendedSelection + right-click context menu on contexts) |
+| `title_label` | `QLabel` | Hidden at runtime and replaced by part tabs for right-panel navigation |
 | `listen_widget` | `QWidget` | Audio listen controls — hidden until a question with audio is selected |
 | `listen_btn` | `QPushButton` | Play button for the question's audio segment |
 | `status_label` | `QLabel` | Shows current audio segment timestamps |
@@ -255,7 +255,7 @@ Named widgets from `.ui` file:
 | `passage_browser` | `QTextBrowser` | Passage text display (yellow background) |
 | `transcript_label` | `QLabel` | "Transcript Context" label — hidden until audio segment is set |
 | `transcript_browser` | `QTextBrowser` | SRT chunk transcript for the selected audio segment |
-| `options_scroll` | `QScrollArea` | Scrollable container for question option radio buttons |
+| `options_scroll` | `QScrollArea` | Scrollable container for the active part's context sections and question option radio buttons |
 | `options_container` | `QWidget` | Inner widget of `options_scroll` |
 | `options_layout` | `QVBoxLayout` | Layout that holds `OptionWidget` instances |
 
