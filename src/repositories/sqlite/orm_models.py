@@ -137,7 +137,7 @@ class UserQuestionTag(Base):
         ForeignKey("exam_questions.id"), nullable=False
     )
     tag_name: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=str(datetime.now(timezone.utc)))
     dirty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 

@@ -791,6 +791,17 @@ class ExamGroupsWidget(QWidget):
 
     def populate_tags(self) -> None:
         self.ui.tag_filter_list.blockSignals(True)
+        self.ui.tag_filter_list.setStyleSheet("""
+            /* Hover state */
+            QListWidget::item:hover {
+                background-color: #e0e0e0;
+            }
+            /* Selected state */
+            QListWidget::item:selected {
+                background-color: #308cc6;
+                color: #ffffff;
+            }
+        """)
         checked_tags: set[str] = set()
         for i in range(self.ui.tag_filter_list.count()):
             item = self.ui.tag_filter_list.item(i)
