@@ -89,7 +89,7 @@ class ExamDetailsViewModel(QObject):
         return self.repo.update_correct_answers(self.exam_id, answer_key)
 
     def import_contexts_and_questions(
-        self, contexts_data: list[dict], questions_data: list[dict]
+        self, contexts_data: list[ExamContext], questions_data: list[ExamQuestion]
     ) -> dict:
         if not self.exam_id:
             raise ValueError("Cannot import questions before the exam is saved.")

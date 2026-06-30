@@ -1,7 +1,7 @@
 import json
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import qtawesome as qta
 from PySide6.QtCore import Qt
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from src.models.exam import ExamContext
 from src.repositories.sqlite import orm_models as exam_model
 from src.repositories.sqlite.database import get_session
 from src.utils.helpers import get_local_media_path, optimize_image_to_webp_file
@@ -134,7 +135,7 @@ class AddExamQuestionDialog(QDialog):
     QUESTION_TYPES = ["MULTIPLE_CHOICE", "FILL_IN_THE_BLANK", "ESSAY", "RECORDING"]
     LETTERS = ["", "A", "B", "C", "D"]
 
-    def __init__(self, exam_id: str, context=None, parent=None):
+    def __init__(self, exam_id: Optional[str] = None, context: Optional[ExamContext] = None, parent:Optional[QWidget]=None):
         super().__init__(parent)
         self.exam_id = exam_id
         self.context = context

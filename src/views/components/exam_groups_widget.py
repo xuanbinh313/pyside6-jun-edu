@@ -500,7 +500,7 @@ class ExamGroupsWidget(QWidget):
 
         self.viewmodel.load_exam()
         self.populate()
-        saved_context_id = cast(Optional[str], dialog.saved_context_id)
+        saved_context_id :Optional[str] = cast(Optional[str], dialog.saved_context_id)
         if saved_context_id:
             self._select_context_id(saved_context_id)
         QMessageBox.information(self, "Created", "Question created successfully.")

@@ -83,6 +83,6 @@ class IExamRepository(ABC):
 
     @abstractmethod
     def import_contexts_and_questions(
-        self, exam_id: str, contexts_data: list[dict], questions_data: list[dict]
+        self, exam_id: str, contexts_data: list[ExamContext], questions_data: list[ExamQuestion]
     ) -> dict:
         raise NotImplementedError
