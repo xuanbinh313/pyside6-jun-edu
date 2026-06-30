@@ -1,3 +1,5 @@
+from typing import Optional
+
 import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -8,6 +10,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from src.models.exam import ExamContext
 
 ICON_BUTTON_STYLE = """
     QPushButton { border: none; background-color: transparent; }
@@ -15,7 +18,7 @@ ICON_BUTTON_STYLE = """
 """
 
 
-def context_audio_meta(ctx) -> dict:
+def context_audio_meta(ctx: Optional[ExamContext]) -> dict[str, object]:
     if not ctx:
         return {}
     meta = ctx.additional_meta or {}
@@ -31,7 +34,7 @@ def context_audio_meta(ctx) -> dict:
     }
 
 
-def context_audio_range(ctx) -> tuple[float, float]:
+def context_audio_range(ctx: Optional[ExamContext]) -> tuple[float, float]:
     meta = context_audio_meta(ctx)
     try:
         audio_start = float(meta.get("audio_start", 0.0) or 0.0)
@@ -44,19 +47,19 @@ def context_audio_range(ctx) -> tuple[float, float]:
     return audio_start, audio_end
 
 
-def context_audio_icon_color(ctx) -> str:
+def context_audio_icon_color(ctx: Optional[ExamContext]) -> str:
     _, audio_end = context_audio_range(ctx)
     return "#1a73e8" if audio_end > 0.0 else "#5f6368"
 
 
-def context_audio_tooltip(ctx) -> str:
+def context_audio_tooltip(ctx: Optional[ExamContext]) -> str:
     audio_start, audio_end = context_audio_range(ctx)
     if audio_end > 0.0:
         return f"Audio segment: {audio_start:.2f}s - {audio_end:.2f}s"
     return "Select audio segment from transcript"
 
 
-def refresh_context_play_button(button: QPushButton, ctx) -> None:
+def refresh_context_play_button(button: QPushButton, ctx: Optional[ExamContext]) -> None:
     audio_start, audio_end = context_audio_range(ctx)
     has_audio = audio_end > 0.0
     button.setIcon(qta.icon("fa5s.play", color="#34a853" if has_audio else "#9aa0a6"))

@@ -10,14 +10,16 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import unquote
 from urllib.request import Request, urlopen
 
 from slugify import slugify
 
+from src.models.exam import ExamQuestion
 
-def get_audio_meta(question):
+
+def get_audio_meta(question: Optional[ExamQuestion]) -> tuple[float, float]:
     """Return (audio_start_seconds, audio_end_seconds) from additional_meta."""
     if not question:
         return 0.0, 0.0

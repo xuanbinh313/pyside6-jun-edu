@@ -2,11 +2,13 @@ import html
 import json
 import re
 from pathlib import Path
+from typing import Any
 
+from src.models.exam import ExamContext
 from src.utils.helpers import get_local_media_path
 
 
-def _coerce_content(content):
+def _coerce_content(content: object) -> Any:
     if isinstance(content, str):
         try:
             return json.loads(content)
@@ -21,14 +23,14 @@ def _coerce_content(content):
     return content
 
 
-def _content_get(content, key: str, default=""):
+def _content_get(content: object, key: str, default: object = "") -> object:
     content = _coerce_content(content)
     if isinstance(content, dict):
         return content.get(key, default)
     return getattr(content, key, default)
 
 
-def context_content_html(ctx) -> str:
+def context_content_html(ctx: ExamContext) -> str:
     content = _coerce_content(ctx.content)
     if ctx.context_type == "AUDIO_SRT":
         return audio_srt_context_html(content)
@@ -38,7 +40,7 @@ def context_content_html(ctx) -> str:
     raw = str(_content_get(content, "text", content or ""))
     safe = html.escape(raw)
 
-    def replace_placeholder(match):
+    def replace_placeholder(match: re.Match[str]) -> str:
         num = match.group(1)
         return (
             f'<a href="{num}" style="text-decoration:none; color:#0078d4;">'
@@ -49,7 +51,7 @@ def context_content_html(ctx) -> str:
     return safe.replace("\n", "<br>") or ""
 
 
-def audio_srt_context_html(content) -> str:
+def audio_srt_context_html(content: object) -> str:
     try:
         content = _coerce_content(content)
         if isinstance(content, dict):
@@ -59,7 +61,7 @@ def audio_srt_context_html(content) -> str:
         else:
             entries = content or []
 
-        lines = []
+        lines: list[str] = []
         for entry in entries:
             if isinstance(entry, dict):
                 lines.append(
@@ -73,12 +75,12 @@ def audio_srt_context_html(content) -> str:
         return f"<i>Error reading audio context: {html.escape(str(exc))}</i>"
 
 
-def image_diagram_context_html(content) -> str:
+def image_diagram_context_html(content: object) -> str:
     content = _coerce_content(content)
     image_path = _content_get(content, "image_path", "")
     image_filename = _content_get(content, "image_filename", "")
     text = html.escape(str(_content_get(content, "text", ""))).replace("\n", "<br>")
-    parts = []
+    parts: list[str] = []
     image_source = ""
     if image_filename:
         image_source = get_local_media_path(str(image_filename)).resolve().as_uri()
