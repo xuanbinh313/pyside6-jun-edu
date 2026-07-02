@@ -27,10 +27,10 @@ class SupabaseExamRepository(IExamRepository):
     def list_question_tags(self):
         raise NotImplementedError("Supabase exam repository is not implemented yet.")
 
-    def list_question_tags_for_question(self, question_id: str):
+    def list_question_tags_for_context(self, context_id: str):
         raise NotImplementedError("Supabase exam repository is not implemented yet.")
 
-    def set_question_tag(self, question_id: str, tag_name: str, enabled: bool) -> None:
+    def set_context_tag(self, context_id: str, tag_name: str, enabled: bool) -> None:
         raise NotImplementedError("Supabase exam repository is not implemented yet.")
 
     def list_contexts(self, exam_id: str, selected_tags=None):

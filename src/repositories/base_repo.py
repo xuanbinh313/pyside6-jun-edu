@@ -42,11 +42,11 @@ class IExamRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def list_question_tags_for_question(self, question_id: str) -> list[str]:
+    def list_question_tags_for_context(self, context_id: str) -> list[str]:
         raise NotImplementedError
 
     @abstractmethod
-    def set_question_tag(self, question_id: str, tag_name: str, enabled: bool) -> None:
+    def set_context_tag(self, context_id: str, tag_name: str, enabled: bool) -> None:
         raise NotImplementedError
 
     @abstractmethod

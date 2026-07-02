@@ -97,7 +97,7 @@ class ExamContext(BaseModel):
 
 class UserQuestionTag(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    question_id: str
+    context_id: str
     tag_name: str
     id: str = Field(default_factory=generate_uuid)
     created_at: datetime.datetime = Field(

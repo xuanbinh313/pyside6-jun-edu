@@ -1,21 +1,17 @@
 import html
 import json
-from typing import Optional, cast
+from typing import Optional
 
-import qtawesome as qta
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QHBoxLayout,
     QLabel,
     QRadioButton,
     QWidget,
 )
 from shiboken6 import isValid
 from src.models.exam import ExamQuestion
-from src.repositories.sqlite import orm_models
-from src.repositories.sqlite.database import get_session
-from src.views.components.tag_menu_dialog import TagMenuDialog
 from ui_gen.ui_option_question_item import Ui_OptionQuestionItem
 
 
@@ -40,42 +36,18 @@ class OptionQuestionItem(QWidget):
         self.ui = Ui_OptionQuestionItem()
         self.ui.setupUi(self)
 
-        self.tags_label = QLabel(self)
-        self.tags_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.tags_label.setWordWrap(True)
-        self.tags_label.setStyleSheet("""
-            QLabel {
-                color: #1a73e8;
-                font-size: 11px;
-                font-weight: bold;
-                padding: 0 4px 2px 4px;
-            }
-        """)
-        self.ui.main_layout.insertWidget(0, self.tags_label)
-
         self.ui.stem.setText(f"<b>Q{q.question_number}.</b> {q.content}")
+        self.ui.stem.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self.ui.stem.setStyleSheet("font-size: 13px; color: #202124; padding: 4px 0;")
         self.ui.header_layout.setStretchFactor(self.ui.stem, 1)
 
-        icon_btn_style = """
-            QPushButton {
-                border: none;
-                background-color: transparent;
-            }
-            QPushButton:hover {
-                background-color: #f1f3f4;
-                border-radius: 12px;
-            }
-        """
-
         self.ui.edit_q_btn.setVisible(False)
 
-        self.ui.tag_btn.setIcon(cast(QIcon, qta.icon("fa5s.tags", color="#5f6368")))    
-        self.ui.tag_btn.setToolTip("Manage tags for this question")
-        self.ui.tag_btn.setFixedSize(24, 24)
-        self.ui.tag_btn.setStyleSheet(icon_btn_style)
-        self.ui.tag_btn.clicked.connect(self._show_tag_menu)
-        self._refresh_tag_ui()
+        self.ui.header_layout.removeWidget(self.ui.tag_btn)
+        self.ui.tag_btn.setParent(None)
+        self.ui.tag_btn.deleteLater()
 
         self.ui.header_layout.removeWidget(self.ui.select_audio_btn)
         self.ui.select_audio_btn.setParent(None)
@@ -101,7 +73,12 @@ class OptionQuestionItem(QWidget):
             if orig_idx == self.orig_correct_idx:
                 self.display_correct_letter = display_letter
 
-            radio = QRadioButton(f"{display_letter}.  {opt_text}")
+            row = QWidget(self)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(4)
+
+            radio = QRadioButton()
             radio.setStyleSheet("""
                 QRadioButton {
                     font-size: 12px;
@@ -112,9 +89,28 @@ class OptionQuestionItem(QWidget):
             """)
             radio.setProperty("orig_idx", orig_idx)
             self.btn_group.addButton(radio, display_pos)
-            self.ui.options_layout.addWidget(radio)
+            row_layout.addWidget(radio, 0, Qt.AlignmentFlag.AlignTop)
+
+            option_label = QLabel(f"{display_letter}.  {opt_text}", row)
+            option_label.setTextFormat(Qt.TextFormat.PlainText)
+            option_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            option_label.setWordWrap(True)
+            option_label.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    color: #3c4043;
+                    padding: 3px 6px;
+                }
+            """)
+            row_layout.addWidget(option_label, 1)
+            self.ui.options_layout.addWidget(row)
 
         self._result_label = self.ui.result_label
+        self._result_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self._result_label.setStyleSheet(
             "font-size: 12px; font-weight: bold; padding: 2px 6px;"
         )
@@ -182,60 +178,4 @@ class OptionQuestionItem(QWidget):
             parent_widget = parent_widget.parent()
 
     def _is_alive(self):
-        return (
-            isValid(self)
-            and hasattr(self, "ui")
-            and hasattr(self.ui, "tag_btn")
-            and isValid(self.ui.tag_btn)
-            and hasattr(self, "tags_label")
-            and isValid(self.tags_label)
-        )
-
-    def _show_tag_menu(self):
-        if not self._is_alive():
-            return
-
-        popup = TagMenuDialog(self.question, self)
-
-        pos = self.ui.tag_btn.mapToGlobal(QPoint(0, self.ui.tag_btn.height()))
-        popup.move(pos)
-
-        popup.exec()
-
-        if self._is_alive():
-            self._refresh_tag_ui()
-
-    def _tag_names(self):
-        session = get_session()
-        try:
-            rows = (
-                session.query(orm_models.UserQuestionTag.tag_name)
-                .filter(
-                    orm_models.UserQuestionTag.question_id == self.question.id,
-                )
-                .order_by(orm_models.UserQuestionTag.tag_name.asc())
-                .all()
-            )
-            return [row[0] for row in rows]
-        finally:
-            session.close()
-
-    def _refresh_tag_ui(self):
-        if not self._is_alive():
-            return
-
-        tag_names = self._tag_names()
-        has_tags = bool(tag_names)
-
-        color = "#1a73e8" if has_tags else "#5f6368"
-        tooltip = (
-            "Tagged: " + ", ".join(tag_names)
-            if has_tags
-            else "Manage tags for this question"
-        )
-
-        self.ui.tag_btn.setIcon(qta.icon("fa5s.tags", color=color))  # type: ignore
-        self.ui.tag_btn.setToolTip(tooltip)
-
-        self.tags_label.setVisible(has_tags)
-        self.tags_label.setText("Tags: " + ", ".join(tag_names) if has_tags else "")
+        return isValid(self) and hasattr(self, "ui")

@@ -161,6 +161,7 @@ class AddExamQuestionDialog(QDialog):
 
         self._wrap_content_in_scroll_area()
         self._setup_context_audio_selector()
+        self._setup_context_note_editor()
 
         layout = self.ui.image_page_layout
         idx = layout.indexOf(self.ui.image_drop_placeholder)
@@ -214,6 +215,12 @@ class AddExamQuestionDialog(QDialog):
         audio_layout.addWidget(self.context_audio_btn)
         audio_layout.addWidget(self.context_audio_label, 1)
         self.ui.context_form.insertRow(3, "Audio Segment:", audio_row)
+
+    def _setup_context_note_editor(self):
+        self.context_note_edit = QTextEdit(self.ui.context_group)
+        self.context_note_edit.setMinimumHeight(70)
+        self.context_note_edit.setPlaceholderText("Context note shown after checking an answer...")
+        self.ui.context_form.insertRow(4, "Context Note:", self.context_note_edit)
 
     def _wrap_content_in_scroll_area(self):
         self.scroll_content = QWidget(self)
@@ -422,6 +429,7 @@ class AddExamQuestionDialog(QDialog):
         meta = self._as_plain_dict(ctx.additional_meta)
         self.context_audio_start = float(meta.get("audio_start", 0.0) or 0.0)
         self.context_audio_end = float(meta.get("audio_end", 0.0) or 0.0)
+        self.context_note_edit.setPlainText(str(meta.get("note", "") or ""))
         self._refresh_context_audio_ui()
         context_text = str(content.get("text", "") or "")
         self.ui.context_text_edit.setPlainText(context_text)
@@ -614,9 +622,7 @@ class AddExamQuestionDialog(QDialog):
             db_ctx.additional_meta = exam_model.AdditionalMeta(
                 audio_start=self.context_audio_start,
                 audio_end=self.context_audio_end,
-                note=db_ctx.additional_meta.get("note", "")
-                if getattr(db_ctx, "additional_meta", None)
-                else "",
+                note=self.context_note_edit.toPlainText().strip(),
             )
             session.add(db_ctx)
             if db_ctx.context_type == "IMAGE_DIAGRAM":

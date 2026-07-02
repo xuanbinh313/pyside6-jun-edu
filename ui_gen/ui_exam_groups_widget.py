@@ -105,7 +105,6 @@ class Ui_ExamGroupsWidget(object):
 "                color: #1a73e8;\n"
 "                border: none;\n"
 "            }\n"
-"\n"
 "            QListWidget {\n"
 "                outline: 0;\n"
 "            }\n"

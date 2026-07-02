@@ -133,8 +133,8 @@ class UserQuestionTag(Base):
     __tablename__ = "user_question_tags"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
-    question_id: Mapped[str] = mapped_column(
-        ForeignKey("exam_questions.id"), nullable=False
+    context_id: Mapped[str] = mapped_column(
+        ForeignKey("exam_contexts.id"), nullable=False
     )
     tag_name: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[str] = mapped_column(String, nullable=False, default=str(datetime.now(timezone.utc)))

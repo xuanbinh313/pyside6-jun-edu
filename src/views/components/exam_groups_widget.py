@@ -34,6 +34,7 @@ from src.views.components.import_questions_agent_dialog import (
 from src.views.components.import_questions_dialog import ImportQuestionsDialog
 from src.views.components.option_question_item import OptionQuestionItem
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
+from src.views.components.tag_menu_dialog import TagMenuDialog
 from ui_gen.ui_exam_groups_widget import Ui_ExamGroupsWidget
 
 
@@ -630,6 +631,7 @@ class ExamGroupsWidget(QWidget):
                     break
 
     def on_question_checked(self, question: ExamQuestion) -> None:
+        scroll_position = self._options_scroll_position()
         context_id = getattr(question, "context_id", None)
         if not context_id:
             return
@@ -642,12 +644,13 @@ class ExamGroupsWidget(QWidget):
         if not note:
             label.clear()
             label.setVisible(False)
+            self._restore_options_scroll_position(scroll_position)
             return
 
         safe_note = html.escape(note).replace("\n", "<br>")
-        label.setText(f"<b>Note:</b> {safe_note}")
+        label.setText(f"{safe_note}")
         label.setVisible(True)
-        self.ui.options_scroll.ensureWidgetVisible(label)
+        self._restore_options_scroll_position(scroll_position)
 
     def _context_note_text(self, question: ExamQuestion) -> str:
         ctx = cast(Optional[ExamContext], getattr(question, "context", None))
@@ -721,6 +724,14 @@ class ExamGroupsWidget(QWidget):
         count = self.ui.options_layout.count()
         self.ui.options_layout.insertWidget(max(0, count - 1), widget)
 
+    def _options_scroll_position(self) -> int:
+        return self.ui.options_scroll.verticalScrollBar().value()
+
+    def _restore_options_scroll_position(self, position: int) -> None:
+        QApplication.processEvents()
+        scroll_bar = self.ui.options_scroll.verticalScrollBar()
+        scroll_bar.setValue(min(position, scroll_bar.maximum()))
+
     def _play_context_audio(self, ctx: ExamContext) -> None:
         if not ctx:
             return
@@ -772,11 +783,19 @@ class ExamGroupsWidget(QWidget):
             on_play=self._play_context_audio,
             on_select_audio=self._on_select_context_audio_segment,
             on_edit=self._on_edit_context,
+            on_tags=self._show_context_tag_menu,
+            tag_names=self.viewmodel.list_question_tags_for_context(ctx.id),
             on_anchor=self._on_passage_anchor_clicked,
             parent=self.ui.options_container,
         )
         self._context_note_labels[ctx.id] = section.note_label
         return section
+
+    def _show_context_tag_menu(self, ctx: ExamContext, button: QPushButton) -> None:
+        popup = TagMenuDialog(ctx, self, viewmodel=self.viewmodel, context_id=ctx.id)
+        popup.move(button.mapToGlobal(QPoint(0, button.height())))
+        popup.exec()
+        self.on_question_tag_changed()
 
     def _questions_for_context(self, context_id: str) -> list[ExamQuestion]:
         return self.viewmodel.list_questions_for_context(context_id)
@@ -792,14 +811,8 @@ class ExamGroupsWidget(QWidget):
     def populate_tags(self) -> None:
         self.ui.tag_filter_list.blockSignals(True)
         self.ui.tag_filter_list.setStyleSheet("""
-            /* Hover state */
             QListWidget::item:hover {
                 background-color: #e0e0e0;
-            }
-            /* Selected state */
-            QListWidget::item:selected {
-                background-color: #308cc6;
-                color: #ffffff;
             }
         """)
         checked_tags: set[str] = set()
@@ -839,8 +852,10 @@ class ExamGroupsWidget(QWidget):
             self._set_loading(False)
 
     def on_question_tag_changed(self) -> None:
+        scroll_position = self._options_scroll_position()
         self.populate_tags()
         self._on_filter_changed()
+        self._restore_options_scroll_position(scroll_position)
 
     def on_question_audio_changed(self, question: ExamQuestion) -> None:
         context_id = question.context_id

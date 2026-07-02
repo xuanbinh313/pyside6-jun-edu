@@ -1,7 +1,6 @@
 ﻿from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
-from typing import Any
 from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
@@ -54,11 +53,11 @@ class ExamDetailsViewModel(QObject):
     def list_question_tags(self) -> list[str]:
         return self.repo.list_question_tags()
 
-    def list_question_tags_for_question(self, question_id: str) -> list[str]:
-        return self.repo.list_question_tags_for_question(question_id)
+    def list_question_tags_for_context(self, context_id: str) -> list[str]:
+        return self.repo.list_question_tags_for_context(context_id)
 
-    def set_question_tag(self, question_id: str, tag_name: str, enabled: bool) -> None:
-        self.repo.set_question_tag(question_id, tag_name, enabled)
+    def set_context_tag(self, context_id: str, tag_name: str, enabled: bool) -> None:
+        self.repo.set_context_tag(context_id, tag_name, enabled)
 
     def list_contexts(self, selected_tags: Optional[list[str]] = None) -> list[ExamContext]:
         if not self.exam_id:

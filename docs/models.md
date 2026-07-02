@@ -21,7 +21,7 @@ for external agent response contracts:
 | `ExamSrtChunk` | Transcript/audio segment data. |
 | `ExamContext` | Shared context for one or more questions, including context-level `additional_meta`. |
 | `ExamQuestion` | Question stem, options, answer, and question-level note metadata. |
-| `UserQuestionTag` | Per-user tag assigned to a question. |
+| `UserQuestionTag` | Per-user tag assigned to an exam context. |
 | `ExamAttempt` | Completed learner attempt summary. |
 | `UserAnswer` | Per-question answer for an attempt. |
 | `ImportAgentTask` | Persisted Gemini import-agent request payload, status, attempts, error, and result for retry tracking. |
@@ -66,8 +66,8 @@ workflow:
 | `save_exam(...)` | Creates or updates exam metadata and returns the exam ID. |
 | `replace_srt_chunks(exam_id, chunks)` | Replaces persisted transcript chunks for an exam. |
 | `list_question_tags()` | Returns distinct question tag names for filters. |
-| `list_question_tags_for_question(question_id)` | Returns ordered tag names assigned to one question. |
-| `set_question_tag(question_id, tag_name, enabled)` | Adds or removes one question tag and marks new tags dirty for sync. |
+| `list_question_tags_for_context(context_id)` | Returns ordered tag names assigned to one exam context. |
+| `set_context_tag(context_id, tag_name, enabled)` | Adds or removes one context tag and marks new tags dirty for sync. |
 | `list_contexts(exam_id, selected_tags)` | Returns contexts for the groups/questions view, optionally filtered by tags. |
 | `list_questions_for_context(context_id)` | Returns pure question dataclasses for one context. |
 | `get_context_question_numbers(context_id)` | Returns ordered question numbers for context labels. |

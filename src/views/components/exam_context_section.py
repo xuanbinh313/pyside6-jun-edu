@@ -79,6 +79,8 @@ class ExamContextSection(QWidget):
         on_play,
         on_select_audio,
         on_edit,
+        on_tags,
+        tag_names,
         on_anchor,
         parent=None,
     ):
@@ -90,12 +92,17 @@ class ExamContextSection(QWidget):
         layout.setContentsMargins(0, 8, 0, 4)
         layout.setSpacing(6)
         layout.addLayout(
-            self._build_header(title_text, on_play, on_select_audio, on_edit)
+            self._build_header(
+                title_text, on_play, on_select_audio, on_edit, on_tags, tag_names
+            )
         )
         layout.addWidget(self._build_body(content_html, on_anchor))
 
         self.note_label = QLabel()
         self.note_label.setTextFormat(Qt.TextFormat.RichText)
+        self.note_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self.note_label.setWordWrap(True)
         self.note_label.setVisible(False)
         self.note_label.setStyleSheet("""
@@ -111,12 +118,15 @@ class ExamContextSection(QWidget):
         """)
         layout.addWidget(self.note_label)
 
-    def _build_header(self, title_text: str, on_play, on_select_audio, on_edit):
+    def _build_header(
+        self, title_text: str, on_play, on_select_audio, on_edit, on_tags, tag_names
+    ):
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
 
         title = QLabel(title_text)
         title.setWordWrap(True)
+        title.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         title.setStyleSheet(
             "font-size: 14px; font-weight: bold; color: #1a73e8; padding: 0 2px;"
         )
@@ -128,6 +138,21 @@ class ExamContextSection(QWidget):
         play_btn.setStyleSheet(ICON_BUTTON_STYLE)
         play_btn.clicked.connect(lambda checked=False: on_play(self.ctx))
         header_layout.addWidget(play_btn)
+
+        tag_btn = QPushButton()
+        has_tags = bool(tag_names)
+        tag_btn.setIcon(
+            qta.icon("fa5s.tags", color="#1a73e8" if has_tags else "#5f6368")
+        )
+        tag_btn.setToolTip(
+            "Tagged: " + ", ".join(tag_names)
+            if has_tags
+            else "Manage tags for this context"
+        )
+        tag_btn.setFixedSize(24, 24)
+        tag_btn.setStyleSheet(ICON_BUTTON_STYLE)
+        tag_btn.clicked.connect(lambda checked=False: on_tags(self.ctx, tag_btn))
+        header_layout.addWidget(tag_btn)
 
         audio_btn = QPushButton()
         audio_btn.setIcon(
@@ -151,6 +176,10 @@ class ExamContextSection(QWidget):
     def _build_body(self, content_html: str, on_anchor):
         body = QLabel(content_html)
         body.setTextFormat(Qt.TextFormat.RichText)
+        body.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
+        )
         body.setOpenExternalLinks(False)
         body.setWordWrap(True)
         body.linkActivated.connect(on_anchor)

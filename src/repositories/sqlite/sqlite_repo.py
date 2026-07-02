@@ -216,12 +216,12 @@ class SQLiteExamRepository(IExamRepository):
         finally:
             session.close()
 
-    def list_question_tags_for_question(self, question_id: str) -> list[str]:
+    def list_question_tags_for_context(self, context_id: str) -> list[str]:
         session = get_session()
         try:
             rows = (
                 session.query(orm.UserQuestionTag.tag_name)
-                .filter(orm.UserQuestionTag.question_id == question_id)
+                .filter(orm.UserQuestionTag.context_id == context_id)
                 .order_by(orm.UserQuestionTag.tag_name.asc())
                 .all()
             )
@@ -229,13 +229,13 @@ class SQLiteExamRepository(IExamRepository):
         finally:
             session.close()
 
-    def set_question_tag(self, question_id: str, tag_name: str, enabled: bool) -> None:
+    def set_context_tag(self, context_id: str, tag_name: str, enabled: bool) -> None:
         session = get_session()
         try:
             existing = (
                 session.query(orm.UserQuestionTag)
                 .filter(
-                    orm.UserQuestionTag.question_id == question_id,
+                    orm.UserQuestionTag.context_id == context_id,
                     orm.UserQuestionTag.tag_name == tag_name,
                 )
                 .first()
@@ -243,7 +243,7 @@ class SQLiteExamRepository(IExamRepository):
             if enabled and not existing:
                 session.add(
                     orm.UserQuestionTag(
-                        question_id=question_id,
+                        context_id=context_id,
                         tag_name=tag_name,
                         dirty=1,
                     )
@@ -270,12 +270,8 @@ class SQLiteExamRepository(IExamRepository):
                 query = (
                     session.query(orm.ExamContext)
                     .join(
-                        orm.ExamQuestion,
-                        orm.ExamQuestion.context_id == orm.ExamContext.id,
-                    )
-                    .join(
                         orm.UserQuestionTag,
-                        orm.ExamQuestion.id == orm.UserQuestionTag.question_id,
+                        orm.ExamContext.id == orm.UserQuestionTag.context_id,
                     )
                     .filter(
                         orm.ExamContext.exam_id == exam_id,
@@ -323,6 +319,9 @@ class SQLiteExamRepository(IExamRepository):
         session = get_session()
         try:
             for context_id in context_ids:
+                session.query(orm.UserQuestionTag).filter(
+                    orm.UserQuestionTag.context_id == context_id
+                ).delete(synchronize_session="fetch")
                 session.query(orm.ExamQuestion).filter(
                     orm.ExamQuestion.context_id == context_id
                 ).delete(synchronize_session="fetch")

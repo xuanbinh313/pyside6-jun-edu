@@ -1,28 +1,36 @@
-﻿from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QDialog
+﻿from typing import Optional, cast
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QCheckBox, QDialog, QWidget
 from src.utils.qt import clear_layout
+from src.models.exam import ExamContext
+from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from ui_gen.ui_tag_menu_dialog import Ui_TagMenuDialog
 
 
 class TagMenuDialog(QDialog):
-    def __init__(self, question, parent=None, viewmodel=None):
+    def __init__(self, target: ExamContext, parent: Optional[QWidget] = None, viewmodel: Optional[ExamDetailsViewModel] = None, context_id: Optional[str] = None):
         super().__init__(
             parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
         )
-        self.question = question
+        self.target = target
+        self.context_id = (
+            context_id
+            or getattr(target, "context_id", None)
+            or getattr(target, "id", None)
+        )
         self.viewmodel = viewmodel or self._find_viewmodel(parent)
         self.setFixedWidth(200)
         self._build_ui()
 
-    def _find_viewmodel(self, widget):
+    def _find_viewmodel(self, widget: Optional[QWidget]) -> Optional[ExamDetailsViewModel]:
         while widget:
             viewmodel = getattr(widget, "viewmodel", None)
             if viewmodel is not None:
                 return viewmodel
-            widget = widget.parent()
+            widget = cast(Optional[QWidget], widget.parent())
         return None
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         self.ui = Ui_TagMenuDialog()
         self.ui.setupUi(self)
 
@@ -37,27 +45,39 @@ class TagMenuDialog(QDialog):
 
         if self.viewmodel is None:
             return
+        if not self.context_id:
+            return
 
         all_tags = self.viewmodel.list_question_tags()
         current_tags = set(
-            self.viewmodel.list_question_tags_for_question(self.question.id)
+            self.viewmodel.list_question_tags_for_context(self.context_id)
         )
 
         for tag_name in sorted(set(all_tags) | current_tags):
             cb = QCheckBox(tag_name)
             cb.setChecked(tag_name in current_tags)
-            cb.setStyleSheet("font-size: 11px; color: #3c4043;")
+            cb.setStyleSheet("""
+                QCheckBox:checked {
+                    color: #1a73e8;
+                }
+                QCheckBox::indicator:checked {
+                    color: #1a73e8;
+                }
+            """)
             cb.stateChanged.connect(
                 lambda state, t=tag_name: self._on_tag_state_changed(t, state)
             )
             self.tags_layout.addWidget(cb)
 
-    def _on_tag_state_changed(self, tag_name, state):
+    def _on_tag_state_changed(self, tag_name: str, state: int) -> None:
         if self.viewmodel is None:
             return
 
-        self.viewmodel.set_question_tag(
-            self.question.id,
+        if not self.context_id:
+            return
+
+        self.viewmodel.set_context_tag(
+            self.context_id,
             tag_name,
             state == Qt.CheckState.Checked.value,
         )
@@ -70,8 +90,10 @@ class TagMenuDialog(QDialog):
             return
         if self.viewmodel is None:
             return
+        if not self.context_id:
+            return
 
-        self.viewmodel.set_question_tag(self.question.id, tag_name, True)
+        self.viewmodel.set_context_tag(self.context_id, tag_name, True)
 
         self.new_tag_input.clear()
         self._load_tags()

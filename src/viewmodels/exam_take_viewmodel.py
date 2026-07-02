@@ -468,8 +468,7 @@ class ExamTakeViewModel(QObject):
     def _load_tags(self, session):
         rows = (
             session.query(UserQuestionTag.tag_name)
-            .join(ExamQuestion, UserQuestionTag.question_id == ExamQuestion.id)
-            .join(ExamContext, ExamQuestion.context_id == ExamContext.id)
+            .join(ExamContext, UserQuestionTag.context_id == ExamContext.id)
             .filter(
                 UserQuestionTag.user_id == self.user_id,
                 ExamContext.exam_id == self.exam_id,
@@ -506,9 +505,9 @@ class ExamTakeViewModel(QObject):
         session = get_session()
         try:
             rows = (
-                session.query(UserQuestionTag.question_id, UserQuestionTag.tag_name)
-                .join(ExamQuestion, UserQuestionTag.question_id == ExamQuestion.id)
+                session.query(ExamQuestion.id, UserQuestionTag.tag_name)
                 .join(ExamContext, ExamQuestion.context_id == ExamContext.id)
+                .join(UserQuestionTag, UserQuestionTag.context_id == ExamContext.id)
                 .filter(
                     UserQuestionTag.user_id == self.user_id,
                     ExamContext.exam_id == self.exam_id,

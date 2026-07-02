@@ -22,9 +22,9 @@ load_dotenv()
 class AgentPartPayload(BaseModel):
     part: int
     question_pdf_path: str = ""
-    question_pages: list[int] = Field(default_factory=list)
+    question_pages: list[int] = Field(default_factory=list[int])
     transcript_pdf_path: str = ""
-    transcript_pages: list[int] = Field(default_factory=list)
+    transcript_pages: list[int] = Field(default_factory=list[int])
     prompt: str = ""
     context_text: str = ""
 

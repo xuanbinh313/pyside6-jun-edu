@@ -9,11 +9,11 @@
 ################################################################################
 
 from PySide6.QtCore import QCoreApplication, QMetaObject
-from PySide6.QtWidgets import QLabel, QLineEdit, QVBoxLayout
+from PySide6.QtWidgets import QLabel, QLineEdit, QVBoxLayout, QDialog
 
 
 class Ui_TagMenuDialog(object):
-    def setupUi(self, TagMenuDialog):
+    def setupUi(self, TagMenuDialog: QDialog):
         if not TagMenuDialog.objectName():
             TagMenuDialog.setObjectName(u"TagMenuDialog")
         TagMenuDialog.resize(200, 160)
@@ -55,7 +55,7 @@ class Ui_TagMenuDialog(object):
         QMetaObject.connectSlotsByName(TagMenuDialog)
     # setupUi
 
-    def retranslateUi(self, TagMenuDialog):
+    def retranslateUi(self, TagMenuDialog: QDialog):
         TagMenuDialog.setWindowTitle(QCoreApplication.translate("TagMenuDialog", u"Manage Tags", None))
         self.title_label.setText(QCoreApplication.translate("TagMenuDialog", u"Manage Tags", None))
         self.new_tag_input.setPlaceholderText(QCoreApplication.translate("TagMenuDialog", u"Add new tag...", None))
