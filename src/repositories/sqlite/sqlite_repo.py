@@ -6,7 +6,7 @@ from typing import cast
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
-from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
+from src.models.exam import ContextSchema, Exam, ExamContext, ExamQuestion, ExamSrtChunk, QuestionSchema
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite import orm_models as orm
 from src.repositories.sqlite.database import get_session
@@ -403,12 +403,12 @@ class SQLiteExamRepository(IExamRepository):
             session.close()
 
     def import_contexts_and_questions(
-        self, exam_id: str, contexts_data: list[dict], questions_data: list[dict]
-    ) -> dict:
+        self, exam_id: str, contexts_data: list[ContextSchema], questions_data: list[QuestionSchema]
+    ) -> dict[str, list[int]]:
         session = get_session()
         try:
             question_numbers = [
-                int(q_data.get("question_number", idx + 1))
+                int(q_data.question_number or idx + 1)
                 for idx, q_data in enumerate(questions_data)
             ]
             import_duplicates = sorted(

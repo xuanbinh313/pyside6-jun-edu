@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
+from src.models.exam import ContextSchema, Exam, ExamContext, ExamQuestion, ExamSrtChunk, QuestionSchema
 
 
 class IExamRepository(ABC):
@@ -83,6 +83,6 @@ class IExamRepository(ABC):
 
     @abstractmethod
     def import_contexts_and_questions(
-        self, exam_id: str, contexts_data: list[ExamContext], questions_data: list[ExamQuestion]
+        self, exam_id: str, contexts_data: list[ContextSchema], questions_data: list[QuestionSchema]
     ) -> dict:
         raise NotImplementedError

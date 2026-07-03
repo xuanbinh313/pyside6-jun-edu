@@ -1,7 +1,7 @@
 ﻿from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
-from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
+from src.models.exam import ContextSchema, Exam, ExamContext, ExamQuestion, ExamSrtChunk, QuestionSchema
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
 
@@ -88,7 +88,7 @@ class ExamDetailsViewModel(QObject):
         return self.repo.update_correct_answers(self.exam_id, answer_key)
 
     def import_contexts_and_questions(
-        self, contexts_data: list[ExamContext], questions_data: list[ExamQuestion]
+        self, contexts_data: list[ContextSchema], questions_data: list[QuestionSchema]
     ) -> dict:
         if not self.exam_id:
             raise ValueError("Cannot import questions before the exam is saved.")

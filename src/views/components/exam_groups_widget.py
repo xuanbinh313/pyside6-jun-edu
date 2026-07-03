@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QTabBar,
     QWidget,
 )
-from src.models.exam import ExamContext, ExamQuestion, ExamSrtChunk
+from src.models.exam import ContextSchema, ExamContext, ExamQuestion, ExamSrtChunk, QuestionSchema
 from src.utils.helpers import get_audio_meta, get_local_media_path
 from src.utils.qt import clear_layout
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
@@ -521,8 +521,8 @@ class ExamGroupsWidget(QWidget):
         self._save_import_result(cast(ImportDialogResult, dialog))
 
     def _save_import_result(self, dialog: ImportDialogResult) -> None:
-        contexts_data: list[dict[str, Any]] = dialog.result_contexts
-        questions_data: list[dict[str, Any]] = dialog.result_questions
+        contexts_data: list[dict[str, ContextSchema]] = dialog.result_contexts
+        questions_data: list[dict[str, QuestionSchema]] = dialog.result_questions
         answer_key: dict[int, str] = dialog.result_answer_key
         if not questions_data and not answer_key:
             return
@@ -539,7 +539,7 @@ class ExamGroupsWidget(QWidget):
                 result = cast(
                     ImportResult,
                     self.viewmodel.import_contexts_and_questions(
-                        cast(Any, contexts_data), cast(Any, questions_data)
+                        contexts_data, questions_data
                     ),
                 )
                 duplicate_numbers = result["duplicate_numbers"]
@@ -795,7 +795,7 @@ class ExamGroupsWidget(QWidget):
         popup = TagMenuDialog(ctx, self, viewmodel=self.viewmodel, context_id=ctx.id)
         popup.move(button.mapToGlobal(QPoint(0, button.height())))
         popup.exec()
-        self.on_question_tag_changed()
+        # self.on_question_tag_changed()
 
     def _questions_for_context(self, context_id: str) -> list[ExamQuestion]:
         return self.viewmodel.list_questions_for_context(context_id)
@@ -840,22 +840,14 @@ class ExamGroupsWidget(QWidget):
             item = self.ui.tag_filter_list.item(i)
             if item.checkState() == Qt.CheckState.Checked:
                 selected_tags.append(item.text())
-
-        self._set_loading(True)
-        try:
-            contexts = self.viewmodel.list_contexts(selected_tags)
-            self.viewmodel.contexts = contexts
-            self._all_contexts = contexts
-            self._populate_part_tabs(contexts)
-            self._render_active_part()
-        finally:
-            self._set_loading(False)
+        contexts = self.viewmodel.list_contexts(selected_tags)
+        self.viewmodel.contexts = contexts
+        self._all_contexts = contexts
+        self._populate_part_tabs(contexts)
+        self._render_active_part()
 
     def on_question_tag_changed(self) -> None:
-        scroll_position = self._options_scroll_position()
-        self.populate_tags()
         self._on_filter_changed()
-        self._restore_options_scroll_position(scroll_position)
 
     def on_question_audio_changed(self, question: ExamQuestion) -> None:
         context_id = question.context_id

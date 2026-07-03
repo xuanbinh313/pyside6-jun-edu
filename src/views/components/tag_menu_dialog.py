@@ -1,14 +1,27 @@
-﻿from typing import Optional, cast
+﻿from typing import Callable, Optional, Protocol, cast, runtime_checkable
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QDialog, QWidget
-from src.utils.qt import clear_layout
 from src.models.exam import ExamContext
+from src.utils.qt import clear_layout
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from ui_gen.ui_tag_menu_dialog import Ui_TagMenuDialog
 
 
+@runtime_checkable
+class _TagChangeParent(Protocol):
+    def on_question_tag_changed(self) -> None:
+        ...
+
+
 class TagMenuDialog(QDialog):
-    def __init__(self, target: ExamContext, parent: Optional[QWidget] = None, viewmodel: Optional[ExamDetailsViewModel] = None, context_id: Optional[str] = None):
+    def __init__(
+        self,
+        target: ExamContext,
+        parent: Optional[QWidget] = None,
+        viewmodel: Optional[ExamDetailsViewModel] = None,
+        context_id: Optional[str] = None,
+    ) -> None:
         super().__init__(
             parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
         )
@@ -22,7 +35,9 @@ class TagMenuDialog(QDialog):
         self.setFixedWidth(200)
         self._build_ui()
 
-    def _find_viewmodel(self, widget: Optional[QWidget]) -> Optional[ExamDetailsViewModel]:
+    def _find_viewmodel(
+        self, widget: Optional[QWidget]
+    ) -> Optional[ExamDetailsViewModel]:
         while widget:
             viewmodel = getattr(widget, "viewmodel", None)
             if viewmodel is not None:
@@ -40,7 +55,7 @@ class TagMenuDialog(QDialog):
 
         self._load_tags()
 
-    def _load_tags(self):
+    def _load_tags(self) -> None:
         clear_layout(self.tags_layout)
 
         if self.viewmodel is None:
@@ -64,10 +79,14 @@ class TagMenuDialog(QDialog):
                     color: #1a73e8;
                 }
             """)
-            cb.stateChanged.connect(
-                lambda state, t=tag_name: self._on_tag_state_changed(t, state)
-            )
+            cb.stateChanged.connect(self._tag_state_changed_slot(tag_name))
             self.tags_layout.addWidget(cb)
+
+    def _tag_state_changed_slot(self, tag_name: str) -> Callable[[int], None]:
+        def _on_state_changed(state: int) -> None:
+            self._on_tag_state_changed(tag_name, state)
+
+        return _on_state_changed
 
     def _on_tag_state_changed(self, tag_name: str, state: int) -> None:
         if self.viewmodel is None:
@@ -84,7 +103,7 @@ class TagMenuDialog(QDialog):
 
         self._notify_parent_tags_changed()
 
-    def _on_add_tag(self):
+    def _on_add_tag(self) -> None:
         tag_name = self.new_tag_input.text().strip()
         if not tag_name:
             return
@@ -99,10 +118,10 @@ class TagMenuDialog(QDialog):
         self._load_tags()
         self._notify_parent_tags_changed()
 
-    def _notify_parent_tags_changed(self):
+    def _notify_parent_tags_changed(self) -> None:
         parent_widget = self.parent()
         while parent_widget:
-            if hasattr(parent_widget, "on_question_tag_changed"):
+            if isinstance(parent_widget, _TagChangeParent):
                 parent_widget.on_question_tag_changed()
                 break
             parent_widget = parent_widget.parent()

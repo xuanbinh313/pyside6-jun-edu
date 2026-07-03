@@ -802,7 +802,7 @@ Return this schema:
       "id": "p1_q1",
       "part": 1,
       "context_type": "IMAGE_DIAGRAM",
-      "content": {"text": "Brief description of the photograph."},
+      "content": {"text": ""},
       "index": 0,
       "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
       "questions": [
