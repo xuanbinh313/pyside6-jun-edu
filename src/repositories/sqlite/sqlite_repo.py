@@ -1,12 +1,19 @@
 ﻿from __future__ import annotations
 
 import datetime
-from typing import cast
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
-from src.models.exam import ContextSchema, Exam, ExamContext, ExamQuestion, ExamSrtChunk, QuestionSchema
+from src.models.exam import (
+    ContextSchema,
+    Exam,
+    ExamContext,
+    ExamQuestion,
+    ExamSrtChunk,
+    QuestionSchema,
+)
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite import orm_models as orm
 from src.repositories.sqlite.database import get_session
@@ -310,6 +317,131 @@ class SQLiteExamRepository(IExamRepository):
                 .all()
             )
             return [row[0] for row in rows]
+        finally:
+            session.close()
+
+    def get_add_question_defaults(self, exam_id: str | None) -> tuple[int, int]:
+        if not exam_id:
+            return 1, 0
+
+        session = get_session()
+        try:
+            max_q = (
+                session.query(orm.ExamQuestion.question_number)
+                .join(
+                    orm.ExamContext,
+                    orm.ExamQuestion.context_id == orm.ExamContext.id,
+                )
+                .filter(orm.ExamContext.exam_id == exam_id)
+                .order_by(orm.ExamQuestion.question_number.desc())
+                .first()
+            )
+            max_ctx = (
+                session.query(orm.ExamContext.index)
+                .filter(orm.ExamContext.exam_id == exam_id)
+                .order_by(orm.ExamContext.index.desc())
+                .first()
+            )
+            next_question_number = (int(max_q[0]) if max_q else 0) + 1
+            next_context_index = (int(max_ctx[0]) if max_ctx else -1) + 1
+            return next_question_number, next_context_index
+        finally:
+            session.close()
+
+    def save_context_questions(
+        self,
+        *,
+        exam_id: str | None,
+        context_id: str | None,
+        part: int,
+        context_type: str,
+        content: dict[str, Any],
+        index: int,
+        additional_meta: dict[str, Any],
+        questions: list[dict[str, Any]],
+        removed_question_ids: set[str],
+    ) -> tuple[ExamContext, list[ExamQuestion]]:
+        session = get_session()
+        try:
+            db_ctx: orm.ExamContext | None = None
+            if context_id:
+                db_ctx = (
+                    session.query(orm.ExamContext)
+                    .filter(orm.ExamContext.id == context_id)
+                    .first()
+                )
+                if not db_ctx:
+                    raise ValueError("Context not found in database.")
+            else:
+                if not exam_id:
+                    raise ValueError("Cannot add questions before the exam is saved.")
+                db_ctx = orm.ExamContext(exam_id=exam_id)
+
+            db_ctx.part = part
+            db_ctx.context_type = context_type
+            db_ctx.content = cast(orm.ExamContent, content)
+            db_ctx.index = index
+            db_ctx.additional_meta = cast(orm.AdditionalMeta, additional_meta)
+            session.add(db_ctx)
+            if db_ctx.context_type == "IMAGE_DIAGRAM":
+                image_filename = str(content.get("image_filename", "") or "")
+                if image_filename:
+                    existing_media = (
+                        session.query(orm.MediaFile)
+                        .filter(orm.MediaFile.filename == image_filename)
+                        .first()
+                    )
+                    if not existing_media:
+                        session.add(
+                            orm.MediaFile(
+                                filename=image_filename,
+                                user_id=db_ctx.user_id,
+                                dirty=True,
+                            )
+                        )
+            session.flush()
+
+            if removed_question_ids:
+                session.query(orm.ExamQuestion).filter(
+                    orm.ExamQuestion.id.in_(removed_question_ids)
+                ).delete(synchronize_session="fetch")
+
+            saved_questions: list[orm.ExamQuestion] = []
+            for value in questions:
+                db_q: orm.ExamQuestion | None = None
+                question_id = str(value.get("id", "") or "")
+                if question_id:
+                    db_q = (
+                        session.query(orm.ExamQuestion)
+                        .filter(orm.ExamQuestion.id == question_id)
+                        .first()
+                    )
+                if not db_q:
+                    db_q = orm.ExamQuestion(context_id=db_ctx.id)
+                    session.add(db_q)
+
+                db_q.context_id = db_ctx.id
+                db_q.question_number = int(value["question_number"])
+                db_q.question_type = str(value["question_type"])
+                db_q.content = str(value["content"])
+                db_q.options = [str(option) for option in value["options"]]
+                db_q.correct_answer = str(value["correct_answer"])
+                db_q.additional_meta = orm.QuestionAdditionalMeta(
+                    note=str(value.get("note", ""))
+                )
+                saved_questions.append(db_q)
+
+            session.commit()
+            session.refresh(db_ctx)
+            for db_q in saved_questions:
+                session.refresh(db_q)
+            return (
+                _context_from_orm(db_ctx),
+                [_question_from_orm(question) for question in saved_questions],
+            )
+        except Exception:
+            session.rollback()
+            raise
         finally:
             session.close()
 

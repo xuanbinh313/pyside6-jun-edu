@@ -17,7 +17,13 @@ from PySide6.QtWidgets import (
     QTabBar,
     QWidget,
 )
-from src.models.exam import ContextSchema, ExamContext, ExamQuestion, ExamSrtChunk, QuestionSchema
+from src.models.exam import (
+    ContextSchema,
+    ExamContext,
+    ExamQuestion,
+    ExamSrtChunk,
+    QuestionSchema,
+)
 from src.utils.helpers import get_audio_meta, get_local_media_path
 from src.utils.qt import clear_layout
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
@@ -590,10 +596,48 @@ class ExamGroupsWidget(QWidget):
         dialog = AddExamQuestionDialog(self.viewmodel.exam_id, context=ctx, parent=self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        self.viewmodel.load_exam()
-        self.populate()
-        saved_context_id = cast(Optional[str], dialog.saved_context_id)
-        self._select_context_id(saved_context_id)
+        updated_ctx = dialog.context
+        if updated_ctx is None:
+            return
+        self._apply_context_update(updated_ctx)
+        self._select_visible_context_item(updated_ctx.id)
+
+    def _replace_context_in_collection(
+        self, contexts: list[ExamContext], updated_ctx: ExamContext
+    ) -> None:
+        for index, context in enumerate(contexts):
+            if context.id == updated_ctx.id:
+                contexts[index] = updated_ctx
+                return
+
+    def _apply_context_update(self, updated_ctx: ExamContext) -> None:
+        self._replace_context_in_collection(self._all_contexts, updated_ctx)
+        self._replace_context_in_collection(self.viewmodel.contexts, updated_ctx)
+        if self._current_ctx and self._current_ctx.id == updated_ctx.id:
+            self._current_ctx = updated_ctx
+
+        self._refresh_ctx_header_item(updated_ctx)
+
+        section = self._context_widgets.get(updated_ctx.id)
+        if section is not None:
+            section.update_context(
+                updated_ctx,
+                self._context_item_label(updated_ctx),
+                context_content_html(updated_ctx),
+                self.viewmodel.list_question_tags_for_context(updated_ctx.id),
+            )
+
+    def _select_visible_context_item(self, context_id: str) -> None:
+        for i in range(self.ui.q_list.count()):
+            item = self.ui.q_list.item(i)
+            ctx = cast(Optional[ExamContext], item.data(Qt.ItemDataRole.UserRole))
+            if (
+                item.data(Qt.ItemDataRole.UserRole + 1) == "context"
+                and ctx
+                and ctx.id == context_id
+            ):
+                self.ui.q_list.setCurrentItem(item)
+                return
 
     def _refresh_ctx_header_item(self, ctx: ExamContext) -> None:
         """Find and update the q_list header item for the given context."""
@@ -602,14 +646,7 @@ class ExamGroupsWidget(QWidget):
             if item.data(Qt.ItemDataRole.UserRole + 1) == "context":
                 stored = cast(Optional[ExamContext], item.data(Qt.ItemDataRole.UserRole))
                 if stored and stored.id == ctx.id:
-                    type_label = ctx.context_type.replace("_", " ").title()
-                    preview = ctx.content.text[:60]
-                    header_text = (
-                        f"ðŸ“„  {type_label} (idx {ctx.index})  â€” {preview}â€¦"
-                        if preview
-                        else f"ðŸ“„  {type_label} (idx {ctx.index})"
-                    )
-                    item.setText(header_text)
+                    item.setText(self._context_item_label(ctx))
                     item.setData(Qt.ItemDataRole.UserRole, ctx)
                     break
 
@@ -846,8 +883,15 @@ class ExamGroupsWidget(QWidget):
         self._populate_part_tabs(contexts)
         self._render_active_part()
 
-    def on_question_tag_changed(self) -> None:
-        self._on_filter_changed()
+    def on_question_tag_changed(self, context_id: Optional[str] = None) -> None:
+        self.populate_tags()
+        if not context_id:
+            return
+
+        tag_names = self.viewmodel.list_question_tags_for_context(context_id)
+        section = self._context_widgets.get(context_id)
+        if section is not None:
+            section.update_tags(tag_names)
 
     def on_question_audio_changed(self, question: ExamQuestion) -> None:
         context_id = question.context_id

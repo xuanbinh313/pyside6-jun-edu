@@ -286,6 +286,10 @@ Named widgets from `.ui` file:
 | `on_question_tag_changed()` | Called by `TagMenuPopup` to refresh the tag filter list |
 | `on_question_audio_changed(question)` | Called by `OptionWidget` after saving a new audio segment |
 
+#### Add/Edit Question Dialog
+
+`AddExamQuestionDialog` owns Qt widget state for one context and its questions. Defaults, validation, image normalization, and context/question persistence are delegated to `AddExamQuestionViewModel`.
+
 #### Import Questions Dialog
 
 `ImportQuestionsDialog` supports structured JSON import plus an optional answer-key CSV lane. The answer-key prompt asks the LLM to return only:

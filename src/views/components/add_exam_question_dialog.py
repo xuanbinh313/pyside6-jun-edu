@@ -25,9 +25,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from src.models.exam import ExamContext
-from src.repositories.sqlite import orm_models as exam_model
-from src.repositories.sqlite.database import get_session
-from src.utils.helpers import get_local_media_path, optimize_image_to_webp_file
+from src.utils.helpers import get_local_media_path
+from src.viewmodels.add_exam_question_viewmodel import (
+    AddExamQuestionViewModel,
+    ContextFormValue,
+    QuestionFormValue,
+)
 from src.views.components.select_transcript_dialog import SelectTranscriptDialog
 from ui_gen.ui_add_exam_question_dialog import Ui_AddExamQuestionDialog
 
@@ -35,7 +38,7 @@ from ui_gen.ui_add_exam_question_dialog import Ui_AddExamQuestionDialog
 class ImageDropArea(QLabel):
     """Drop/paste target that stores the selected image as a local path."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QWidget]=None):
         super().__init__(parent)
         self.image_path = ""
         self.image_filename = ""
@@ -139,8 +142,9 @@ class AddExamQuestionDialog(QDialog):
         super().__init__(parent)
         self.exam_id = exam_id
         self.context = context
+        self.viewmodel = AddExamQuestionViewModel(exam_id, context)
         self.created_question = None
-        self.saved_context_id = getattr(context, "id", None)
+        self.saved_context_id = self.viewmodel.saved_context_id
         self.context_audio_start = 0.0
         self.context_audio_end = 0.0
         self._build_ui()
@@ -171,7 +175,7 @@ class AddExamQuestionDialog(QDialog):
         layout.insertWidget(idx, self.image_drop_area)
 
         self.question_forms = []
-        self.removed_question_ids = set()
+        self.removed_question_ids: set[str] = set()
         self._setup_question_forms()
 
         self.ui.context_type_combo.currentIndexChanged.connect(
@@ -367,29 +371,10 @@ class AddExamQuestionDialog(QDialog):
         self._on_context_type_changed(self.ui.context_type_combo.currentIndex())
 
     def _populate_defaults(self):
-        session = get_session()
-        try:
-            max_q = (
-                session.query(exam_model.ExamQuestion.question_number)
-                .join(
-                    exam_model.ExamContext,
-                    exam_model.ExamQuestion.context_id == exam_model.ExamContext.id,
-                )
-                .filter(exam_model.ExamContext.exam_id == self.exam_id)
-                .order_by(exam_model.ExamQuestion.question_number.desc())
-                .first()
-            )
-            max_ctx = (
-                session.query(exam_model.ExamContext.index)
-                .filter(exam_model.ExamContext.exam_id == self.exam_id)
-                .order_by(exam_model.ExamContext.index.desc())
-                .first()
-            )
-            self.ui.question_number_spin.setValue((max_q[0] if max_q else 0) + 1)
-            self.ui.context_index_spin.setValue((max_ctx[0] if max_ctx else -1) + 1)
-            self.ui.part_spin.setValue(1)
-        finally:
-            session.close()
+        next_question_number, next_context_index = self.viewmodel.default_numbers()
+        self.ui.question_number_spin.setValue(next_question_number)
+        self.ui.context_index_spin.setValue(next_context_index)
+        self.ui.part_spin.setValue(1)
 
     def _as_plain_dict(self, value: object) -> dict[str, Any]:
         if isinstance(value, dict):
@@ -444,25 +429,14 @@ class AddExamQuestionDialog(QDialog):
             image_path = str(content.get("image_path", "") or "")
         self.image_drop_area.set_image_path(image_path, image_filename)
 
-        session = get_session()
-        try:
-            questions = (
-                session.query(exam_model.ExamQuestion)
-                .filter(exam_model.ExamQuestion.context_id == ctx.id)
-                .order_by(exam_model.ExamQuestion.question_number.asc())
-                .all()
-            )
-            if not questions:
-                self._populate_defaults()
-                return
-            self._populate_question_form(self.question_forms[0], questions[0])
-            for question in questions[1:]:
-                self._add_question_form(question)
-            self.created_question = questions[0]
-            for question in questions:
-                session.expunge(question)
-        finally:
-            session.close()
+        questions = self.viewmodel.list_questions_for_context(ctx.id)
+        if not questions:
+            self._populate_defaults()
+            return
+        self._populate_question_form(self.question_forms[0], questions[0])
+        for question in questions[1:]:
+            self._add_question_form(question)
+        self.created_question = questions[0]
 
     def _populate_question_form(self, question_form, question):
         question_form["id"] = question.id
@@ -472,11 +446,7 @@ class AddExamQuestionDialog(QDialog):
         ans_idx = question_form["answer"].findText(question.correct_answer or "")
         question_form["answer"].setCurrentIndex(ans_idx if ans_idx >= 0 else 0)
         question_form["content"].setPlainText(question.content or "")
-        meta = (
-            question.additional_meta
-            if isinstance(question.additional_meta, dict)
-            else {}
-        )
+        meta = self._as_plain_dict(question.additional_meta)
         question_form["note"].setPlainText(str(meta.get("note", "")))
         options = question.options or []
         if isinstance(options, str):
@@ -516,11 +486,7 @@ class AddExamQuestionDialog(QDialog):
 
     def _save_diagram_image_file(self) -> str:
         current_filename = self.image_drop_area.image_filename
-        current_path = Path(self.image_drop_area.image_path)
-        if current_filename and current_path == get_local_media_path(current_filename):
-            return current_filename
-
-        filename = optimize_image_to_webp_file(
+        filename = self.viewmodel.save_diagram_image_file(
             self.image_drop_area.image_path, current_filename
         )
         self.image_drop_area.set_image_path(
@@ -558,135 +524,58 @@ class AddExamQuestionDialog(QDialog):
         self._refresh_context_audio_ui()
 
     def _on_save(self):
-        question_values = []
-        for form in self.question_forms:
-            content = form["content"].toPlainText().strip()
-            if not content:
-                QMessageBox.warning(
-                    self, "Validation", "Question content cannot be empty."
-                )
-                return
-            q_type = form["type"].currentText()
-            options = [edit.text().strip() for edit in form["options"]]
-            if q_type == "MULTIPLE_CHOICE" and any(not opt for opt in options):
-                QMessageBox.warning(
-                    self,
-                    "Validation",
-                    "All four options are required for multiple choice.",
-                )
-                return
-            question_values.append(
-                {
-                    "id": form["id"],
-                    "question_number": form["number"].value(),
-                    "question_type": q_type,
-                    "content": content,
-                    "note": form["note"].toPlainText().strip(),
-                    "options": options,
-                    "correct_answer": form["answer"].currentText(),
-                }
-            )
-
-        question_numbers = [item["question_number"] for item in question_values]
-        if len(question_numbers) != len(set(question_numbers)):
-            QMessageBox.warning(
-                self, "Validation", "Question numbers must be unique in this context."
-            )
-            return
-
         try:
             ctx_content = self._context_content()
         except ValueError as exc:
             QMessageBox.warning(self, "Validation", str(exc))
             return
 
-        session = get_session()
-        try:
-            if self.saved_context_id:
-                db_ctx = (
-                    session.query(exam_model.ExamContext)
-                    .filter(exam_model.ExamContext.id == self.saved_context_id)
-                    .first()
+        question_values: list[QuestionFormValue] = []
+        for form in self.question_forms:
+            question_id = form["id"]
+            question_values.append(
+                QuestionFormValue(
+                    id=str(question_id) if question_id else None,
+                    question_number=form["number"].value(),
+                    question_type=form["type"].currentText(),
+                    content=form["content"].toPlainText().strip(),
+                    note=form["note"].toPlainText().strip(),
+                    options=[edit.text().strip() for edit in form["options"]],
+                    correct_answer=form["answer"].currentText(),
                 )
-                if not db_ctx:
-                    QMessageBox.critical(
-                        self, "Error", "Context not found in database."
-                    )
-                    return
-            else:
-                db_ctx = exam_model.ExamContext(exam_id=self.exam_id)
-            db_ctx.part = self.ui.part_spin.value()
-            db_ctx.context_type = self.ui.context_type_combo.currentText()
-            db_ctx.content = ctx_content
-            db_ctx.index = self.ui.context_index_spin.value()
-            db_ctx.additional_meta = exam_model.AdditionalMeta(
-                audio_start=self.context_audio_start,
-                audio_end=self.context_audio_end,
-                note=self.context_note_edit.toPlainText().strip(),
             )
-            session.add(db_ctx)
-            if db_ctx.context_type == "IMAGE_DIAGRAM":
-                image_filename = str(ctx_content.get("image_filename", "") or "")
-                if image_filename:
-                    existing_media = (
-                        session.query(exam_model.MediaFile)
-                        .filter(exam_model.MediaFile.filename == image_filename)
-                        .first()
-                    )
-                    if not existing_media:
-                        session.add(
-                            exam_model.MediaFile(
-                                filename=image_filename,
-                                user_id=db_ctx.user_id,
-                                dirty=True,
-                            )
-                        )
-            session.flush()
 
-            if self.removed_question_ids:
-                session.query(exam_model.ExamQuestion).filter(
-                    exam_model.ExamQuestion.id.in_(self.removed_question_ids)
-                ).delete(synchronize_session="fetch")
+        form_value = ContextFormValue(
+            context_id=str(self.saved_context_id) if self.saved_context_id else None,
+            part=self.ui.part_spin.value(),
+            context_type=self.ui.context_type_combo.currentText(),
+            content=ctx_content,
+            index=self.ui.context_index_spin.value(),
+            audio_start=self.context_audio_start,
+            audio_end=self.context_audio_end,
+            note=self.context_note_edit.toPlainText().strip(),
+            questions=question_values,
+            removed_question_ids=set(self.removed_question_ids),
+        )
 
-            saved_questions = []
-            for value in question_values:
-                db_q = None
-                if value["id"]:
-                    db_q = (
-                        session.query(exam_model.ExamQuestion)
-                        .filter(exam_model.ExamQuestion.id == value["id"])
-                        .first()
-                    )
-                if not db_q:
-                    db_q = exam_model.ExamQuestion(context_id=db_ctx.id)
-                    session.add(db_q)
-
-                db_q.context_id = db_ctx.id
-                db_q.question_number = value["question_number"]
-                db_q.question_type = value["question_type"]
-                db_q.content = value["content"]
-                db_q.options = value["options"]
-                db_q.correct_answer = value["correct_answer"]
-                db_q.additional_meta = {"note": str(value["note"])}
-                saved_questions.append(db_q)
-
-            session.commit()
-            session.refresh(db_ctx)
-            for db_q in saved_questions:
-                session.refresh(db_q)
-            session.expunge(db_ctx)
-            for db_q in saved_questions:
-                session.expunge(db_q)
-            self.context = db_ctx
-            self.saved_context_id = db_ctx.id
-            self.created_question = saved_questions[0] if saved_questions else None
+        try:
+            result = self.viewmodel.save(form_value)
+            self.context = result.context
+            self.saved_context_id = result.context.id
+            self.created_question = (
+                result.questions[0] if result.questions else None
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "Validation", str(exc))
+            return
         except Exception as exc:
-            session.rollback()
+            print(f"Error saving question: {exc}")
+            import traceback
+
+            traceback.print_exc()
             QMessageBox.critical(
                 self, "Error Saving", f"Could not save question:\n{exc}"
             )
             return
-        finally:
-            session.close()
 
         self.accept()

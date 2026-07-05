@@ -1,5 +1,5 @@
 # Import the icon management library.
-from typing import Optional
+from typing import Callable, Optional
 
 import qtawesome as qta
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
@@ -30,7 +30,7 @@ from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
 
 
 class SelectExamContextDialog(QDialog):
-    def __init__(self, viewmodel, parent=None):
+    def __init__(self, viewmodel:ExamDetailsViewModel , parent:Optional[QWidget]=None):
         super().__init__(parent)
         self.viewmodel = viewmodel
         self.selected_context = None
@@ -63,7 +63,7 @@ class SelectExamContextDialog(QDialog):
             item.setData(Qt.ItemDataRole.UserRole, ctx)
             self.list_widget.addItem(item)
 
-    def _context_label(self, ctx):
+    def _context_label(self, ctx:ExamContext):
         numbers = self.viewmodel.context_question_numbers(ctx.id)
         type_label = ctx.context_type.replace("_", " ").title()
         if len(numbers) == 1:
@@ -88,7 +88,7 @@ class SrtMappingPreviewDialog(QDialog):
         self,
         results: list[tuple[str, float, float]],
         viewmodel: ExamDetailsViewModel,
-        parent=None,
+        parent:Optional[QWidget]=None,
     ):
         super().__init__(parent)
         self.results = results
@@ -126,8 +126,7 @@ class SrtMappingPreviewDialog(QDialog):
             parent=self,
         )
         apply_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
-        if apply_button is not None:
-            apply_button.setText("Apply All")
+        apply_button.setText("Apply All")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -170,7 +169,7 @@ class SrtMappingPreviewDialog(QDialog):
 
 
 class TimeAdjustWidget(QWidget):
-    def __init__(self, value, on_change, parent=None):
+    def __init__(self, value: float, on_change:Callable[[float], None], parent:Optional[QWidget]=None):
         super().__init__(parent)
         self.on_change = on_change
         layout = QHBoxLayout(self)
@@ -214,7 +213,7 @@ class TimeAdjustWidget(QWidget):
             pass
 
 class ExamTranscriptWidget(QWidget):
-    def __init__(self, viewmodel:ExamDetailsViewModel , parent=None):
+    def __init__(self, viewmodel:ExamDetailsViewModel , parent:Optional[QWidget]=None):
         super().__init__(parent)
         self.viewmodel = viewmodel
         self._srt_mapping_vm = SrtMappingAgentViewModel(self)
@@ -363,19 +362,19 @@ class ExamTranscriptWidget(QWidget):
                     self._set_playback_highlight(row)
                 break
 
-    def _set_playback_highlight(self, row):
+    def _set_playback_highlight(self, row:int):
         if self._current_highlighted_row is not None:
             self._set_row_background(self._current_highlighted_row, QBrush())
         self._set_row_background(row, QBrush(QColor("#e8f0fe")))
         self._current_highlighted_row = row
 
-    def _set_row_background(self, row, brush):
+    def _set_row_background(self, row:int, brush:QBrush):
         for column in (0, 3):
             item = self.ui.table.item(row, column)
             if item:
                 item.setBackground(brush)
 
-    def _play_loop(self, loop_idx):
+    def _play_loop(self, loop_idx:int):
         if self.looping_chunk_idx != loop_idx:
             return 
         
@@ -437,7 +436,9 @@ class ExamTranscriptWidget(QWidget):
         play_btn.setFixedSize(16, 16)
         play_btn.setIcon(qta.icon('fa5s.play', color='#1e8e3e'))
         play_btn.setToolTip("Play Once")
-        play_btn.clicked.connect(lambda checked, c=chunk: self.play_range(c.start_time, c.end_time))
+        def on_play_clicked(c: ExamSrtChunk = chunk) -> None:
+            self.play_range(c.start_time, c.end_time)
+        play_btn.clicked.connect(on_play_clicked)
         action_layout.addWidget(play_btn)
         
         # 2. Loop segment button -> blue
@@ -445,7 +446,9 @@ class ExamTranscriptWidget(QWidget):
         loop_btn.setFixedSize(16, 16)
         loop_btn.setIcon(qta.icon('fa5s.sync-alt', color='#1a73e8'))
         loop_btn.setToolTip("Loop")
-        loop_btn.clicked.connect(lambda checked, c=chunk: self._toggle_loop(c))
+        def on_loop_clicked(c: ExamSrtChunk = chunk) -> None:
+            self._toggle_loop(c)
+        loop_btn.clicked.connect(on_loop_clicked)
         action_layout.addWidget(loop_btn)
         
         # 3. Duplicate button -> amber
@@ -453,7 +456,9 @@ class ExamTranscriptWidget(QWidget):
         dup_btn.setFixedSize(16, 16)
         dup_btn.setIcon(qta.icon('fa5s.copy', color='#f9ab00'))
         dup_btn.setToolTip("Duplicate")
-        dup_btn.clicked.connect(lambda checked, c=chunk: self._duplicate_chunk(c))
+        def on_duplicate_clicked(c: ExamSrtChunk = chunk) -> None:
+            self._duplicate_chunk(c)
+        dup_btn.clicked.connect(on_duplicate_clicked)
         action_layout.addWidget(dup_btn)
         
         # 4. Merge next row button -> dark gray
@@ -461,7 +466,9 @@ class ExamTranscriptWidget(QWidget):
         merge_btn.setFixedSize(16, 16)
         merge_btn.setIcon(qta.icon('fa5s.compress-arrows-alt', color='#5f6368'))
         merge_btn.setToolTip("Merge Next")
-        merge_btn.clicked.connect(lambda checked, c=chunk: self._merge_chunk(c))
+        def on_merge_clicked(c: ExamSrtChunk = chunk) -> None:
+            self._merge_chunk(c)
+        merge_btn.clicked.connect(on_merge_clicked)
         action_layout.addWidget(merge_btn)
         
         self.ui.table.setCellWidget(row, 4, action_widget)
@@ -476,20 +483,21 @@ class ExamTranscriptWidget(QWidget):
         self._has_changes = False
         self.ui.save_btn.setVisible(False)
 
-    def _selected_chunks(self):
-        chunks = []
+    def _selected_chunks(self) -> list[ExamSrtChunk]:
+        chunks: list[ExamSrtChunk] = []
         rows = sorted({index.row() for index in self.ui.table.selectedIndexes()})
         for row in rows:
             idx_item = self.ui.table.item(row, 0)
             if idx_item is None:
                 continue
             idx = int(idx_item.text())
-            chunk = next((c for c in self.viewmodel.srt_chunks if c.index == idx), None)
+
+            chunk:Optional[ExamSrtChunk] = next((c for c in self.viewmodel.srt_chunks if c.index == idx), None)
             if chunk:
                 chunks.append(chunk)
         return chunks
 
-    def _update_add_to_question_enabled(self, *args):
+    def _update_add_to_question_enabled(self):
         self.ui.add_to_question_btn.setEnabled(bool(self._selected_chunks()))
 
     def _on_add_to_question_clicked(self):
@@ -592,14 +600,14 @@ class ExamTranscriptWidget(QWidget):
             f"Saved audio segments for {saved_count} context(s).",
         )
 
-    def _update_time(self, chunk, field, value):
+    def _update_time(self, chunk:ExamSrtChunk, field:str, value: float):
         if field == 'start':
             chunk.start_time = value
         elif field == 'end':
             chunk.end_time = value
         self._mark_changed()
             
-    def _on_item_changed(self, item):
+    def _on_item_changed(self, item:QTableWidgetItem):
         if item.column() == 3:
             row = item.row()
             idx_item = self.ui.table.item(row, 0)
@@ -612,14 +620,14 @@ class ExamTranscriptWidget(QWidget):
                 chunk.text = item.text()
                 self._mark_changed()
                 
-    def _toggle_loop(self, chunk):
+    def _toggle_loop(self, chunk: ExamSrtChunk):
         if self.looping_chunk_idx == chunk.index:
             self.looping_chunk_idx = None
             self.play_until = None
         else:
             self.play_range(chunk.start_time, chunk.end_time, chunk.index)
             
-    def _duplicate_chunk(self, chunk):
+    def _duplicate_chunk(self, chunk:ExamSrtChunk):
         new_idx, new_chunk = self.viewmodel.duplicate_chunk(chunk)
         
         self.ui.table.blockSignals(True)
@@ -628,8 +636,8 @@ class ExamTranscriptWidget(QWidget):
         self._update_add_to_question_enabled()
         self._mark_changed()
 
-    def _merge_chunk(self, chunk):
-        idx, next_chunk = self.viewmodel.merge_chunk(chunk)
+    def _merge_chunk(self, chunk:ExamSrtChunk):
+        idx, _ = self.viewmodel.merge_chunk(chunk)
         if idx is None:
             return
             

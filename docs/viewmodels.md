@@ -108,6 +108,25 @@ Manages a single exam's metadata and its SRT chunk list. Used by both **new exam
 
 ---
 
+## `AddExamQuestionViewModel`
+
+**File:** [`src/viewmodels/add_exam_question_viewmodel.py`](../src/viewmodels/add_exam_question_viewmodel.py)
+
+Supports [`AddExamQuestionDialog`](../src/views/components/add_exam_question_dialog.py) without exposing SQLAlchemy sessions to the view. It receives an `IExamRepository` and defaults to `SQLiteExamRepository`.
+
+### Responsibilities
+
+| Method | Description |
+|---|---|
+| `default_numbers()` | Returns the next question number and context index for a new context. |
+| `list_questions_for_context(context_id)` | Loads saved questions for an edited context. |
+| `save_diagram_image_file(image_path, current_filename)` | Normalizes an image into local media storage and returns the stored filename. |
+| `save(form)` | Validates the dialog form model, upserts the context/questions through the repository, and returns fresh domain models. |
+
+The dialog remains responsible for Qt widgets, image preview state, transcript selection, and message boxes.
+
+---
+
 ## `ExamTakeViewModel`
 
 **File:** [`src/viewmodels/exam_take_viewmodel.py`](../src/viewmodels/exam_take_viewmodel.py)

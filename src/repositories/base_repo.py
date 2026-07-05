@@ -1,8 +1,16 @@
 ﻿from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
-from src.models.exam import ContextSchema, Exam, ExamContext, ExamQuestion, ExamSrtChunk, QuestionSchema
+from src.models.exam import (
+    ContextSchema,
+    Exam,
+    ExamContext,
+    ExamQuestion,
+    ExamSrtChunk,
+    QuestionSchema,
+)
 
 
 class IExamRepository(ABC):
@@ -61,6 +69,26 @@ class IExamRepository(ABC):
 
     @abstractmethod
     def get_context_question_numbers(self, context_id: str) -> list[int]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_add_question_defaults(self, exam_id: str | None) -> tuple[int, int]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_context_questions(
+        self,
+        *,
+        exam_id: str | None,
+        context_id: str | None,
+        part: int,
+        context_type: str,
+        content: dict[str, Any],
+        index: int,
+        additional_meta: dict[str, Any],
+        questions: list[dict[str, Any]],
+        removed_question_ids: set[str],
+    ) -> tuple[ExamContext, list[ExamQuestion]]:
         raise NotImplementedError
 
     @abstractmethod

@@ -10,7 +10,7 @@ from ui_gen.ui_tag_menu_dialog import Ui_TagMenuDialog
 
 @runtime_checkable
 class _TagChangeParent(Protocol):
-    def on_question_tag_changed(self) -> None:
+    def on_question_tag_changed(self, context_id: Optional[str] = None) -> None:
         ...
 
 
@@ -122,6 +122,6 @@ class TagMenuDialog(QDialog):
         parent_widget = self.parent()
         while parent_widget:
             if isinstance(parent_widget, _TagChangeParent):
-                parent_widget.on_question_tag_changed()
+                parent_widget.on_question_tag_changed(self.context_id)
                 break
             parent_widget = parent_widget.parent()

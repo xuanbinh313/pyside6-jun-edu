@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import Any, Callable, Optional, Union, cast
 
 import qtawesome as qta
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -18,15 +18,20 @@ ICON_BUTTON_STYLE = """
 """
 
 
+ContextCallback = Callable[[ExamContext], None]
+ContextTagCallback = Callable[[ExamContext, QPushButton], None]
+AnchorCallback = Callable[[Union[QUrl, str]], None]
+
+
 def context_audio_meta(ctx: Optional[ExamContext]) -> dict[str, object]:
     if not ctx:
         return {}
-    meta = ctx.additional_meta or {}
+    meta = cast(Any, ctx.additional_meta or {})
     if isinstance(meta, dict):
-        return meta
+        return cast(dict[str, object], meta)
     if hasattr(meta, "model_dump"):
         dumped = meta.model_dump()
-        return dumped if isinstance(dumped, dict) else {}
+        return cast(dict[str, object], dumped) if isinstance(dumped, dict) else {}
     return {
         "audio_start": getattr(meta, "audio_start", 0.0),
         "audio_end": getattr(meta, "audio_end", 0.0),
@@ -34,17 +39,18 @@ def context_audio_meta(ctx: Optional[ExamContext]) -> dict[str, object]:
     }
 
 
+def _coerce_float(value: object) -> float:
+    try:
+        return float(cast(Union[str, bytes, int, float], value) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def context_audio_range(ctx: Optional[ExamContext]) -> tuple[float, float]:
     meta = context_audio_meta(ctx)
-    try:
-        audio_start = float(meta.get("audio_start", 0.0) or 0.0)
-    except (TypeError, ValueError):
-        audio_start = 0.0
-    try:
-        audio_end = float(meta.get("audio_end", 0.0) or 0.0)
-    except (TypeError, ValueError):
-        audio_end = 0.0
-    return audio_start, audio_end
+    return _coerce_float(meta.get("audio_start", 0.0)), _coerce_float(
+        meta.get("audio_end", 0.0)
+    )
 
 
 def context_audio_icon_color(ctx: Optional[ExamContext]) -> str:
@@ -73,17 +79,17 @@ def refresh_context_play_button(button: QPushButton, ctx: Optional[ExamContext])
 class ExamContextSection(QWidget):
     def __init__(
         self,
-        ctx,
+        ctx: ExamContext,
         title_text: str,
         content_html: str,
-        on_play,
-        on_select_audio,
-        on_edit,
-        on_tags,
-        tag_names,
-        on_anchor,
-        parent=None,
-    ):
+        on_play: ContextCallback,
+        on_select_audio: ContextCallback,
+        on_edit: ContextCallback,
+        on_tags: ContextTagCallback,
+        tag_names: list[str],
+        on_anchor: AnchorCallback,
+        parent: Optional[QWidget] = None,
+    ) -> None:
         super().__init__(parent)
         self.ctx = ctx
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
@@ -119,50 +125,60 @@ class ExamContextSection(QWidget):
         layout.addWidget(self.note_label)
 
     def _build_header(
-        self, title_text: str, on_play, on_select_audio, on_edit, on_tags, tag_names
-    ):
+        self,
+        title_text: str,
+        on_play: ContextCallback,
+        on_select_audio: ContextCallback,
+        on_edit: ContextCallback,
+        on_tags: ContextTagCallback,
+        tag_names: list[str],
+    ) -> QHBoxLayout:
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
 
-        title = QLabel(title_text)
-        title.setWordWrap(True)
-        title.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        title.setStyleSheet(
+        self.title_label = QLabel(title_text)
+        self.title_label.setWordWrap(True)
+        self.title_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.title_label.setStyleSheet(
             "font-size: 14px; font-weight: bold; color: #1a73e8; padding: 0 2px;"
         )
-        header_layout.addWidget(title, 1)
+        header_layout.addWidget(self.title_label, 1)
 
-        play_btn = QPushButton()
-        refresh_context_play_button(play_btn, self.ctx)
-        play_btn.setFixedSize(24, 24)
-        play_btn.setStyleSheet(ICON_BUTTON_STYLE)
-        play_btn.clicked.connect(lambda checked=False: on_play(self.ctx))
-        header_layout.addWidget(play_btn)
+        self.play_btn = QPushButton()
+        refresh_context_play_button(self.play_btn, self.ctx)
+        self.play_btn.setFixedSize(24, 24)
+        self.play_btn.setStyleSheet(ICON_BUTTON_STYLE)
+        self.play_btn.clicked.connect(lambda checked=False: on_play(self.ctx))
+        header_layout.addWidget(self.play_btn)
 
-        tag_btn = QPushButton()
+        self.tag_btn = QPushButton()
         has_tags = bool(tag_names)
-        tag_btn.setIcon(
+        self.tag_btn.setIcon(
             qta.icon("fa5s.tags", color="#1a73e8" if has_tags else "#5f6368")
         )
-        tag_btn.setToolTip(
+        self.tag_btn.setToolTip(
             "Tagged: " + ", ".join(tag_names)
             if has_tags
             else "Manage tags for this context"
         )
-        tag_btn.setFixedSize(24, 24)
-        tag_btn.setStyleSheet(ICON_BUTTON_STYLE)
-        tag_btn.clicked.connect(lambda checked=False: on_tags(self.ctx, tag_btn))
-        header_layout.addWidget(tag_btn)
+        self.tag_btn.setFixedSize(24, 24)
+        self.tag_btn.setStyleSheet(ICON_BUTTON_STYLE)
+        self.tag_btn.clicked.connect(
+            lambda checked=False: on_tags(self.ctx, self.tag_btn)
+        )
+        header_layout.addWidget(self.tag_btn)
 
-        audio_btn = QPushButton()
-        audio_btn.setIcon(
+        self.audio_btn = QPushButton()
+        self.audio_btn.setIcon(
             qta.icon("fa5s.music", color=context_audio_icon_color(self.ctx))
         )
-        audio_btn.setToolTip(context_audio_tooltip(self.ctx))
-        audio_btn.setFixedSize(24, 24)
-        audio_btn.setStyleSheet(ICON_BUTTON_STYLE)
-        audio_btn.clicked.connect(lambda checked=False: on_select_audio(self.ctx))
-        header_layout.addWidget(audio_btn)
+        self.audio_btn.setToolTip(context_audio_tooltip(self.ctx))
+        self.audio_btn.setFixedSize(24, 24)
+        self.audio_btn.setStyleSheet(ICON_BUTTON_STYLE)
+        self.audio_btn.clicked.connect(lambda checked=False: on_select_audio(self.ctx))
+        header_layout.addWidget(self.audio_btn)
 
         edit_btn = QPushButton()
         edit_btn.setIcon(qta.icon("fa5s.edit", color="#1a73e8"))
@@ -173,17 +189,17 @@ class ExamContextSection(QWidget):
         header_layout.addWidget(edit_btn)
         return header_layout
 
-    def _build_body(self, content_html: str, on_anchor):
-        body = QLabel(content_html)
-        body.setTextFormat(Qt.TextFormat.RichText)
-        body.setTextInteractionFlags(
+    def _build_body(self, content_html: str, on_anchor: AnchorCallback) -> QLabel:
+        self.body_label = QLabel(content_html)
+        self.body_label.setTextFormat(Qt.TextFormat.RichText)
+        self.body_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
             | Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
-        body.setOpenExternalLinks(False)
-        body.setWordWrap(True)
-        body.linkActivated.connect(on_anchor)
-        body.setStyleSheet("""
+        self.body_label.setOpenExternalLinks(False)
+        self.body_label.setWordWrap(True)
+        self.body_label.linkActivated.connect(on_anchor)
+        self.body_label.setStyleSheet("""
             QLabel {
                 border: 1px solid #dadce0;
                 border-radius: 6px;
@@ -194,4 +210,40 @@ class ExamContextSection(QWidget):
                 line-height: 1.6;
             }
         """)
-        return body
+        return self.body_label
+
+    def update_context(
+        self,
+        ctx: ExamContext,
+        title_text: str,
+        content_html: str,
+        tag_names: list[str],
+    ) -> None:
+        self.ctx = ctx
+        self.title_label.setText(title_text)
+        self.body_label.setText(content_html)
+        refresh_context_play_button(self.play_btn, self.ctx)
+        self.audio_btn.setIcon(
+            qta.icon("fa5s.music", color=context_audio_icon_color(self.ctx))
+        )
+        self.audio_btn.setToolTip(context_audio_tooltip(self.ctx))
+        has_tags = bool(tag_names)
+        self.tag_btn.setIcon(
+            qta.icon("fa5s.tags", color="#1a73e8" if has_tags else "#5f6368")
+        )
+        self.tag_btn.setToolTip(
+            "Tagged: " + ", ".join(tag_names)
+            if has_tags
+            else "Manage tags for this context"
+        )
+
+    def update_tags(self, tag_names: list[str]) -> None:
+        has_tags = bool(tag_names)
+        self.tag_btn.setIcon(
+            qta.icon("fa5s.tags", color="#1a73e8" if has_tags else "#5f6368")
+        )
+        self.tag_btn.setToolTip(
+            "Tagged: " + ", ".join(tag_names)
+            if has_tags
+            else "Manage tags for this context"
+        )
