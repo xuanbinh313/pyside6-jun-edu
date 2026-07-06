@@ -22,8 +22,12 @@ class Exam(Base):
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="")
-    created_at: Mapped[str] = mapped_column(String, nullable=False)
-    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(
+        String, nullable=False, default=str(datetime.now(timezone.utc))
+    )
+    updated_at: Mapped[str] = mapped_column(
+        String, nullable=False, default=str(datetime.now(timezone.utc))
+    )
 
     srt_chunks: Mapped[List["ExamSrtChunk"]] = relationship(
         "ExamSrtChunk", back_populates="exam", cascade="all, delete-orphan"
@@ -34,6 +38,17 @@ class Exam(Base):
     attempts: Mapped[List["ExamAttempt"]] = relationship(
         "ExamAttempt", back_populates="exam", cascade="all, delete-orphan"
     )
+
+
+class SrtWord(TypedDict):
+    word: str
+    start: float
+    end: float
+
+
+class AdditionalSrtChunkMeta(TypedDict):
+    words: List[SrtWord]
+
 
 class ExamSrtChunk(Base):
     __tablename__ = "exam_srt_chunks"
@@ -46,6 +61,10 @@ class ExamSrtChunk(Base):
     hint: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     exam: Mapped["Exam"] = relationship("Exam", back_populates="srt_chunks")
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    additional_meta: Mapped[AdditionalSrtChunkMeta] = mapped_column(
+        JSON,
+        default=lambda: {"words": []},
+    )
 
 
 class AdditionalMeta(TypedDict):
@@ -57,15 +76,19 @@ class AdditionalMeta(TypedDict):
 class QuestionAdditionalMeta(TypedDict):
     note: str
 
+
 class ExamContent(TypedDict):
     text: str
     image_path: Optional[str]
     image_filename: Optional[str]
 
+
 class AnswerSheet(TypedDict):
     listening_image_path: str
     reading_image_path: str
     prompt: str
+
+
 class Part(TypedDict):
     part: int
     question_pdf_path: str
@@ -74,6 +97,7 @@ class Part(TypedDict):
     transcript_pages: List[int]
     prompt: str
     context_text: str
+
 
 class Payload(TypedDict):
     answer_sheet: AnswerSheet
@@ -137,7 +161,9 @@ class UserQuestionTag(Base):
         ForeignKey("exam_contexts.id"), nullable=False
     )
     tag_name: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[str] = mapped_column(String, nullable=False, default=str(datetime.now(timezone.utc)))
+    created_at: Mapped[str] = mapped_column(
+        String, nullable=False, default=str(datetime.now(timezone.utc))
+    )
     dirty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 

@@ -175,12 +175,12 @@ class ImportAgentTaskRepository:
                 .where(orm.ImportAgentTaskLocal.status == "queued")
                 .where(orm.ImportAgentTaskLocal.auto_retry.is_(True))
                 .where(
-                    orm.ImportAgentTaskLocal.attempts < orm.ImportAgentTaskLocal.max_attempts
+                    orm.ImportAgentTaskLocal.attempts
+                    < orm.ImportAgentTaskLocal.max_attempts
                 )
                 .where(
-                    (
-                        orm.ImportAgentTaskLocal.next_retry_at.is_(None)
-                    ) | (orm.ImportAgentTaskLocal.next_retry_at <= now)
+                    (orm.ImportAgentTaskLocal.next_retry_at.is_(None))
+                    | (orm.ImportAgentTaskLocal.next_retry_at <= now)
                 )
                 .order_by(orm.ImportAgentTaskLocal.created_at.asc())
                 .limit(1)

@@ -30,6 +30,25 @@ class ContextContent(BaseModel):
     image_path: Optional[str] = None
     image_filename: Optional[str] = None
 
+class SrtWord(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    word: str
+    start: float
+    end: float
+
+
+class AdditionalSrtChunkMeta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    words: List[SrtWord] = Field(default_factory=list)
+
+    @field_validator("words", mode="before")
+    @classmethod
+    def normalize_words(cls, value: Any) -> list[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        return []
 
 class ExamSrtChunk(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -41,7 +60,18 @@ class ExamSrtChunk(BaseModel):
     exam_id: str = ""
     hint: Optional[str] = None
     user_id: Optional[str] = None
+    additional_meta: AdditionalSrtChunkMeta = Field(
+        default_factory=lambda: AdditionalSrtChunkMeta(words=[])
+    )
 
+    @field_validator("additional_meta", mode="before")
+    @classmethod
+    def normalize_additional_meta(cls, value: Any) -> Any:
+        if value is None:
+            return {"words": []}
+        if isinstance(value, dict) and value.get("words") is None:
+            return {**value, "words": []}
+        return value
 
 class ExamQuestion(BaseModel):
     model_config = ConfigDict(from_attributes=True)

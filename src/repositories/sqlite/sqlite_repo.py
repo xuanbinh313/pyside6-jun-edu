@@ -206,6 +206,11 @@ class SQLiteExamRepository(IExamRepository):
                         end_time=chunk.end_time,
                         text=chunk.text,
                         hint=chunk.hint,
+                        user_id=chunk.user_id,
+                        additional_meta=cast(
+                            orm.AdditionalSrtChunkMeta,
+                            chunk.additional_meta.model_dump(),
+                        ),
                     )
                 )
             session.commit()

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from dotenv import load_dotenv
-from google.genai import types
+from google.genai import Client, types
 from pydantic import BaseModel, Field
 from PySide6.QtCore import QObject, QThread, Signal
 from src.models.exam import ImportAgentTask, ToeicPartResponseSchema
@@ -161,7 +161,9 @@ class ImportQuestionsAgentWorker(QThread):
             or (payload.transcript_pdf_path and payload.transcript_pages)
         )
 
-    def _parse_agent_response(self, response_text: str) -> tuple[list[dict], list[dict]]:
+    def _parse_agent_response(
+        self, response_text: str
+    ) -> tuple[list[dict], list[dict]]:
         data = self._load_agent_response_object(response_text)
         contexts: list[dict] = []
         questions: list[dict] = []
@@ -222,7 +224,9 @@ class ImportQuestionsAgentWorker(QThread):
     def _map_agent_question(self, raw_question: dict, parent_context_id: str) -> dict:
         options = raw_question.get("options") or []
         if isinstance(options, str):
-            options = [option.strip() for option in options.split(",") if option.strip()]
+            options = [
+                option.strip() for option in options.split(",") if option.strip()
+            ]
         if not isinstance(options, list):
             options = []
         meta = raw_question.get("additional_meta") or {}
@@ -232,8 +236,12 @@ class ImportQuestionsAgentWorker(QThread):
         return {
             "llm_context_id": llm_context_id or parent_context_id,
             "content": str(raw_question.get("content") or "").strip(),
-            "options": json.dumps([str(option) for option in options], ensure_ascii=False),
-            "correct_answer": str(raw_question.get("correct_answer") or "").strip().upper(),
+            "options": json.dumps(
+                [str(option) for option in options], ensure_ascii=False
+            ),
+            "correct_answer": str(raw_question.get("correct_answer") or "")
+            .strip()
+            .upper(),
             "question_number": int(raw_question.get("question_number") or 0),
             "question_type": str(
                 raw_question.get("question_type") or "MULTIPLE_CHOICE"
@@ -243,7 +251,7 @@ class ImportQuestionsAgentWorker(QThread):
         }
 
     def _generate_part(
-        self, client, model_name: str, payload: AgentPartPayload, tmp_dir: Path
+        self, client: Client, model_name: str, payload: AgentPartPayload, tmp_dir: Path
     ) -> AgentPartResult:
         files = []
         part1_image_paths: list[Path] = []
@@ -317,12 +325,10 @@ class ImportQuestionsAgentWorker(QThread):
                 response_mime_type="application/json",
                 response_schema=ToeicPartResponseSchema,
                 temperature=0.1,
-                thinking_config=types.ThinkingConfig(thinking_budget=0)
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
-        dump_path = self._save_agent_response_file(
-            response, f"part_{payload.part}"
-        )
+        dump_path = self._save_agent_response_file(response, f"part_{payload.part}")
         self.progress.emit(f"Saved agent response: {dump_path}")
         text = self._response_text(response)
         if not text:
@@ -697,12 +703,10 @@ TRANSLATION TARGET LANGUAGE: {target_lang}
         response_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         safe_task_id = "".join(
-            char if char.isalnum() or char in "-_" else "_"
-            for char in self.task_id
+            char if char.isalnum() or char in "-_" else "_" for char in self.task_id
         )
         safe_label = "".join(
-            char if char.isalnum() or char in "-_" else "_"
-            for char in label
+            char if char.isalnum() or char in "-_" else "_" for char in label
         )
         path = response_dir / f"{timestamp}_{safe_task_id}_{safe_label}.json"
         payload = {
@@ -713,7 +717,9 @@ TRANSLATION TARGET LANGUAGE: {target_lang}
             "candidates": self._dump_response_candidates(response),
             "response": self._json_safe(response),
         }
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         return str(path)
 
     def _agent_response_dir(self) -> Path:
@@ -1113,7 +1119,9 @@ STRICT PART 4 RULES:
 
     def create_agent_tasks(self) -> list[ImportAgentTask]:
         payloads = self._build_agent_request_payloads()
-        tasks = [self.task_repo.create_task(payload.model_dump()) for payload in payloads]
+        tasks = [
+            self.task_repo.create_task(payload.model_dump()) for payload in payloads
+        ]
         self.tasks_changed.emit()
         return tasks
 

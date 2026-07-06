@@ -13,6 +13,9 @@
     "reportUnusedImport": true,
     "reportUnusedVariable": true,
     "pythonVersion": "3.9",
+    "extraPaths": [
+        "."
+    ],
     "venvPath": ".",
     "venv": ".venv",
     "exclude": [

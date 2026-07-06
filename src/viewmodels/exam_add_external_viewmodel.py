@@ -1,4 +1,4 @@
-﻿import os
+import os
 import time
 import time as time_module
 from typing import Any, Callable, Optional
@@ -12,6 +12,34 @@ from src.utils.helpers import get_local_media_path, unique_media_filename
 
 load_dotenv()
 TTS_AGENT_URL = os.getenv("TTS_AGENT_URL", "https://api.jun-edu.xyz")
+
+
+def _normalize_segment_words(segment: dict[str, Any]) -> list[dict[str, object]]:
+    raw_words = segment.get("words", [])
+    words: list[dict[str, object]] = []
+    if not isinstance(raw_words, list):
+        return words
+
+    for raw_word in raw_words:
+        if not isinstance(raw_word, dict):
+            continue
+        words.append(
+            {
+                "word": str(raw_word.get("word", "")),
+                "start": float(raw_word.get("start", 0.0)),
+                "end": float(raw_word.get("end", 0.0)),
+            }
+        )
+    return words
+
+
+def _extract_segments(result: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_segments = result.get("segments")
+    if raw_segments is None:
+        raw_segments = result.get("content")
+    if not isinstance(raw_segments, list):
+        return []
+    return [segment for segment in raw_segments if isinstance(segment, dict)]
 
 
 class Worker(QThread):
@@ -119,7 +147,7 @@ class ExamAddExternalViewModel(QObject):
         self._worker.progress.connect(self.progress_message.emit)
         self._worker.finished.connect(self._on_analyze_finished)
         self._worker.error.connect(self._on_error)
-        self._worker.start()
+        self._worker.run()
 
     def _on_analyze_finished(self, result):
         self.text = result.get("text", "")
@@ -143,7 +171,7 @@ class ExamAddExternalViewModel(QObject):
             task_id = resp_data.get("task_id")
             result = self.poll_task_status(task_id, emit_progress)
 
-            content = result.get("segments", [])
+            content = _extract_segments(result)
             url_audio = result.get("url_audio", "")
 
             # Download audio
@@ -200,12 +228,14 @@ class ExamAddExternalViewModel(QObject):
                     )
 
                     for idx, item in enumerate(content):
+                        words = _normalize_segment_words(item)
                         chunk = ExamSrtChunk(
                             exam_id=exam.id,
                             index=idx,
                             start_time=float(item.get("start", 0.0)),
                             end_time=float(item.get("end", 0.0)),
                             text=str(item.get("text", "")),
+                            additional_meta={"words": words},
                         )
                         session.add(chunk)
                     session.commit()

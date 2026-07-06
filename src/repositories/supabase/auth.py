@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
+
+from supabase_auth import User
 
 from src.repositories.supabase.client import get_supabase_client
 
@@ -19,7 +19,7 @@ class AuthUser:
 
 @dataclass(frozen=True)
 class AuthResult:
-    user: AuthUser | None
+    user: Optional[AuthUser]
     message: str = ""
     requires_email_confirmation: bool = False
 
@@ -35,7 +35,7 @@ def _session_payload(session: Any) -> dict[str, str]:
     }
 
 
-def _auth_user(user: Any) -> AuthUser | None:
+def _auth_user(user: Optional[User]) -> Optional[AuthUser]:
     if user is None:
         return None
     return AuthUser(
@@ -127,7 +127,7 @@ def restore_session() -> AuthResult:
         clear_session_tokens()
         raise
 
-    user = _auth_user(user_response.user)
+    user = _auth_user(user_response.user if user_response is not None else None)
     if user is None:
         clear_session_tokens()
     return AuthResult(user=user)

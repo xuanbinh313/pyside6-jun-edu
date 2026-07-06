@@ -7,6 +7,7 @@ from PySide6.QtGui import QBrush, QColor
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -231,6 +232,10 @@ class ExamTranscriptWidget(QWidget):
         self.looping_chunk_idx = None
         self._current_highlighted_row = None
         self._has_changes = False
+        self._split_editor_chunk: Optional[ExamSrtChunk] = None
+        self._split_editor_row: Optional[int] = None
+        self._split_editor_text: str = ""
+        self._split_cursor_position: int = 0
         
         self.setup_ui()
         
@@ -279,12 +284,29 @@ class ExamTranscriptWidget(QWidget):
         self.ui.save_btn.setVisible(False)
         
         self.ui.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.ui.table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeMode.ResizeToContents
+        )
         self.ui.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.ui.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.ui.table.itemChanged.connect(self._on_item_changed)
+        self.ui.table.itemDoubleClicked.connect(self._on_table_item_double_clicked)
+        self.ui.table.itemSelectionChanged.connect(self._hide_split_float_button)
         self.ui.table.selectionModel().selectionChanged.connect(
             self._update_add_to_question_enabled
         )
+
+        self.split_float_btn = QPushButton(self.ui.table.viewport())
+        self.split_float_btn.setFixedSize(24, 24)
+        self.split_float_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.split_float_btn.setIcon(qta.icon("fa5s.cut", color="#ffffff"))
+        self.split_float_btn.setToolTip("Split at cursor")
+        self.split_float_btn.setStyleSheet(
+            "QPushButton { background-color: #1a73e8; border-radius: 12px; }"
+            "QPushButton:hover { background-color: #1558b0; }"
+        )
+        self.split_float_btn.clicked.connect(self._split_current_editor_text)
+        self.split_float_btn.hide()
 
         # Seek bar
         self.ui.seek_slider.setTracking(False)  # only emit on release
@@ -436,7 +458,7 @@ class ExamTranscriptWidget(QWidget):
         play_btn.setFixedSize(16, 16)
         play_btn.setIcon(qta.icon('fa5s.play', color='#1e8e3e'))
         play_btn.setToolTip("Play Once")
-        def on_play_clicked(c: ExamSrtChunk = chunk) -> None:
+        def on_play_clicked(checked: bool = False, c: ExamSrtChunk = chunk) -> None:
             self.play_range(c.start_time, c.end_time)
         play_btn.clicked.connect(on_play_clicked)
         action_layout.addWidget(play_btn)
@@ -446,7 +468,7 @@ class ExamTranscriptWidget(QWidget):
         loop_btn.setFixedSize(16, 16)
         loop_btn.setIcon(qta.icon('fa5s.sync-alt', color='#1a73e8'))
         loop_btn.setToolTip("Loop")
-        def on_loop_clicked(c: ExamSrtChunk = chunk) -> None:
+        def on_loop_clicked(checked: bool = False, c: ExamSrtChunk = chunk) -> None:
             self._toggle_loop(c)
         loop_btn.clicked.connect(on_loop_clicked)
         action_layout.addWidget(loop_btn)
@@ -456,7 +478,9 @@ class ExamTranscriptWidget(QWidget):
         dup_btn.setFixedSize(16, 16)
         dup_btn.setIcon(qta.icon('fa5s.copy', color='#f9ab00'))
         dup_btn.setToolTip("Duplicate")
-        def on_duplicate_clicked(c: ExamSrtChunk = chunk) -> None:
+        def on_duplicate_clicked(
+            checked: bool = False, c: ExamSrtChunk = chunk
+        ) -> None:
             self._duplicate_chunk(c)
         dup_btn.clicked.connect(on_duplicate_clicked)
         action_layout.addWidget(dup_btn)
@@ -466,10 +490,30 @@ class ExamTranscriptWidget(QWidget):
         merge_btn.setFixedSize(16, 16)
         merge_btn.setIcon(qta.icon('fa5s.compress-arrows-alt', color='#5f6368'))
         merge_btn.setToolTip("Merge Next")
-        def on_merge_clicked(c: ExamSrtChunk = chunk) -> None:
+        def on_merge_clicked(checked: bool = False, c: ExamSrtChunk = chunk) -> None:
             self._merge_chunk(c)
         merge_btn.clicked.connect(on_merge_clicked)
         action_layout.addWidget(merge_btn)
+
+        # 5. Split text at the current editor cursor -> blue
+        split_btn = QPushButton()
+        split_btn.setFixedSize(16, 16)
+        split_btn.setIcon(qta.icon('fa5s.cut', color='#1a73e8'))
+        split_btn.setToolTip("Split")
+        def on_split_clicked(checked: bool = False, c: ExamSrtChunk = chunk) -> None:
+            self._start_split_edit(c)
+        split_btn.clicked.connect(on_split_clicked)
+        action_layout.addWidget(split_btn)
+
+        # 6. Delete row -> red
+        delete_btn = QPushButton()
+        delete_btn.setFixedSize(16, 16)
+        delete_btn.setIcon(qta.icon('fa5s.trash-alt', color='#d93025'))
+        delete_btn.setToolTip("Delete")
+        def on_delete_clicked(checked: bool = False, c: ExamSrtChunk = chunk) -> None:
+            self._delete_chunk(c)
+        delete_btn.clicked.connect(on_delete_clicked)
+        action_layout.addWidget(delete_btn)
         
         self.ui.table.setCellWidget(row, 4, action_widget)
 
@@ -482,6 +526,31 @@ class ExamTranscriptWidget(QWidget):
         self.viewmodel.save_chunks()
         self._has_changes = False
         self.ui.save_btn.setVisible(False)
+
+    def _refresh_row_indexes(self, start_row: int = 0) -> None:
+        for row in range(start_row, self.ui.table.rowCount()):
+            if row >= len(self.viewmodel.srt_chunks):
+                break
+            idx_item = self.ui.table.item(row, 0)
+            if idx_item is not None:
+                idx_item.setText(str(self.viewmodel.srt_chunks[row].index))
+
+    def _update_chunk_row(self, row: int, chunk: ExamSrtChunk) -> None:
+        idx_item = self.ui.table.item(row, 0)
+        if idx_item is not None:
+            idx_item.setText(str(chunk.index))
+
+        start_widget = self.ui.table.cellWidget(row, 1)
+        if isinstance(start_widget, TimeAdjustWidget):
+            start_widget.val_edit.setText(f"{chunk.start_time:.3f}")
+
+        end_widget = self.ui.table.cellWidget(row, 2)
+        if isinstance(end_widget, TimeAdjustWidget):
+            end_widget.val_edit.setText(f"{chunk.end_time:.3f}")
+
+        text_item = self.ui.table.item(row, 3)
+        if text_item is not None:
+            text_item.setText(chunk.text)
 
     def _selected_chunks(self) -> list[ExamSrtChunk]:
         chunks: list[ExamSrtChunk] = []
@@ -619,6 +688,15 @@ class ExamTranscriptWidget(QWidget):
             if chunk:
                 chunk.text = item.text()
                 self._mark_changed()
+
+    def _on_table_item_double_clicked(self, item: QTableWidgetItem) -> None:
+        if item.column() != 3:
+            return
+        chunk = self._chunk_for_row(item.row())
+        if not chunk:
+            return
+        self._split_editor_chunk = chunk
+        QTimer.singleShot(0, self._show_split_float_button)
                 
     def _toggle_loop(self, chunk: ExamSrtChunk):
         if self.looping_chunk_idx == chunk.index:
@@ -629,9 +707,169 @@ class ExamTranscriptWidget(QWidget):
             
     def _duplicate_chunk(self, chunk:ExamSrtChunk):
         new_idx, new_chunk = self.viewmodel.duplicate_chunk(chunk)
-        
+
         self.ui.table.blockSignals(True)
         self._insert_chunk_row(new_idx, new_chunk)
+        self._refresh_row_indexes(new_idx)
+        self.ui.table.blockSignals(False)
+        self._update_add_to_question_enabled()
+        self._mark_changed()
+
+    def _delete_chunk(self, chunk: ExamSrtChunk) -> None:
+        if len(self.viewmodel.srt_chunks) <= 1:
+            QMessageBox.warning(self, "Cannot Delete", "At least one row is required.")
+            return
+        response = QMessageBox.question(
+            self,
+            "Delete Row",
+            "Delete this transcript row?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if response != QMessageBox.StandardButton.Yes:
+            return
+        row = self._row_for_chunk(chunk)
+        if row is None:
+            return
+        self.viewmodel.delete_chunk(chunk)
+        self._hide_split_float_button()
+        self.ui.table.blockSignals(True)
+        self.ui.table.removeRow(row)
+        self._refresh_row_indexes(row)
+        self.ui.table.blockSignals(False)
+        self._update_add_to_question_enabled()
+        self._mark_changed()
+
+    def _start_split_edit(self, chunk: ExamSrtChunk) -> None:
+        row = self._row_for_chunk(chunk)
+        if row is None:
+            return
+        item = self.ui.table.item(row, 3)
+        if item is None:
+            return
+        self._split_editor_chunk = chunk
+        self._split_editor_row = row
+        self._split_editor_text = item.text()
+        self._split_cursor_position = len(item.text())
+        self.ui.table.setCurrentCell(row, 3)
+        self.ui.table.editItem(item)
+        QTimer.singleShot(0, self._show_split_float_button)
+
+    def _show_split_float_button(self) -> None:
+        row = self.ui.table.currentRow()
+        if row < 0 or self.ui.table.currentColumn() != 3:
+            self._hide_split_float_button()
+            return
+        item = self.ui.table.item(row, 3)
+        if item is None:
+            self._hide_split_float_button()
+            return
+        editor = self._active_text_editor()
+        if editor is not None:
+            self._capture_split_editor_state(editor)
+            editor.textChanged.connect(
+                lambda text: self._capture_split_editor_text(text)
+            )
+            editor.cursorPositionChanged.connect(
+                lambda old, new: self._capture_split_cursor_position(new)
+            )
+        rect = self.ui.table.visualItemRect(item)
+        self.split_float_btn.move(rect.right() - 28, rect.top() + 3)
+        self.split_float_btn.raise_()
+        self.split_float_btn.show()
+
+    def _hide_split_float_button(self) -> None:
+        if hasattr(self, "split_float_btn"):
+            self.split_float_btn.hide()
+
+    def _active_text_editor(self) -> Optional[QLineEdit]:
+        focus_widget = QApplication.focusWidget()
+        try:
+            if isinstance(focus_widget, QLineEdit) and self._is_text_cell_editor(
+                focus_widget
+            ):
+                return focus_widget
+        except RuntimeError:
+            pass
+
+        for editor in self.ui.table.findChildren(QLineEdit):
+            try:
+                if editor.isVisible() and self._is_text_cell_editor(editor):
+                    return editor
+            except RuntimeError:
+                continue
+        return None
+
+    def _capture_split_editor_state(self, editor: QLineEdit) -> None:
+        try:
+            self._split_editor_row = self.ui.table.currentRow()
+            self._split_editor_text = editor.text()
+            self._split_cursor_position = editor.cursorPosition()
+        except RuntimeError:
+            pass
+
+    def _capture_split_editor_text(self, text: str) -> None:
+        self._split_editor_text = text
+
+    def _capture_split_cursor_position(self, cursor_position: int) -> None:
+        self._split_cursor_position = cursor_position
+
+    def _is_text_cell_editor(self, editor: QLineEdit) -> bool:
+        row = self.ui.table.currentRow()
+        item = self.ui.table.item(row, 3)
+        if row < 0 or item is None:
+            return False
+        cell_rect = self.ui.table.visualItemRect(item)
+        editor_center = editor.mapTo(self.ui.table.viewport(), editor.rect().center())
+        return cell_rect.contains(editor_center)
+
+    def _split_current_editor_text(self) -> None:
+        row = (
+            self._split_editor_row
+            if self._split_editor_row is not None
+            else self.ui.table.currentRow()
+        )
+        chunk = self._split_editor_chunk or self._chunk_for_row(row)
+        if not chunk:
+            return
+
+        editor = self._active_text_editor()
+        if editor is not None:
+            self._capture_split_editor_state(editor)
+
+        if not self._split_editor_text:
+            QMessageBox.information(
+                self,
+                "Edit Text First",
+                "Edit the transcript text and place the cursor where it should split.",
+            )
+            return
+
+        cursor_position = self._split_cursor_position
+        text = self._split_editor_text
+        item = self.ui.table.item(row, 3)
+        if item is not None:
+            item.setText(text)
+        chunk.text = text
+        new_idx, new_chunk = self.viewmodel.split_chunk(chunk, cursor_position)
+        if new_idx is None:
+            QMessageBox.information(
+                self,
+                "Cannot Split",
+                "Place the cursor between two text parts before splitting.",
+            )
+            return
+        if editor is not None:
+            editor.clearFocus()
+        self._hide_split_float_button()
+        self._split_editor_chunk = None
+        self._split_editor_row = None
+        self._split_editor_text = ""
+        self._split_cursor_position = 0
+        self.ui.table.blockSignals(True)
+        self._update_chunk_row(row, chunk)
+        if new_chunk is not None:
+            self._insert_chunk_row(new_idx, new_chunk)
+        self._refresh_row_indexes(row)
         self.ui.table.blockSignals(False)
         self._update_add_to_question_enabled()
         self._mark_changed()
@@ -640,15 +878,27 @@ class ExamTranscriptWidget(QWidget):
         idx, _ = self.viewmodel.merge_chunk(chunk)
         if idx is None:
             return
-            
+        self._hide_split_float_button()
         self.ui.table.blockSignals(True)
-        idx_item = self.ui.table.item(idx, 3)
-        if idx_item:
-            idx_item.setText(chunk.text)
-        end_widget = self.ui.table.cellWidget(idx, 2)
-        if isinstance(end_widget, TimeAdjustWidget):
-            end_widget.val_edit.setText(f"{chunk.end_time:.3f}")
+        self._update_chunk_row(idx, chunk)
         self.ui.table.removeRow(idx + 1)
+        self._refresh_row_indexes(idx)
         self.ui.table.blockSignals(False)
         self._update_add_to_question_enabled()
         self._mark_changed()
+
+    def _chunk_for_row(self, row: int) -> Optional[ExamSrtChunk]:
+        if row < 0:
+            return None
+        idx_item = self.ui.table.item(row, 0)
+        if idx_item is None:
+            return None
+        idx = int(idx_item.text())
+        return next((c for c in self.viewmodel.srt_chunks if c.index == idx), None)
+
+    def _row_for_chunk(self, chunk: ExamSrtChunk) -> Optional[int]:
+        for row in range(self.ui.table.rowCount()):
+            row_chunk = self._chunk_for_row(row)
+            if row_chunk is chunk:
+                return row
+        return None

@@ -1,9 +1,17 @@
+from typing import Callable
+
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
+from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
 from ui_gen.ui_exam_add_external_view import Ui_ExamAddExternalView
 
 
 class ExamAddExternalView(QWidget):
-    def __init__(self, viewmodel, go_back_callback, navigate_to_details_callback):
+    def __init__(
+        self,
+        viewmodel: ExamAddExternalViewModel,
+        go_back_callback: Callable[[], None],
+        navigate_to_details_callback: Callable[[str], None],
+    ):
         super().__init__()
         self.viewmodel = viewmodel
         self.go_back_callback = go_back_callback
@@ -32,7 +40,9 @@ class ExamAddExternalView(QWidget):
         self.action_btn.clicked.connect(self.on_action_clicked)
 
     def pick_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Audio File", "", "Audio Files (*.mp3 *.wav)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Audio File", "", "Audio Files (*.mp3 *.wav)"
+        )
         if file_path:
             self.viewmodel.set_audio_file(file_path)
 
@@ -56,21 +66,25 @@ class ExamAddExternalView(QWidget):
             self.text_edit.setText(self.viewmodel.text)
             self.text_edit.blockSignals(False)
 
-        self.pick_btn.setDisabled(self.viewmodel.is_loading or self.viewmodel.current_task_id is not None)
+        self.pick_btn.setDisabled(
+            self.viewmodel.is_loading or self.viewmodel.current_task_id is not None
+        )
         self.action_btn.setDisabled(self.viewmodel.is_loading)
 
         if self.viewmodel.is_loading:
             self.action_btn.setText("Loading...")
         else:
-            self.action_btn.setText("Add or Update Exam" if self.viewmodel.is_analyzed else "Analyze")
+            self.action_btn.setText(
+                "Add or Update Exam" if self.viewmodel.is_analyzed else "Analyze"
+            )
             self.progress_label.setText("")
 
-    def show_progress(self, msg):
+    def show_progress(self, msg: str):
         self.progress_label.setText(msg)
 
-    def show_error(self, msg):
+    def show_error(self, msg: str):
         QMessageBox.critical(self, "Error", msg)
 
-    def on_exam_saved(self, exam_id):
+    def on_exam_saved(self, exam_id: str):
         QMessageBox.information(self, "Success", "Exam created successfully!")
         self.navigate_to_details(exam_id)

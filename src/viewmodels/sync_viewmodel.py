@@ -1,4 +1,5 @@
 from typing import Callable
+
 from PySide6.QtCore import QObject, QThread, Signal
 from src.repositories.supabase.sync import (
     sync_sqlite_to_supabase,
