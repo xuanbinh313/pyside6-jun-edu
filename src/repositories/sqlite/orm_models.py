@@ -236,6 +236,7 @@ class ImportAgentTaskLocal(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
     status: Mapped[str] = mapped_column(String, nullable=False, default="queued")
     payload: Mapped[Payload] = mapped_column(JSON, nullable=False)
+    ocr: Mapped[str] = mapped_column(Text, nullable=False, default="")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     auto_retry: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

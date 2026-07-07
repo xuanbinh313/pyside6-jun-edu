@@ -24,7 +24,7 @@ for external agent response contracts:
 | `UserQuestionTag` | Per-user tag assigned to an exam context. |
 | `ExamAttempt` | Completed learner attempt summary. |
 | `UserAnswer` | Per-question answer for an attempt. |
-| `ImportAgentTask` | Persisted Gemini import-agent request payload, status, attempts, error, and result for retry tracking. |
+| `ImportAgentTask` | Persisted Gemini import-agent request payload, reviewed OCR text, status, attempts, error, and result for retry tracking. |
 | `ExamImportResponseSchema` | Pydantic response schema used by `google-genai` for agent-import JSON. |
 | `ExamImportContextSchema` | Pydantic context schema containing nested imported questions. |
 | `ExamImportQuestionSchema` | Pydantic imported-question schema used inside each imported context. |
@@ -90,7 +90,8 @@ their own sessions.
 `src/repositories/sqlite/import_agent_task_repo.py` owns persisted Gemini
 agent-import request tasks. It stores the request payload before the worker
 starts, updates `queued` / `running` / `succeeded` / `failed` status, tracks
-attempt counts, leaves failed agent responses paused for manual Retry, and
+attempt counts, stores reviewed PaddleOCR text in `import_agent_tasks.ocr` for
+OCR-backed retries, leaves failed agent responses paused for manual Retry, and
 deletes non-running tasks when requested from the status dialog.
 
 ## Supabase Repository

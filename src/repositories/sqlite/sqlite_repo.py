@@ -545,7 +545,7 @@ class SQLiteExamRepository(IExamRepository):
         session = get_session()
         try:
             question_numbers = [
-                int(q_data.question_number or idx + 1)
+                (q_data.get("question_number") or idx + 1)
                 for idx, q_data in enumerate(questions_data)
             ]
             import_duplicates = sorted(

@@ -107,7 +107,7 @@ def _chunked(rows: list[dict[str, Any]], size: int) -> Iterable[list[dict[str, A
         yield rows[index : index + size]
 
 
-def _get_supabase_table_client(schema: str):
+def _get_supabase_table_client(schema: str) -> Client:
     client: Client = get_supabase_client()
     if schema == "public":
         return client
@@ -115,7 +115,7 @@ def _get_supabase_table_client(schema: str):
 
 
 def _fetch_user_rows(
-    supabase_client,
+    supabase_client: Client,
     table_name: str,
     user_id: str,
     batch_size: int,
@@ -138,7 +138,7 @@ def _fetch_user_rows(
 
 
 def _upsert_rows(
-    supabase_client,
+    supabase_client: Client,
     table_name: str,
     rows: list[dict[str, Any]],
     batch_size: int,
@@ -173,7 +173,7 @@ def _apply_current_user_id(rows: list[Any], user_id: str) -> None:
 
 def _sync_dirty_mediafiles(
     session,
-    supabase_client,
+    supabase_client: Client,
     batch_size: int,
     user_id: str,
 ) -> TableSyncResult:
@@ -215,7 +215,7 @@ def _sync_dirty_mediafiles(
 
 def _sync_remote_mediafiles_to_sqlite(
     session,
-    supabase_client,
+    supabase_client: Client,
     batch_size: int,
     user_id: str,
 ) -> TableSyncResult:
@@ -276,7 +276,7 @@ def _rewrite_remote_media_references(session) -> None:
 
 def _sync_remote_table_to_sqlite(
     session,
-    supabase_client,
+    supabase_client: Client,
     model: type,
     batch_size: int,
     user_id: str,
@@ -334,7 +334,7 @@ def sync_supabase_to_sqlite(batch_size: int = 500) -> list[TableSyncResult]:
     """Download Supabase rows and media into the local SQLite/temp store."""
     user_id = _current_supabase_user_id()
     schema = _get_supabase_schema()
-    supabase_client = _get_supabase_table_client(schema)
+    supabase_client: Client = _get_supabase_table_client(schema)
 
     session = get_session()
     try:

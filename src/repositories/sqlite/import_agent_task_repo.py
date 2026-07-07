@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 
 from src.models.exam import ImportAgentTask
 from src.repositories.sqlite import orm_models as orm
@@ -46,6 +46,7 @@ def _task_from_orm(row: orm.ImportAgentTaskLocal) -> ImportAgentTask:
         id=r.id,
         status=r.status,
         payload=r.payload,
+        ocr=str(getattr(r, "ocr", "") or ""),
         attempts=r.attempts,
         max_attempts=r.max_attempts,
         auto_retry=r.auto_retry,
@@ -58,6 +59,31 @@ def _task_from_orm(row: orm.ImportAgentTaskLocal) -> ImportAgentTask:
 
 
 class ImportAgentTaskRepository:
+    def __init__(self) -> None:
+        self._ensure_ocr_column()
+
+    def _ensure_ocr_column(self) -> None:
+        session = get_session()
+        try:
+            inspector = inspect(session.bind)
+            if not inspector.has_table("import_agent_tasks"):
+                return
+            columns = {
+                column["name"]
+                for column in inspector.get_columns("import_agent_tasks")
+            }
+            if "ocr" in columns:
+                return
+            session.execute(
+                text(
+                    "ALTER TABLE import_agent_tasks "
+                    "ADD COLUMN ocr TEXT NOT NULL DEFAULT ''"
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
     def create_task(self, payload: dict, *, max_attempts: int = 3) -> ImportAgentTask:
         session = get_session()
         try:
@@ -65,6 +91,7 @@ class ImportAgentTaskRepository:
             row = orm.ImportAgentTaskLocal(
                 status="queued",
                 payload=payload,
+                ocr="",
                 attempts=0,
                 max_attempts=max_attempts,
                 auto_retry=False,
@@ -159,6 +186,34 @@ class ImportAgentTaskRepository:
             row.status = "queued"
             row.auto_retry = False
             row.next_retry_at = _datetime_to_db(_now())
+            row.updated_at = _datetime_to_db(_now())
+            session.commit()
+            session.refresh(row)
+            return _task_from_orm(row)
+        finally:
+            session.close()
+
+    def update_payload(self, task_id: str, payload: dict) -> ImportAgentTask | None:
+        session = get_session()
+        try:
+            row = session.get(orm.ImportAgentTaskLocal, task_id)
+            if not row or row.status == "running":
+                return None
+            row.payload = payload
+            row.updated_at = _datetime_to_db(_now())
+            session.commit()
+            session.refresh(row)
+            return _task_from_orm(row)
+        finally:
+            session.close()
+
+    def update_ocr(self, task_id: str, ocr: str) -> ImportAgentTask | None:
+        session = get_session()
+        try:
+            row = session.get(orm.ImportAgentTaskLocal, task_id)
+            if not row or row.status == "running":
+                return None
+            row.ocr = ocr
             row.updated_at = _datetime_to_db(_now())
             session.commit()
             session.refresh(row)

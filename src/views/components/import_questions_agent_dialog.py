@@ -1,12 +1,12 @@
-from __future__ import annotations
-
 from pathlib import Path
+from typing import Callable, Optional
 
 import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -34,8 +34,84 @@ from src.views.components.pdf_page_selector_dialog import PdfPageSelectorDialog
 from src.views.components.prompt_input_dialog import PromptInputDialog
 
 
+class OcrReviewDialog(QDialog):
+    def __init__(
+        self,
+        text: str,
+        prompt_factory: Callable[[str], str],
+        parent: Optional[QWidget] = None,
+    ):
+        super().__init__(parent)
+        self._prompt_factory = prompt_factory
+        self.setWindowTitle("Review PaddleOCR Text")
+        self.resize(860, 680)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        label = QLabel("Review and edit the OCR text before sending to agent.", self)
+        label.setStyleSheet("color: #5f6368;")
+        layout.addWidget(label)
+
+        self.text_edit = QTextEdit(self)
+        self.text_edit.setPlainText(text)
+        self.text_edit.setMinimumHeight(300)
+        layout.addWidget(self.text_edit, 1)
+
+        prompt_label = QLabel("Prompt sent to agent", self)
+        prompt_label.setStyleSheet("color: #5f6368;")
+        layout.addWidget(prompt_label)
+
+        self.prompt_edit = QTextEdit(self)
+        self.prompt_edit.setReadOnly(True)
+        self.prompt_edit.setMinimumHeight(220)
+        layout.addWidget(self.prompt_edit, 1)
+
+        self.button_box = QDialogButtonBox(self)
+        self.save_btn = self.button_box.addButton(
+            "Save", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.send_btn = self.button_box.addButton(
+            "Save and Send", QDialogButtonBox.ButtonRole.AcceptRole
+        )
+        self.cancel_btn = self.button_box.addButton(
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        self.send_btn.setIcon(qta.icon("fa5s.robot", color="#1a73e8"))
+        self.save_btn.clicked.connect(self._save_only)
+        self.send_btn.clicked.connect(self.accept)
+        self.cancel_btn.clicked.connect(self.reject)
+        layout.addWidget(self.button_box)
+        self.send_after_save = False
+        self.text_edit.textChanged.connect(self._refresh_prompt)
+        self._refresh_prompt()
+
+    def ocr_text(self) -> str:
+        return self.text_edit.toPlainText()
+
+    def _save_only(self) -> None:
+        self.send_after_save = False
+        self.done(QDialog.DialogCode.Accepted)
+
+    def accept(self) -> None:
+        self.send_after_save = True
+        super().accept()
+
+    def _refresh_prompt(self) -> None:
+        try:
+            prompt = self._prompt_factory(self.ocr_text())
+        except Exception as exc:
+            prompt = str(exc)
+        self.prompt_edit.setPlainText(prompt)
+
+
 class AgentRequestStatusDialog(QDialog):
-    def __init__(self, viewmodel: ImportQuestionsAgentViewModel, parent=None):
+    def __init__(
+        self,
+        viewmodel: ImportQuestionsAgentViewModel,
+        parent: Optional[QWidget] = None,
+    ):
         super().__init__(parent)
         self.viewmodel = viewmodel
         self.setWindowTitle("Agent Requests")
@@ -46,31 +122,45 @@ class AgentRequestStatusDialog(QDialog):
         layout.setSpacing(8)
 
         self.table = QTableWidget(self)
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
-            ["Created", "Status", "Attempts", "Parts", "Error", "ID"]
+            [
+                "Retry",
+                "OCR",
+                "Created",
+                "Status",
+                "Attempts",
+                "Parts",
+                "Error",
+                "ID",
+            ]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
-        self.table.setColumnHidden(5, True)
+        self.table.setColumnHidden(7, True)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
         self.refresh_btn = QPushButton("Refresh", self)
-        self.retry_btn = QPushButton("Retry", self)
+        self.check_failed_btn = QPushButton("Check Failed", self)
+        self.retry_btn = QPushButton("Retry Checked", self)
         self.remove_btn = QPushButton("Remove", self)
         self.close_btn = QPushButton("Close", self)
+        self.check_failed_btn.setIcon(qta.icon("fa5s.check-square", color="#1a73e8"))
         self.retry_btn.setIcon(qta.icon("fa5s.redo", color="#1a73e8"))
         self.remove_btn.setIcon(qta.icon("fa5s.trash", color="#d93025"))
         buttons.addWidget(self.refresh_btn)
+        buttons.addWidget(self.check_failed_btn)
         buttons.addWidget(self.retry_btn)
         buttons.addWidget(self.remove_btn)
         buttons.addStretch(1)
@@ -78,22 +168,50 @@ class AgentRequestStatusDialog(QDialog):
         layout.addLayout(buttons)
 
         self.refresh_btn.clicked.connect(self.refresh)
-        self.retry_btn.clicked.connect(self._retry_selected)
+        self.check_failed_btn.clicked.connect(self._check_failed_requests)
+        self.retry_btn.clicked.connect(self._retry_checked)
         self.remove_btn.clicked.connect(self._remove_selected)
         self.close_btn.clicked.connect(self.accept)
         self.table.itemSelectionChanged.connect(self._refresh_buttons)
+        self.table.itemChanged.connect(lambda item: self._refresh_buttons())
         self.viewmodel.tasks_changed.connect(self.refresh)
 
         self.refresh()
 
     def refresh(self) -> None:
         selected_id = self._selected_task_id()
+        checked_ids = set(self._checked_task_ids())
         tasks = self.viewmodel.list_agent_tasks()
+        self.table.blockSignals(True)
         self.table.setRowCount(len(tasks))
         selected_row = -1
         for row, task in enumerate(tasks):
             parts = self._parts_text(task.payload)
             created = task.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            check_item = QTableWidgetItem("")
+            check_item.setData(Qt.ItemDataRole.UserRole, task.id)
+            check_item.setFlags(
+                Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsSelectable
+                | Qt.ItemFlag.ItemIsUserCheckable
+            )
+            check_item.setCheckState(
+                Qt.CheckState.Checked
+                if task.id in checked_ids and task.status != "running"
+                else Qt.CheckState.Unchecked
+            )
+            if task.status == "running":
+                check_item.setFlags(Qt.ItemFlag.ItemIsSelectable)
+            self.table.setItem(row, 0, check_item)
+            ocr_btn = QPushButton("OCR", self.table)
+            ocr_btn.setIcon(qta.icon("fa5s.file-alt", color="#1a73e8"))
+            ocr_btn.setEnabled(
+                task.status != "running" and not self.viewmodel.is_loading
+            )
+            ocr_btn.clicked.connect(
+                lambda checked=False, task_id=task.id: self._review_ocr(task_id)
+            )
+            self.table.setCellWidget(row, 1, ocr_btn)
             values = [
                 created,
                 task.status,
@@ -105,10 +223,11 @@ class AgentRequestStatusDialog(QDialog):
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, task.id)
-                self.table.setItem(row, column, item)
+                self.table.setItem(row, column + 2, item)
             if task.id == selected_id:
                 selected_row = row
 
+        self.table.blockSignals(False)
         if selected_row >= 0:
             self.table.selectRow(selected_row)
         elif tasks:
@@ -119,25 +238,60 @@ class AgentRequestStatusDialog(QDialog):
         row = self.table.currentRow()
         if row < 0:
             return ""
-        item = self.table.item(row, 0)
+        item = self.table.item(row, 7)
         return str(item.data(Qt.ItemDataRole.UserRole) or "") if item else ""
 
     def _selected_status(self) -> str:
         row = self.table.currentRow()
-        item = self.table.item(row, 1) if row >= 0 else None
+        item = self.table.item(row, 3) if row >= 0 else None
         return item.text() if item else ""
 
     def _refresh_buttons(self) -> None:
         has_selection = bool(self._selected_task_id())
         is_running = self._selected_status() == "running"
-        self.retry_btn.setEnabled(has_selection and not is_running)
+        has_checked = bool(self._checked_task_ids())
+        self.check_failed_btn.setEnabled(self.table.rowCount() > 0)
+        self.retry_btn.setEnabled(has_checked and not self.viewmodel.is_loading)
         self.remove_btn.setEnabled(has_selection and not is_running)
 
-    def _retry_selected(self) -> None:
-        task_id = self._selected_task_id()
-        if task_id:
-            self.viewmodel.retry_agent_task(task_id)
-            self.refresh()
+    def _checked_task_ids(self) -> list[str]:
+        task_ids: list[str] = []
+        for row in range(self.table.rowCount()):
+            check_item = self.table.item(row, 0)
+            status_item = self.table.item(row, 3)
+            id_item = self.table.item(row, 7)
+            if (
+                check_item is None
+                or status_item is None
+                or id_item is None
+                or check_item.checkState() != Qt.CheckState.Checked
+                or status_item.text() == "running"
+            ):
+                continue
+            task_ids.append(str(id_item.data(Qt.ItemDataRole.UserRole) or ""))
+        return [task_id for task_id in task_ids if task_id]
+
+    def _check_failed_requests(self) -> None:
+        self.table.blockSignals(True)
+        for row in range(self.table.rowCount()):
+            check_item = self.table.item(row, 0)
+            status_item = self.table.item(row, 3)
+            if check_item is None or status_item is None:
+                continue
+            check_item.setCheckState(
+                Qt.CheckState.Checked
+                if status_item.text() == "failed"
+                else Qt.CheckState.Unchecked
+            )
+        self.table.blockSignals(False)
+        self._refresh_buttons()
+
+    def _retry_checked(self) -> None:
+        task_ids = self._checked_task_ids()
+        if not task_ids:
+            return
+        self.viewmodel.retry_agent_tasks(task_ids)
+        self.refresh()
 
     def _remove_selected(self) -> None:
         task_id = self._selected_task_id()
@@ -155,6 +309,38 @@ class AgentRequestStatusDialog(QDialog):
         self.viewmodel.remove_agent_task(task_id)
         self.refresh()
 
+    def _review_ocr(self, task_id: str) -> None:
+        self.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            text = self.viewmodel.extract_ocr_text_for_task(task_id)
+        except Exception as exc:
+            QApplication.restoreOverrideCursor()
+            self.setEnabled(True)
+            QMessageBox.critical(self, "PaddleOCR Error", str(exc))
+            return
+        QApplication.restoreOverrideCursor()
+        self.setEnabled(True)
+
+        dialog = OcrReviewDialog(
+            text,
+            lambda ocr_text, task_id=task_id: self.viewmodel.ocr_prompt_for_task(
+                task_id, ocr_text
+            ),
+            self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        reviewed_text = dialog.ocr_text().strip()
+        if not reviewed_text:
+            QMessageBox.warning(self, "OCR Text Required", "OCR text is empty.")
+            return
+        if dialog.send_after_save:
+            self.viewmodel.save_task_ocr_text_and_retry(task_id, reviewed_text)
+        else:
+            self.viewmodel.save_task_ocr_text(task_id, reviewed_text)
+        self.refresh()
+
     def _parts_text(self, payload: dict) -> str:
         parts = []
         for part_payload in payload.get("parts", []) or []:
@@ -170,8 +356,8 @@ class AgentRequestStatusDialog(QDialog):
 class ImportQuestionsAgentDialog(QDialog):
     def __init__(
         self,
-        parent=None,
-        viewmodel: ImportQuestionsAgentViewModel | None = None,
+        parent: Optional[QWidget] = None,
+        viewmodel: Optional[ImportQuestionsAgentViewModel] = None,
     ):
         super().__init__(parent)
         self.viewmodel = viewmodel or ImportQuestionsAgentViewModel(parent=self)

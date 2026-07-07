@@ -53,11 +53,11 @@ class ImportResult(TypedDict):
 
 class ImportDialogResult(Protocol):
     @property
-    def result_contexts(self) -> list[dict[str, Any]]:
+    def result_contexts(self) -> list[ContextSchema]:
         ...
 
     @property
-    def result_questions(self) -> list[dict[str, Any]]:
+    def result_questions(self) -> list[QuestionSchema]:
         ...
 
     @property
@@ -521,17 +521,53 @@ class ExamGroupsWidget(QWidget):
 
     def _on_import_questions_agent_clicked(self) -> None:
         dialog = ImportQuestionsAgentDialog(self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        self._save_import_result(cast(ImportDialogResult, dialog))
+        dialog.viewmodel.request_ready.connect(self._save_agent_request_result)
+        dialog.exec()
 
     def _save_import_result(self, dialog: ImportDialogResult) -> None:
-        contexts_data: list[dict[str, ContextSchema]] = dialog.result_contexts
-        questions_data: list[dict[str, QuestionSchema]] = dialog.result_questions
+        contexts_data: list[ContextSchema] = dialog.result_contexts
+        questions_data: list[QuestionSchema] = dialog.result_questions
         answer_key: dict[int, str] = dialog.result_answer_key
+        self._save_import_payload(
+            contexts_data,
+            questions_data,
+            answer_key,
+            show_success_message=True,
+            error_title="Error Saving Import",
+        )
+
+    def _save_agent_request_result(self, task_id: str, result: dict) -> None:
+        contexts_data = cast(
+            list[ContextSchema], result.get("contexts", []) or []
+        )
+        questions_data = cast(
+            list[QuestionSchema], result.get("questions", []) or []
+        )
+        raw_answer_key = result.get("answer_key", {}) or {}
+        answer_key: dict[int, str] = {
+            int(key): str(value) for key, value in raw_answer_key.items()
+        }
+        saved = self._save_import_payload(
+            contexts_data,
+            questions_data,
+            answer_key,
+            show_success_message=False,
+            error_title="Error Saving Agent Import",
+        )
+        if saved:
+            print(f"Saved agent request {task_id} to database.")
+
+    def _save_import_payload(
+        self,
+        contexts_data: list[ContextSchema],
+        questions_data: list[QuestionSchema],
+        answer_key: dict[int, str],
+        *,
+        show_success_message: bool,
+        error_title: str,
+    ) -> bool:
         if not questions_data and not answer_key:
-            return
+            return False
 
         try:
             answer_updated_numbers = self.viewmodel.update_correct_answers(answer_key)
@@ -559,7 +595,7 @@ class ExamGroupsWidget(QWidget):
                         f"The import data contains duplicate question number(s): {duplicate_text}.\n"
                         "Please keep each question number unique in the import JSON.",
                     )
-                    return
+                    return False
 
             n_ctx = result["context_count"]
             created_count = result["created_count"]
@@ -570,23 +606,26 @@ class ExamGroupsWidget(QWidget):
                 updated_text = (
                     f"\nUpdated existing duplicate number(s): {duplicate_text}."
                 )
-            QMessageBox.information(
-                self,
-                "Import Successful",
-                f"Imported {n_ctx} context(s).\n"
-                f"Created {created_count} question(s), updated {len(updated_numbers)} question(s)."
-                f"\nUpdated {len(answer_updated_numbers)} existing answer key(s)."
-                f"{updated_text}",
-            )
+            if show_success_message:
+                QMessageBox.information(
+                    self,
+                    "Import Successful",
+                    f"Imported {n_ctx} context(s).\n"
+                    f"Created {created_count} question(s), updated {len(updated_numbers)} question(s)."
+                    f"\nUpdated {len(answer_updated_numbers)} existing answer key(s)."
+                    f"{updated_text}",
+                )
             self.viewmodel.load_exam()
             self.populate()
+            return True
 
         except Exception as exc:
             QMessageBox.critical(
                 self,
-                "Error Saving Import",
+                error_title,
                 f"Could not save to database.\nDetails: {exc}",
             )
+            return False
 
     def _on_edit_context(self, ctx: Optional[ExamContext] = None) -> None:
         if ctx is None:

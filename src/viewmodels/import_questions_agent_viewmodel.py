@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from dotenv import load_dotenv
 from google.genai import Client, types
@@ -17,6 +17,7 @@ from src.utils.helpers import get_local_media_dir
 from src.viewmodels.import_questions_viewmodel import ImportQuestionsViewModel
 
 load_dotenv()
+os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "0")
 
 
 class AgentPartPayload(BaseModel):
@@ -53,6 +54,55 @@ class AgentPartResult(BaseModel):
     image_paths: list[str] = Field(default_factory=list)
 
 
+def _vietnamese_note_contract_text(target_lang: str) -> str:
+    return f"""
+VIETNAMESE NOTE CONTRACT:
+TRANSLATION TARGET LANGUAGE: {target_lang}
+1. Every contexts[].additional_meta.note and questions[].additional_meta.note value must be natural Vietnamese text, never English-only placeholder text.
+2. For STANDALONE contexts, contexts[].additional_meta.note must be an empty string.
+3. For AUDIO_SRT, READING_PASSAGE, and IMAGE_DIAGRAM contexts, contexts[].additional_meta.note must contain the Vietnamese translation or Vietnamese summary of contexts[].content.text.
+4. Every question note is REQUIRED and must be non-empty. Do not use "if available", "leave empty", or similar conditional wording.
+5. Format questions[].additional_meta.note exactly like this, with one translated line per source line and one blank line before the explanation:
+[Vietnamese translation of the question stem, unless the stem is exactly "-------"]
+[Vietnamese translation of option A]
+[Vietnamese translation of option B]
+[Vietnamese translation of option C]
+[Vietnamese translation of option D, if present]
+
+[Detailed Vietnamese grammar/context explanation explaining why correct_answer is right, using transcript/passage keywords.]
+6. If correct_answer is empty because no answer key is visible, still provide Vietnamese translations and explain what evidence is visible; do not leave the note empty.
+""".strip()
+
+
+def _build_part_prompt_text(
+    payload: AgentPartPayload, note_contract: str, ocr_text: str = ""
+) -> str:
+    prompt_parts = [
+        payload.prompt.strip(),
+        f"\nTarget TOEIC part: {payload.part}.",
+        f"Extract ONLY TOEIC Part {payload.part}.",
+        "Return only the raw JSON object with contexts containing nested questions.",
+        note_contract,
+    ]
+    if payload.context_text.strip():
+        prompt_parts.append(f"\nDefault/context text:\n{payload.context_text.strip()}")
+    if ocr_text.strip():
+        prompt_parts.append(
+            "\nReviewed PaddleOCR text extracted from the selected import PDFs. "
+            "This request sends only this reviewed OCR text plus the answer-sheet "
+            "image to the agent API. Use the reviewed OCR text as the complete "
+            "question/transcript source for this TOEIC part:\n"
+            f"{ocr_text.strip()}"
+        )
+    prompt_parts.append(
+        f"\nFINAL GUARDRAIL: Output ONLY TOEIC Part {payload.part} data. "
+        f"Do not include any other TOEIC part. Return exactly one JSON object "
+        f"with a top-level contexts array. Put each context's questions inside "
+        f"that context's nested questions array."
+    )
+    return "\n".join(prompt_parts)
+
+
 class ImportQuestionsAgentWorker(QThread):
     progress = Signal(str)
     finished = Signal(str, dict)
@@ -69,6 +119,7 @@ class ImportQuestionsAgentWorker(QThread):
         self.parser = parser
         self.task_repo = task_repo or ImportAgentTaskRepository()
         self.payload = AgentImportPayload()
+        self.ocr_text = ""
 
     def run(self):
         try:
@@ -76,6 +127,7 @@ class ImportQuestionsAgentWorker(QThread):
             if task is None:
                 raise ValueError("The import agent request no longer exists.")
             self.payload = AgentImportPayload.model_validate(task.payload)
+            self.ocr_text = task.ocr.strip()
             result = self._run_agent()
             result_data = result.model_dump()
             self.task_repo.mark_succeeded(self.task_id, result_data)
@@ -116,25 +168,21 @@ class ImportQuestionsAgentWorker(QThread):
         client = genai.Client(api_key=api_key)
 
         result = AgentImportResult()
-        with get_local_media_dir() as tmp_dir:
-            for part_payload in self.payload.parts:
-                if not self._has_part_input(part_payload):
-                    continue
-                self.progress.emit(f"Preparing Part {part_payload.part} files...")
-                part_result = self._generate_part(
-                    client, model_name, part_payload, tmp_dir
-                )
-                contexts, questions = self._parse_agent_response(
-                    part_result.response_text
-                )
-                self._normalize_contexts_for_part(
-                    part_payload,
-                    contexts,
-                    questions,
-                    part_result.image_paths,
-                )
-                result.contexts.extend(contexts)
-                result.questions.extend(questions)
+        tmp_dir = get_local_media_dir()
+        for part_payload in self.payload.parts:
+            if not self._has_part_input(part_payload):
+                continue
+            self.progress.emit(f"Preparing Part {part_payload.part} files...")
+            part_result = self._generate_part(client, model_name, part_payload, tmp_dir)
+            contexts, questions = self._parse_agent_response(part_result.response_text)
+            self._normalize_contexts_for_part(
+                part_payload,
+                contexts,
+                questions,
+                part_result.image_paths,
+            )
+            result.contexts.extend(contexts)
+            result.questions.extend(questions)
 
         if result.answer_key:
             self.parser.apply_answer_key_to_questions(
@@ -255,17 +303,10 @@ class ImportQuestionsAgentWorker(QThread):
     ) -> AgentPartResult:
         files = []
         part1_image_paths: list[Path] = []
-        prompt_parts = [
-            payload.prompt.strip(),
-            f"\nTarget TOEIC part: {payload.part}.",
-            f"Extract ONLY TOEIC Part {payload.part}.",
-            "Return only the raw JSON object with contexts containing nested questions.",
-            self._vietnamese_note_contract(),
-        ]
-        if payload.context_text.strip():
-            prompt_parts.append(
-                f"\nDefault/context text:\n{payload.context_text.strip()}"
-            )
+        using_ocr_text = bool(self.ocr_text)
+        prompt_text = _build_part_prompt_text(
+            payload, self._vietnamese_note_contract(), self.ocr_text
+        )
 
         if payload.part == 1 and payload.question_pdf_path and payload.question_pages:
             image_paths = self._prepare_part1_question_images(
@@ -278,25 +319,34 @@ class ImportQuestionsAgentWorker(QThread):
                 "\nPart 1 photograph images were split locally for saving only; "
                 "they are not attached to this agent request."
             )
-        elif payload.part != 2 and payload.question_pdf_path and payload.question_pages:
+        elif (
+            not using_ocr_text
+            and payload.part != 2
+            and payload.question_pdf_path
+            and payload.question_pages
+        ):
             path = self._slice_pdf(
                 payload.question_pdf_path,
                 payload.question_pages,
                 tmp_dir / f"part_{payload.part}_questions.pdf",
             )
             files.append(client.files.upload(file=path))
-            prompt_parts.append("\nQuestion pages are attached as a PDF.")
+            prompt_text += "\n\nQuestion pages are attached as a PDF."
 
-        if payload.transcript_pdf_path and payload.transcript_pages:
+        if (
+            not using_ocr_text
+            and payload.transcript_pdf_path
+            and payload.transcript_pages
+        ):
             path = self._slice_pdf(
                 payload.transcript_pdf_path,
                 payload.transcript_pages,
                 tmp_dir / f"part_{payload.part}_transcript.pdf",
             )
             files.append(client.files.upload(file=path))
-            prompt_parts.append("\nTranscript pages are attached as a PDF.")
+            prompt_text += "\n\nTranscript pages are attached as a PDF."
             if payload.part in (3, 4):
-                prompt_parts.append(
+                prompt_text += (
                     "\nUse transcript labels/ranges such as '41-43 refer to...' "
                     "as the grouping key for shared AUDIO_SRT contexts."
                 )
@@ -304,23 +354,16 @@ class ImportQuestionsAgentWorker(QThread):
         answer_sheet_path = self._answer_sheet_path_for_part(payload.part)
         if answer_sheet_path:
             files.append(client.files.upload(file=answer_sheet_path))
-            prompt_parts.append(
+            prompt_text += (
                 "\nAnswer sheet image is attached. Use it to set correct_answer "
                 "for this part and to support the Vietnamese explanation notes."
             )
-
-        prompt_parts.append(
-            f"\nFINAL GUARDRAIL: Output ONLY TOEIC Part {payload.part} data. "
-            f"Do not include any other TOEIC part. Return exactly one JSON object "
-            f"with a top-level contexts array. Put each context's questions inside "
-            f"that context's nested questions array."
-        )
 
         self.progress.emit(f"Sending Part {payload.part} to Gemini...")
         print(f"len(files)={len(files)}")
         response = client.models.generate_content(
             model=model_name,
-            contents=["\n".join(prompt_parts), *files],
+            contents=[prompt_text, *files],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=ToeicPartResponseSchema,
@@ -342,23 +385,7 @@ class ImportQuestionsAgentWorker(QThread):
 
     def _vietnamese_note_contract(self) -> str:
         target_lang = getattr(self.parser, "TARGET_LANG", "Vietnamese (vn)")
-        return f"""
-VIETNAMESE NOTE CONTRACT:
-TRANSLATION TARGET LANGUAGE: {target_lang}
-1. Every contexts[].additional_meta.note and questions[].additional_meta.note value must be natural Vietnamese text, never English-only placeholder text.
-2. For STANDALONE contexts, contexts[].additional_meta.note must be an empty string.
-3. For AUDIO_SRT, READING_PASSAGE, and IMAGE_DIAGRAM contexts, contexts[].additional_meta.note must contain the Vietnamese translation or Vietnamese summary of contexts[].content.text.
-4. Every question note is REQUIRED and must be non-empty. Do not use "if available", "leave empty", or similar conditional wording.
-5. Format questions[].additional_meta.note exactly like this, with one translated line per source line and one blank line before the explanation:
-[Vietnamese translation of the question stem, unless the stem is exactly "-------"]
-[Vietnamese translation of option A]
-[Vietnamese translation of option B]
-[Vietnamese translation of option C]
-[Vietnamese translation of option D, if present]
-
-[Detailed Vietnamese grammar/context explanation explaining why correct_answer is right, using transcript/passage keywords.]
-6. If correct_answer is empty because no answer key is visible, still provide Vietnamese translations and explain what evidence is visible; do not leave the note empty.
-""".strip()
+        return _vietnamese_note_contract_text(target_lang)
 
     def _answer_sheet_path_for_part(self, part: int) -> str:
         answer_sheet = self.payload.answer_sheet
@@ -555,12 +582,6 @@ TRANSLATION TARGET LANGUAGE: {target_lang}
                 )
 
         if payload.part == 1:
-            self._append_missing_part1_image_contexts(
-                contexts,
-                questions,
-                part1_image_paths or [],
-                set(context_image_map.values()),
-            )
             self._renumber_part1_questions(questions)
 
     def _override_context_image(self, content: dict, image_path: str) -> None:
@@ -605,6 +626,7 @@ TRANSLATION TARGET LANGUAGE: {target_lang}
             )
             questions.append(
                 {
+                    # CRITICAL: This array MUST contain exactly ONE question object for this specific photo.
                     "llm_context_id": context_id,
                     "content": (
                         "Look at the picture and choose the statement that best describes it."
@@ -786,6 +808,7 @@ class ImportQuestionsAgentViewModel(QObject):
     tasks_changed = Signal()
     progress_message = Signal(str)
     error_message = Signal(str)
+    request_ready = Signal(str, dict)
     import_ready = Signal()
     TARGET_LANG = "Vietnamese (vn)"
 
@@ -813,6 +836,7 @@ Return this schema:
       "additional_meta": {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
       "questions": [
         {
+          // CRITICAL: This array MUST contain exactly ONE question object for this specific photo.
           "question_number": 1,
           "question_type": "MULTIPLE_CHOICE",
           "content": "Look at the picture and choose the statement that best describes it.",
@@ -828,12 +852,14 @@ Return this schema:
 }
 
 STRICT PART 1 RULES:
-1. Every context_type must be IMAGE_DIAGRAM.
-2. Create exactly one context and one question for each attached photograph image.
-3. every questions options must be as flat string array. Stripped of prefixes like (A), B., C), etc. Keep original order.
-4. Do not use question numbers 11, 12, 13, 14 unless those exact numbers are visibly printed on the image.
-5. Do not create spoken question-response content. That belongs to Part 2, not Part 1.
-6. Only take questions from 1 to 10.
+1. Every context_type must be "IMAGE_DIAGRAM".
+2. ONE RELATIONSHIP ONLY: For each attached photograph/transcript question, you must create a SEPARATE context object in the "contexts" array. 
+3. NO GROUPING: The "questions" array inside ANY context object MUST contain exactly ONE (1) question object. NEVER place multiple questions inside a single context's "questions" array.
+4. If there are 10 photos in the transcript, the final "contexts" array must contain exactly 10 distinct context objects, each containing exactly 1 question.
+5. Every options array must be a flat string array. Stripped of prefixes like (A), B., C), etc. Keep original transcript order.
+6. Do not use question numbers 11, 12, 13, 14 unless those exact numbers are visibly printed on the image.
+7. Do not create spoken question-response content. That belongs to Part 2, not Part 1.
+8. Only take questions from 1 to 10.
 """.replace("{TARGET_LANG}", TARGET_LANG),
         2: """
 Analyze ONLY TOEIC Listening Part 2 (Question-Response).
@@ -1020,6 +1046,7 @@ STRICT PART 4 RULES:
         self._worker: ImportQuestionsAgentWorker | None = None
         self._batch_task_ids: list[str] = []
         self._batch_results: dict[str, dict] = {}
+        self._batch_failed_task_ids: list[str] = []
 
     def _default_part_prompt(self, part: int) -> str:
         return self.PART_PROMPTS.get(part, self.parser.READING_PROMPT_TEXT)
@@ -1109,6 +1136,7 @@ STRICT PART 4 RULES:
         self.result_answer_key = {}
         self._batch_task_ids = [task.id for task in tasks]
         self._batch_results = {}
+        self._batch_failed_task_ids = []
         self._start_task(tasks[0].id)
 
     def create_agent_task(self) -> ImportAgentTask:
@@ -1183,12 +1211,15 @@ STRICT PART 4 RULES:
         self.is_loading = False
         self.current_task_id = None
         self._batch_results[task_id] = result
+        if task_id in self._batch_failed_task_ids:
+            self._batch_failed_task_ids.remove(task_id)
         self._merge_batch_results()
+        self.request_ready.emit(task_id, result)
         self.state_changed.emit()
         self.tasks_changed.emit()
         if self._start_next_batch_task(after_task_id=task_id):
             return
-        self.import_ready.emit()
+        self._finish_batch()
 
     def _on_error(self, task_id: str, message: str) -> None:
         worker = self._worker
@@ -1197,9 +1228,29 @@ STRICT PART 4 RULES:
             worker.deleteLater()
         self.is_loading = False
         self.current_task_id = None
-        self.error_message.emit(message)
+        if task_id not in self._batch_failed_task_ids:
+            self._batch_failed_task_ids.append(task_id)
+        self.progress_message.emit(
+            f"Agent request failed and was skipped: {message}"
+        )
         self.state_changed.emit()
         self.tasks_changed.emit()
+        if self._start_next_batch_task(after_task_id=task_id):
+            return
+        self._finish_batch()
+
+    def _finish_batch(self) -> None:
+        if self._batch_failed_task_ids:
+            succeeded_count = len(self._batch_results)
+            failed_count = len(self._batch_failed_task_ids)
+            self.progress_message.emit(
+                "Agent requests finished. "
+                f"Saved {succeeded_count} successful request(s); "
+                f"{failed_count} request(s) failed."
+            )
+            return
+        self.progress_message.emit("Agent requests finished.")
+        self.import_ready.emit()
 
     def _merge_batch_results(self) -> None:
         contexts: list[dict] = []
@@ -1243,16 +1294,211 @@ STRICT PART 4 RULES:
     def list_agent_tasks(self) -> list[ImportAgentTask]:
         return self.task_repo.list_tasks()
 
-    def retry_agent_task(self, task_id: str) -> None:
-        task = self.task_repo.queue_for_retry(task_id)
+    def get_agent_task(self, task_id: str) -> ImportAgentTask | None:
+        return self.task_repo.get_task(task_id)
+
+    def extract_ocr_text_for_task(self, task_id: str) -> str:
+        task = self.task_repo.get_task(task_id)
         if task is None:
-            self.error_message.emit("Could not retry the selected request.")
-            return
+            raise ValueError("The import agent request no longer exists.")
+        if task.ocr.strip():
+            return task.ocr
+        payload = AgentImportPayload.model_validate(task.payload)
+        sections: list[str] = []
+        tmp_dir = get_local_media_dir()
+        for part_payload in payload.parts:
+            part_text = self._extract_ocr_text_for_part(part_payload, tmp_dir)
+            if part_text.strip():
+                sections.append(
+                    f"TOEIC Part {part_payload.part} PaddleOCR text:\n"
+                    f"{part_text.strip()}"
+                )
+        if not sections:
+            raise ValueError("PaddleOCR did not extract text from this request.")
+        return "\n\n".join(sections)
+
+    def ocr_prompt_for_task(self, task_id: str, ocr_text: str) -> str:
+        task = self.task_repo.get_task(task_id)
+        if task is None:
+            raise ValueError("The import agent request no longer exists.")
+        payload = AgentImportPayload.model_validate(task.payload)
+        note_contract = _vietnamese_note_contract_text(self.TARGET_LANG)
+        prompts: list[str] = []
+        for part_payload in payload.parts:
+            if not self._has_part_input_payload(part_payload):
+                continue
+            prompts.append(
+                _build_part_prompt_text(part_payload, note_contract, ocr_text)
+            )
+        return "\n\n".join(prompts)
+
+    def save_task_ocr_text(self, task_id: str, ocr_text: str) -> bool:
+        task = self.task_repo.get_task(task_id)
+        if task is None:
+            self.error_message.emit("The import agent request no longer exists.")
+            return False
+        updated_task = self.task_repo.update_ocr(task_id, ocr_text.strip())
+        if updated_task is None:
+            self.error_message.emit("Could not update a running or missing request.")
+            return False
         self.tasks_changed.emit()
-        if task.id not in self._batch_task_ids:
-            self._batch_task_ids = [task.id]
-            self._batch_results = {}
-        self._start_task(task.id)
+        return True
+
+    def save_task_ocr_text_and_retry(self, task_id: str, ocr_text: str) -> None:
+        if not self.save_task_ocr_text(task_id, ocr_text):
+            return
+        self.retry_agent_task(task_id)
+
+    def _extract_ocr_text_for_part(
+        self, payload: AgentPartPayload, tmp_dir: Path
+    ) -> str:
+        lane_texts: list[str] = []
+        if payload.part != 2 and payload.question_pdf_path and payload.question_pages:
+            question_text = self._extract_ocr_text_from_pdf_pages(
+                payload.question_pdf_path,
+                payload.question_pages,
+                tmp_dir / f"ocr_part_{payload.part}_questions",
+            )
+            if question_text.strip():
+                lane_texts.append(f"Question pages:\n{question_text.strip()}")
+        if payload.transcript_pdf_path and payload.transcript_pages:
+            transcript_text = self._extract_ocr_text_from_pdf_pages(
+                payload.transcript_pdf_path,
+                payload.transcript_pages,
+                tmp_dir / f"ocr_part_{payload.part}_transcripts",
+            )
+            if transcript_text.strip():
+                lane_texts.append(f"Transcript pages:\n{transcript_text.strip()}")
+        return "\n\n".join(lane_texts)
+
+    def _extract_ocr_text_from_pdf_pages(
+        self, pdf_path: str, page_indices: list[int], output_dir: Path
+    ) -> str:
+        try:
+            import fitz
+        except ImportError as exc:
+            raise ImportError(
+                "PyMuPDF is required to render PDF pages for PaddleOCR."
+            ) from exc
+        os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "0")
+        try:
+            from paddleocr import PaddleOCR
+        except ImportError as exc:
+            raise ImportError(
+                "PaddleOCR is required for OCR review. Install paddleocr first."
+            ) from exc
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        ocr = self._create_paddle_ocr(PaddleOCR)
+        page_texts: list[str] = []
+        with fitz.open(str(pdf_path)) as document:
+            for page_index in sorted(set(page_indices)):
+                if page_index < 0 or page_index >= len(document):
+                    raise ValueError(
+                        f"Page {page_index + 1} is outside {Path(pdf_path).name}."
+                    )
+                page = document[page_index]
+                image_path = output_dir / f"page_{page_index + 1}.png"
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                pixmap.save(str(image_path))
+                lines = self._ocr_image_text(ocr, image_path)
+                if lines:
+                    page_texts.append(
+                        f"Page {page_index + 1}:\n" + "\n".join(lines)
+                    )
+        return "\n\n".join(page_texts)
+
+    def _ocr_image_text(self, ocr: Any, image_path: Path) -> list[str]:
+        try:
+            result = ocr.predict(str(image_path))
+        except AttributeError:
+            try:
+                result = ocr.ocr(str(image_path), cls=True)
+            except TypeError:
+                result = ocr.ocr(str(image_path))
+        lines: list[str] = []
+        self._collect_ocr_lines(result, lines)
+        return lines
+
+    def _create_paddle_ocr(self, paddle_ocr_class: Any) -> Any:
+        os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "0")
+        last_error: Exception | None = None
+        for kwargs in (
+            {
+                "lang": "en",
+                "use_doc_orientation_classify": False,
+                "use_doc_unwarping": False,
+                "use_textline_orientation": False,
+            },
+            {"lang": "en", "use_textline_orientation": True},
+            {"lang": "en"},
+            {"use_angle_cls": True, "lang": "en"},
+            {},
+        ):
+            try:
+                return paddle_ocr_class(**kwargs)
+            except Exception as exc:
+                last_error = exc
+                continue
+        raise RuntimeError(
+            "Could not initialize PaddleOCR. Check that paddleocr and its "
+            "runtime dependency paddlepaddle are installed correctly."
+        ) from last_error
+
+    def _collect_ocr_lines(self, value: Any, lines: list[str]) -> None:
+        if value is None:
+            return
+        if isinstance(value, dict):
+            for key in ("text", "rec_text", "transcription"):
+                text = value.get(key)
+                if isinstance(text, str) and text.strip():
+                    lines.append(text.strip())
+            rec_texts = value.get("rec_texts")
+            if isinstance(rec_texts, list):
+                lines.extend(
+                    text.strip()
+                    for text in rec_texts
+                    if isinstance(text, str) and text.strip()
+                )
+            for key, nested in value.items():
+                if key == "rec_texts":
+                    continue
+                self._collect_ocr_lines(nested, lines)
+            return
+        if isinstance(value, (list, tuple)):
+            if value and all(isinstance(item, str) for item in value):
+                lines.extend(item.strip() for item in value if item.strip())
+                return
+            if len(value) >= 2 and isinstance(value[1], (list, tuple)):
+                text_candidate = value[1][0] if value[1] else ""
+                if isinstance(text_candidate, str) and text_candidate.strip():
+                    lines.append(text_candidate.strip())
+                    return
+            for nested in value:
+                self._collect_ocr_lines(nested, lines)
+
+    def retry_agent_task(self, task_id: str) -> None:
+        self.retry_agent_tasks([task_id])
+
+    def retry_agent_tasks(self, task_ids: list[str]) -> None:
+        if self.is_loading:
+            self.error_message.emit(
+                "Wait for the current agent request to finish before retrying."
+            )
+            return
+        retry_tasks: list[ImportAgentTask] = []
+        for task_id in task_ids:
+            task = self.task_repo.queue_for_retry(task_id)
+            if task is not None:
+                retry_tasks.append(task)
+        if not retry_tasks:
+            self.error_message.emit("Could not retry the selected request(s).")
+            return
+        self._batch_task_ids = [task.id for task in retry_tasks]
+        self._batch_results = {}
+        self._batch_failed_task_ids = []
+        self.tasks_changed.emit()
+        self._start_task(retry_tasks[0].id)
 
     def remove_agent_task(self, task_id: str) -> None:
         if not self.task_repo.delete_task(task_id):
@@ -1264,9 +1510,13 @@ STRICT PART 4 RULES:
         return [
             part
             for part, payload in self.part_payloads.items()
-            if (payload.part != 2 and payload.question_pages)
-            or payload.transcript_pages
+            if self._has_part_input_payload(payload)
         ]
+
+    def _has_part_input_payload(self, payload: AgentPartPayload) -> bool:
+        return bool(
+            (payload.part != 2 and payload.question_pages) or payload.transcript_pages
+        )
 
     def _missing_required_answer_sheets(self) -> list[str]:
         parts = self._parts_with_input()

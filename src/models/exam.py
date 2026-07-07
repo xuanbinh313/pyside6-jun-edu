@@ -169,6 +169,7 @@ class ImportAgentTask(BaseModel):
     id: str = Field(default_factory=generate_uuid)
     status: str = "queued"
     payload: dict = Field(default_factory=dict)
+    ocr: str = ""
     attempts: int = 0
     max_attempts: int = 3
     auto_retry: bool = True
