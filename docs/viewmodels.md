@@ -320,9 +320,11 @@ Each send creates one `ImportAgentTask` row per selected TOEIC part. The ViewMod
 
 Coordinates the Gemini-backed transcript alignment flow used by
 `ExamTranscriptWidget`. It sends all current SRT chunks plus every exam context
-and context question-number list to Gemini, asks for structured
+and each context's question text/options to Gemini, asks for structured
 `SrtMappingResponseSchema` JSON, saves the raw response under
 `.codex/srt_mapping_responses/`, and emits mappings for the view to preview.
+For TOEIC Parts 1 and 2, the prompt explicitly asks Gemini to include the full
+spoken question plus A-D choices in the returned context audio window.
 
 ### Signals
 
@@ -336,7 +338,7 @@ and context question-number list to Gemini, asks for structured
 
 | Method | Description |
 |---|---|
-| `start_mapping(chunks, contexts, questions_by_context)` | Starts the background Gemini worker unless another mapping request is running. |
+| `start_mapping(chunks, contexts, questions_by_context)` | Starts the background Gemini worker unless another mapping request is running. `questions_by_context` contains full question records so Part 1/2 option text can be aligned. |
 | `resolve_times(mappings, chunks)` | Converts returned chunk indexes into `(context_id, audio_start, audio_end)` tuples and silently skips invalid or unresolved mappings. |
 
 The ViewModel owns the API/background work only. The preview table, confirmation

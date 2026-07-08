@@ -611,7 +611,7 @@ class ExamTranscriptWidget(QWidget):
 
         contexts = self.viewmodel.list_contexts()
         questions_by_context = {
-            context.id: self.viewmodel.context_question_numbers(context.id)
+            context.id: self.viewmodel.list_questions_for_context(context.id)
             for context in contexts
         }
         self.auto_detect_audio_btn.setEnabled(False)

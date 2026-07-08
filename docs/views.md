@@ -406,7 +406,7 @@ Toggling loop on the same chunk cancels it (`looping_chunk_idx = None`).
 | `_toggle_play()` | Play ↔ Pause |
 | `_update_play_pause_icon()` | Swaps icon/text based on `playbackState` |
 | `_on_save_clicked()` | Calls `viewmodel.save_chunks()`, clears change flag |
-| `_on_auto_detect_audio_clicked()` | Sends all chunks, contexts, and context question numbers to `SrtMappingAgentViewModel`; opens a preview table before saving detected audio windows |
+| `_on_auto_detect_audio_clicked()` | Sends all chunks, contexts, and context question records to `SrtMappingAgentViewModel`; opens a preview table before saving detected audio windows |
 | `_on_add_to_question_clicked()` | Opens an exam context picker and saves `audio_start` from the first selected row and `audio_end` from the last selected row |
 | `_on_item_changed(item)` | Syncs text column edits back to the chunk object |
 | `_duplicate_chunk(chunk)` | Delegates to ViewModel, inserts new row at correct position |

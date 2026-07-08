@@ -1,7 +1,7 @@
 ﻿import re
 from typing import Optional
 
-from src.models.exam import Exam, ExamContext, ExamSrtChunk
+from src.models.exam import Exam, ExamContext, ExamQuestion, ExamSrtChunk
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
 
@@ -120,6 +120,9 @@ class ExamTranscriptViewModel:
 
     def context_question_numbers(self, context_id: str) -> list[int]:
         return self.repo.get_context_question_numbers(context_id)
+
+    def list_questions_for_context(self, context_id: str) -> list[ExamQuestion]:
+        return self.repo.list_questions_for_context(context_id)
 
     def update_context_audio_segment(
         self, context_id: str, audio_start: float, audio_end: float

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from PySide6.QtCore import QObject, QThread, Signal
 from src.models.exam import (
     ExamContext,
+    ExamQuestion,
     ExamSrtChunk,
     SrtChunkMapping,
     SrtMappingResponseSchema,
@@ -27,7 +28,7 @@ class SrtMappingAgentWorker(QThread):
         self,
         chunks: list[ExamSrtChunk],
         contexts: list[ExamContext],
-        questions_by_context: dict[str, list[int]],
+        questions_by_context: dict[str, list[ExamQuestion]],
         parent: Optional[QObject] = None,
     ) -> None:
         super().__init__(parent)
@@ -89,14 +90,23 @@ class SrtMappingAgentWorker(QThread):
         context_rows = [
             "context_id | part | questions | type | content_preview",
         ]
+        question_rows = [
+            "context_id | part | question_number | question_text | A | B | C | D",
+        ]
         for context in self.contexts:
             questions = self.questions_by_context.get(context.id, [])
+            question_numbers = [
+                question.question_number
+                for question in questions
+            ]
             preview = context.content.text.replace("\r", " ").replace("\n", " ")
             preview = " ".join(preview.split())[:500]
             context_rows.append(
-                f"{context.id} | {context.part} | {questions} | "
+                f"{context.id} | {context.part} | {question_numbers} | "
                 f"{context.context_type} | {preview}"
             )
+            for question in questions:
+                question_rows.append(self._format_question_row(context, question))
 
         return f"""
 You are a TOEIC audio alignment assistant.
@@ -113,6 +123,14 @@ For TOEIC Part 3 and Part 4, multiple question numbers share one audio block.
 [CONTEXTS]
 {chr(10).join(context_rows)}
 
+Below is the question table. For TOEIC Part 1 and Part 2, the audio segment must
+include the complete spoken prompt for the question AND all spoken answer choices
+A, B, C, and D for that question. Use the option text to keep the end boundary
+after the final spoken choice, not immediately after the question prompt.
+
+[QUESTIONS AND OPTIONS]
+{chr(10).join(question_rows)}
+
 TASK:
 For each context_id, identify the contiguous range of SRT chunk indexes whose
 spoken text corresponds to that context's audio segment.
@@ -123,9 +141,26 @@ RULES:
    audio is detectable. Do NOT include them in the output at all.
 2. For Part 3/4 groups sharing one audio block, the same start_chunk_index and
    end_chunk_index may appear for multiple context_ids.
-3. The questions list is provided so you can match transcript text to question numbers.
+3. The question and option rows are provided so you can match transcript text to
+   question numbers and include A-D answer choices in Part 1/2 ranges.
 4. Output ONLY the structured JSON. No markdown, no explanation.
 """.strip()
+
+    def _format_question_row(
+        self, context: ExamContext, question: ExamQuestion
+    ) -> str:
+        question_text = self._one_line(question.content, 300)
+        options = [self._one_line(option, 200) for option in question.options[:4]]
+        padded_options = options + [""] * (4 - len(options))
+        return (
+            f"{context.id} | {context.part} | {question.question_number} | "
+            f"{question_text} | {padded_options[0]} | {padded_options[1]} | "
+            f"{padded_options[2]} | {padded_options[3]}"
+        )
+
+    def _one_line(self, value: str, limit: int) -> str:
+        text = value.replace("\r", " ").replace("\n", " ")
+        return " ".join(text.split())[:limit]
 
     def _response_text(self, response: Any) -> str:
         text = self._response_text_from_parts(response)
@@ -201,7 +236,7 @@ class SrtMappingAgentViewModel(QObject):
         self,
         chunks: list[ExamSrtChunk],
         contexts: list[ExamContext],
-        questions_by_context: dict[str, list[int]],
+        questions_by_context: dict[str, list[ExamQuestion]],
     ) -> None:
         if self.is_loading:
             return
