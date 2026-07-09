@@ -1,12 +1,14 @@
 from typing import Any, Callable, Optional, Union, cast
 
 import qtawesome as qta
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QSize, Qt, QUrl
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
     QSizePolicy,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -21,6 +23,7 @@ ICON_BUTTON_STYLE = """
 ContextCallback = Callable[[ExamContext], None]
 ContextTagCallback = Callable[[ExamContext, QPushButton], None]
 AnchorCallback = Callable[[Union[QUrl, str]], None]
+VocabularyCallback = Callable[[str, str], None]
 
 
 def context_audio_meta(ctx: Optional[ExamContext]) -> dict[str, object]:
@@ -76,6 +79,78 @@ def refresh_context_play_button(button: QPushButton, ctx: Optional[ExamContext])
         button.setToolTip("No audio segment selected")
 
 
+class VocabularyTextBrowser(QTextBrowser):
+    def __init__(
+        self,
+        on_add_vocabulary: Callable[[str], None],
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._on_add_vocabulary = on_add_vocabulary
+        self._selected_text = ""
+        self.setReadOnly(True)
+        self.setOpenExternalLinks(False)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.document().documentLayout().documentSizeChanged.connect(
+            self._update_document_height
+        )
+        self.selectionChanged.connect(self._position_add_button)
+
+        self.add_vocabulary_button = QPushButton("Add Vocab", self.viewport())
+        self.add_vocabulary_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.add_vocabulary_button.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #1a73e8;
+                border-radius: 5px;
+                background-color: #1a73e8;
+                color: white;
+                padding: 4px 8px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover { background-color: #1557b0; }
+        """)
+        self.add_vocabulary_button.adjustSize()
+        self.add_vocabulary_button.hide()
+        self.add_vocabulary_button.clicked.connect(self._add_selected_vocabulary)
+
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        height = int(self.document().documentLayout().documentSize().height()) + 22
+        return QSize(hint.width(), max(height, 44))
+
+    def _update_document_height(self) -> None:
+        self.setFixedHeight(self.sizeHint().height())
+
+    def _position_add_button(self) -> None:
+        cursor = self.textCursor()
+        selected_text = cursor.selectedText().replace("\u2029", " ").strip()
+        self._selected_text = " ".join(selected_text.split())
+        if not self._selected_text:
+            self.add_vocabulary_button.hide()
+            return
+
+        selection_start = QTextCursor(cursor)
+        selection_start.setPosition(cursor.selectionStart())
+        selection_rect = self.cursorRect(selection_start)
+        button_size = self.add_vocabulary_button.sizeHint()
+        x = min(
+            max(0, selection_rect.center().x() - (button_size.width() // 2)),
+            max(0, self.viewport().width() - button_size.width()),
+        )
+        y = max(0, selection_rect.top() - button_size.height() - 4)
+        self.add_vocabulary_button.move(x, y)
+        self.add_vocabulary_button.show()
+        self.add_vocabulary_button.raise_()
+
+    def _add_selected_vocabulary(self) -> None:
+        if self._selected_text:
+            self._on_add_vocabulary(self._selected_text)
+        self.add_vocabulary_button.hide()
+
+
 class ExamContextSection(QWidget):
     def __init__(
         self,
@@ -88,6 +163,7 @@ class ExamContextSection(QWidget):
         on_tags: ContextTagCallback,
         tag_names: list[str],
         on_anchor: AnchorCallback,
+        on_add_vocabulary: VocabularyCallback,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -102,7 +178,9 @@ class ExamContextSection(QWidget):
                 title_text, on_play, on_select_audio, on_edit, on_tags, tag_names
             )
         )
-        layout.addWidget(self._build_body(content_html, on_anchor))
+        layout.addWidget(
+            self._build_body(content_html, on_anchor, on_add_vocabulary)
+        )
 
         self.note_label = QLabel()
         self.note_label.setTextFormat(Qt.TextFormat.RichText)
@@ -189,18 +267,19 @@ class ExamContextSection(QWidget):
         header_layout.addWidget(edit_btn)
         return header_layout
 
-    def _build_body(self, content_html: str, on_anchor: AnchorCallback) -> QLabel:
-        self.body_label = QLabel(content_html)
-        self.body_label.setTextFormat(Qt.TextFormat.RichText)
-        self.body_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.LinksAccessibleByMouse
+    def _build_body(
+        self,
+        content_html: str,
+        on_anchor: AnchorCallback,
+        on_add_vocabulary: VocabularyCallback,
+    ) -> VocabularyTextBrowser:
+        self.body_label = VocabularyTextBrowser(
+            lambda word: on_add_vocabulary(word, self.ctx.id)
         )
-        self.body_label.setOpenExternalLinks(False)
-        self.body_label.setWordWrap(True)
-        self.body_label.linkActivated.connect(on_anchor)
+        self.body_label.setHtml(content_html)
+        self.body_label.anchorClicked.connect(on_anchor)
         self.body_label.setStyleSheet("""
-            QLabel {
+            QTextBrowser {
                 border: 1px solid #dadce0;
                 border-radius: 6px;
                 background-color: #fffde7;
@@ -221,7 +300,7 @@ class ExamContextSection(QWidget):
     ) -> None:
         self.ctx = ctx
         self.title_label.setText(title_text)
-        self.body_label.setText(content_html)
+        self.body_label.setHtml(content_html)
         refresh_context_play_button(self.play_btn, self.ctx)
         self.audio_btn.setIcon(
             qta.icon("fa5s.music", color=context_audio_icon_color(self.ctx))

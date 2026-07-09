@@ -63,6 +63,7 @@ Single "Menu" entry with these actions:
 | Action | Handler | Description |
 |---|---|---|
 | "Login / Register" | `show_auth_modal()` | Opens the auth modal without leaving the current app view |
+| "Vocabulary List" | `navigate_to_vocabulary()` | Opens the searchable vocabulary status table |
 | "Sync to Remote" | `sync_viewmodel.sync_to_supabase()` | Uploads local SQLite data to Supabase |
 | "Sync to Local" | `sync_viewmodel.sync_to_local()` | Downloads Supabase data and R2 media into local SQLite/temp storage |
 | "Settings" | `show_settings_modal()` | `QInputDialog.getInt` to set `close_event_minutes` (1–1440) |

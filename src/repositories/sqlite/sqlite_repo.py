@@ -13,6 +13,7 @@ from src.models.exam import (
     ExamQuestion,
     ExamSrtChunk,
     QuestionSchema,
+    Vocabulary,
 )
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite import orm_models as orm
@@ -40,6 +41,25 @@ def _context_from_orm(db_context: orm.ExamContext) -> ExamContext:
 
 def _question_from_orm(db_question: orm.ExamQuestion) -> ExamQuestion:
     return ExamQuestion.model_validate(db_question)
+
+
+def _vocabulary_from_orm(db_vocabulary: orm.Vocabulary) -> Vocabulary:
+    source_text: str | None = None
+    if db_vocabulary.context is not None:
+        content = db_vocabulary.context.content
+        text_value = content.get("text")
+        if isinstance(text_value, str):
+            source_text = text_value
+    return Vocabulary(
+        id=db_vocabulary.id,
+        word=db_vocabulary.word,
+        meaning=db_vocabulary.meaning,
+        status=db_vocabulary.status,
+        source_text=source_text,
+        context_id=db_vocabulary.context_id,
+        created_at=db_vocabulary.created_at,
+        user_id=db_vocabulary.user_id,
+    )
 
 
 def _save_imported_diagram_media(ctx_data: dict) -> str:
@@ -92,6 +112,80 @@ class SQLiteExamRepository(IExamRepository):
             exam = session.query(orm.Exam).filter(orm.Exam.id == exam_id).first()
             if exam:
                 session.delete(exam)
+                session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def add_vocabulary(
+        self, word: str, context_id: str | None = None
+    ) -> Vocabulary:
+        normalized_word = word.strip()
+        if not normalized_word:
+            raise ValueError("Vocabulary word cannot be empty.")
+
+        session = get_session()
+        try:
+            db_vocabulary = orm.Vocabulary(
+                word=normalized_word,
+                context_id=context_id,
+            )
+            session.add(db_vocabulary)
+            session.commit()
+            session.refresh(db_vocabulary)
+            return _vocabulary_from_orm(db_vocabulary)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def list_vocabulary(self) -> list[Vocabulary]:
+        session = get_session()
+        try:
+            rows = (
+                session.query(orm.Vocabulary)
+                .options(joinedload(orm.Vocabulary.context))
+                .order_by(orm.Vocabulary.created_at.desc())
+                .all()
+            )
+            return [_vocabulary_from_orm(row) for row in rows]
+        finally:
+            session.close()
+
+    def update_vocabulary_status(self, vocab_id: str, status: int) -> None:
+        if status not in range(1, 6):
+            raise ValueError("Vocabulary status must be between 1 and 5.")
+        self._update_vocabulary(vocab_id, status=status)
+
+    def update_vocabulary_meaning(self, vocab_id: str, meaning: str) -> None:
+        self._update_vocabulary(vocab_id, meaning=meaning.strip() or None)
+
+    def _update_vocabulary(self, vocab_id: str, **values: Any) -> None:
+        session = get_session()
+        try:
+            updated = (
+                session.query(orm.Vocabulary)
+                .filter(orm.Vocabulary.id == vocab_id)
+                .update(values)
+            )
+            if not updated:
+                raise ValueError("Vocabulary item was not found.")
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def delete_vocabulary(self, vocab_id: str) -> None:
+        session = get_session()
+        try:
+            row = session.get(orm.Vocabulary, vocab_id)
+            if row is not None:
+                session.delete(row)
                 session.commit()
         except Exception:
             session.rollback()

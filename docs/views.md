@@ -183,6 +183,14 @@ current_task_id set → pick_btn disabled (audio locked)
 
 ## Component Widgets
 
+## `VocabularyListView`
+
+**File:** [`src/views/vocabulary_list_view.py`](../src/views/vocabulary_list_view.py)
+
+Menu-accessible LingQ-style vocabulary table with search, editable meanings,
+source context, five colored learning-status buttons, and delete controls. Its
+layout is sourced from `ui/vocabulary_list_view.ui`.
+
 ### `ExamFormWidget`
 
 **File:** [`src/views/components/exam_form_widget.py`](../src/views/components/exam_form_widget.py)
@@ -195,6 +203,11 @@ Form for editing exam metadata. Used as a tab inside `ExamDetailsView`.
 |---|---|
 | [`src/views/components/exam_context_section.py`](../src/views/components/exam_context_section.py) | Reusable context block with title, audio controls, edit action, rendered rich-text body, and note display |
 | [`src/views/components/exam_context_html.py`](../src/views/components/exam_context_html.py) | Pure rendering helpers for `READING_PASSAGE`, `AUDIO_SRT`, and `IMAGE_DIAGRAM` context content |
+
+Context bodies, question stems, answer options, and answer feedback use
+read-only, self-sizing text browsers. Selecting text shows an inline **Add
+Vocab** button; the components pass the phrase and context ID through
+`ExamGroupsWidget` to `ExamDetailsViewModel` for SQLite persistence.
 
 #### Key Methods
 

@@ -1,9 +1,9 @@
 ﻿# Add current directory to path if needed, but normally running from jun-edu is fine.
 import os
 import sys
+from typing import Optional
 
 import qtawesome as qta
-from typing import Optional
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
@@ -25,11 +25,13 @@ from src.viewmodels.exam_list_viewmodel import ExamListViewModel
 from src.viewmodels.exam_take_viewmodel import ExamTakeViewModel
 from src.viewmodels.reminder_viewmodel import ReminderViewModel
 from src.viewmodels.sync_viewmodel import SyncViewModel
+from src.viewmodels.vocabulary_list_viewmodel import VocabularyListViewModel
 from src.views.auth_view import AuthView
 from src.views.exam_add_external_view import ExamAddExternalView
 from src.views.exam_details_view import ExamDetailsView
 from src.views.exam_list_view import ExamListView
 from src.views.exam_take_view import ExamTakeView
+from src.views.vocabulary_list_view import VocabularyListView
 from ui_gen.ui_main_window import Ui_MainWindow
 
 
@@ -90,12 +92,28 @@ class MainWindow(QMainWindow):
         self.stacked_widget.setCurrentWidget(self.list_view)
 
         # Optionally remove the details view
-        widget = self.stacked_widget.widget(1)
-        if widget:
+        self._remove_secondary_views()
+
+    def navigate_to_vocabulary(self) -> None:
+        self._remove_secondary_views()
+        self.vocabulary_viewmodel = VocabularyListViewModel()
+        self.vocabulary_view = VocabularyListView(
+            self.vocabulary_viewmodel, self.navigate_to_list
+        )
+        self.stacked_widget.addWidget(self.vocabulary_view)
+        self.stacked_widget.setCurrentWidget(self.vocabulary_view)
+
+    def _remove_secondary_views(self) -> None:
+        while self.stacked_widget.count() > 1:
+            widget = self.stacked_widget.widget(1)
             self.stacked_widget.removeWidget(widget)
             widget.deleteLater()
 
     def setup_menu_bar(self):
+        self.vocabulary_action = QAction("Vocabulary List", self)
+        self.vocabulary_action.triggered.connect(self.navigate_to_vocabulary)
+        self.ui.menu_main.insertAction(self.ui.action_settings, self.vocabulary_action)
+        self.ui.menu_main.insertSeparator(self.ui.action_settings)
         self.auth_action = QAction("Login / Register", self)
         self.auth_action.triggered.connect(self.show_auth_modal)
         self.ui.menu_main.insertAction(self.ui.action_settings, self.auth_action)

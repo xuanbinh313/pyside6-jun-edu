@@ -787,7 +787,11 @@ class ExamGroupsWidget(QWidget):
             questions = self._questions_for_context(ctx.id)
             self._questions_by_context[ctx.id] = questions
             for question in questions:
-                opt_w = OptionQuestionItem(question, exam_id=self.viewmodel.exam_id)
+                opt_w = OptionQuestionItem(
+                    question,
+                    exam_id=self.viewmodel.exam_id,
+                    on_add_vocabulary=self._add_vocabulary,
+                )
                 self._question_widgets[question.question_number] = opt_w
                 self._insert_scroll_widget(opt_w)
 
@@ -862,10 +866,26 @@ class ExamGroupsWidget(QWidget):
             on_tags=self._show_context_tag_menu,
             tag_names=self.viewmodel.list_question_tags_for_context(ctx.id),
             on_anchor=self._on_passage_anchor_clicked,
+            on_add_vocabulary=self._add_vocabulary,
             parent=self.ui.options_container,
         )
         self._context_note_labels[ctx.id] = section.note_label
         return section
+
+    def _add_vocabulary(self, word: str, context_id: str) -> None:
+        try:
+            vocabulary = self.viewmodel.add_vocabulary(word, context_id)
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Error Saving Vocabulary", f"Could not save vocabulary:\n{exc}"
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Vocabulary Saved",
+            f'Added "{vocabulary.word}" to your vocabulary.',
+        )
 
     def _show_context_tag_menu(self, ctx: ExamContext, button: QPushButton) -> None:
         popup = TagMenuDialog(ctx, self, viewmodel=self.viewmodel, context_id=ctx.id)

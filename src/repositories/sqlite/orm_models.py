@@ -122,6 +122,9 @@ class ExamContext(Base):
     questions: Mapped[List["ExamQuestion"]] = relationship(
         "ExamQuestion", back_populates="context", cascade="all, delete-orphan"
     )
+    vocabulary: Mapped[List["Vocabulary"]] = relationship(
+        "Vocabulary", back_populates="context"
+    )
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 
 
@@ -166,6 +169,27 @@ class UserQuestionTag(Base):
     )
     dirty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+
+
+class Vocabulary(Base):
+    __tablename__ = "vocabulary"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    word: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    meaning: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    status: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    context_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("exam_contexts.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        default=lambda: str(datetime.now(timezone.utc)),
+    )
+    user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    context: Mapped[Optional["ExamContext"]] = relationship(
+        "ExamContext", back_populates="vocabulary"
+    )
 
 
 class ExamAttempt(Base):

@@ -10,6 +10,7 @@ from src.models.exam import (
     ExamQuestion,
     ExamSrtChunk,
     QuestionSchema,
+    Vocabulary,
 )
 
 
@@ -55,6 +56,28 @@ class IExamRepository(ABC):
 
     @abstractmethod
     def set_context_tag(self, context_id: str, tag_name: str, enabled: bool) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def add_vocabulary(
+        self, word: str, context_id: str | None = None
+    ) -> Vocabulary:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_vocabulary(self) -> list[Vocabulary]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_vocabulary_status(self, vocab_id: str, status: int) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_vocabulary_meaning(self, vocab_id: str, meaning: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_vocabulary(self, vocab_id: str) -> None:
         raise NotImplementedError
 
     @abstractmethod

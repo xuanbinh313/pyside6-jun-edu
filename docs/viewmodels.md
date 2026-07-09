@@ -6,6 +6,14 @@
 
 ---
 
+## `VocabularyListViewModel`
+
+**File:** [`src/viewmodels/vocabulary_list_viewmodel.py`](../src/viewmodels/vocabulary_list_viewmodel.py)
+
+Loads vocabulary through `IExamRepository`, applies word/meaning/context search
+filtering, and owns status, meaning, and delete actions. It emits `data_changed`
+after list changes and `error_occurred` when persistence fails.
+
 ## `ExamListViewModel`
 
 **File:** [`src/viewmodels/exam_list_viewmodel.py`](../src/viewmodels/exam_list_viewmodel.py)

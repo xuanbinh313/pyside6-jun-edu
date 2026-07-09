@@ -9,6 +9,7 @@ from src.models.exam import (
     ExamQuestion,
     ExamSrtChunk,
     QuestionSchema,
+    Vocabulary,
 )
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
@@ -66,6 +67,11 @@ class ExamDetailsViewModel(QObject):
 
     def set_context_tag(self, context_id: str, tag_name: str, enabled: bool) -> None:
         self.repo.set_context_tag(context_id, tag_name, enabled)
+
+    def add_vocabulary(
+        self, word: str, context_id: Optional[str] = None
+    ) -> Vocabulary:
+        return self.repo.add_vocabulary(word, context_id)
 
     def list_contexts(self, selected_tags: Optional[list[str]] = None) -> list[ExamContext]:
         if not self.exam_id:

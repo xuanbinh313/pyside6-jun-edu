@@ -24,6 +24,7 @@ for external agent response contracts:
 | `UserQuestionTag` | Per-user tag assigned to an exam context. |
 | `ExamAttempt` | Completed learner attempt summary. |
 | `UserAnswer` | Per-question answer for an attempt. |
+| `Vocabulary` | A selected vocabulary phrase with meaning, learning status, optional source context, and creation time. |
 | `ImportAgentTask` | Persisted Gemini import-agent request payload, reviewed OCR text, status, attempts, error, and result for retry tracking. |
 | `ExamImportResponseSchema` | Pydantic response schema used by `google-genai` for agent-import JSON. |
 | `ExamImportContextSchema` | Pydantic context schema containing nested imported questions. |
@@ -68,6 +69,11 @@ workflow:
 | `list_question_tags()` | Returns distinct question tag names for filters. |
 | `list_question_tags_for_context(context_id)` | Returns ordered tag names assigned to one exam context. |
 | `set_context_tag(context_id, tag_name, enabled)` | Adds or removes one context tag and marks new tags dirty for sync. |
+| `add_vocabulary(word, context_id)` | Saves a selected vocabulary phrase with its optional source context. |
+| `list_vocabulary()` | Lists vocabulary with source context text for the vocabulary screen. |
+| `update_vocabulary_status(vocab_id, status)` | Persists a LingQ-style learning status from 1 through 5. |
+| `update_vocabulary_meaning(vocab_id, meaning)` | Persists an edited meaning. |
+| `delete_vocabulary(vocab_id)` | Deletes a vocabulary item. |
 | `list_contexts(exam_id, selected_tags)` | Returns contexts for the groups/questions view, optionally filtered by tags. |
 | `list_questions_for_context(context_id)` | Returns pure question dataclasses for one context. |
 | `get_context_question_numbers(context_id)` | Returns ordered question numbers for context labels. |

@@ -137,6 +137,20 @@ class UserQuestionTag(BaseModel):
     user_id: Optional[str] = None
 
 
+class Vocabulary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    word: str
+    meaning: Optional[str] = None
+    status: int = 1
+    source_text: Optional[str] = None
+    id: str = Field(default_factory=generate_uuid)
+    context_id: Optional[str] = None
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    user_id: Optional[str] = None
+
+
 class UserAnswer(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     attempt_id: str

@@ -1,42 +1,84 @@
-# Implementation Plan - Refactor ImportQuestionsAgentDialog to Scrollable Step Panels
+# Create Vocabulary List View (LingQ-Style Table)
 
-The goal is to update the [import_questions_agent_dialog.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/views/components/import_questions_agent_dialog.py) component:
-1. Replace the `QTabWidget` with a scrollable container (`QScrollArea`) showing all 7 step blocks (group boxes) vertically on a single screen.
-2. Move the Prompt text input of each step to a separate prompt input dialog, triggered by a button in its respective step block.
-3. Add an "Overall PDF Source Files" selection panel below the "Answer sheets" panel to select the overall Question/Transcript PDFs.
-4. Extract selected pages to `temp_questions_pdf.pdf` and `temp_transcripts_pdf.pdf` using `pypdf`.
-5. Enable and auto-load these temp files in each step's PDF selectors once created.
+This plan outlines the changes needed to introduce a Vocabulary List View, displaying vocabulary items in a LingQ-style table containing the text word, meaning, source context text, and status levels with interactive buttons.
+
+## User Review Required
+
+> [!IMPORTANT]
+> - We will run an inline SQL command on startup to ensure existing SQLite databases receive the new `meaning` and `status` columns in the `vocabulary` table if they do not exist already.
+> - The vocabulary status levels will be represented by buttons 1, 2, 3, 4, and a Check icon (learned/known), color-coded to match LingQ's progress visual styling.
 
 ## Proposed Changes
 
-### UI & View Components
+### 1. Database & Model Schema
 
-#### [NEW] [prompt_input_dialog.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/views/components/prompt_input_dialog.py)
-- Create a clean dialog (`PromptInputDialog`) containing a `QTextEdit` for editing the prompt, with "Save" and "Cancel" buttons.
+#### [MODIFY] [orm_models.py](file:///d:/my-project/workspace-anki/jun-edu/src/repositories/sqlite/orm_models.py)
+- Add column `meaning` to `Vocabulary` (`Mapped[Optional[str]] = mapped_column(String, nullable=True)`).
+- Add column `status` to `Vocabulary` (`Mapped[int] = mapped_column(Integer, nullable=False, default=1)`).
+- Add relationship `context` to `Vocabulary` targeting `ExamContext` so we can retrieve the source text from the parent context.
 
-#### [MODIFY] [import_questions_agent_dialog.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/views/components/import_questions_agent_dialog.py)
-- **Overall PDF Panel**:
-  - Add `_build_overall_pdf_panel()` below the answer sheets panel.
-  - Implement selection buttons and labels for overall Question PDF and Transcript PDF.
-  - When selection is successful, use `pypdf` to extract selected pages to `temp_questions_pdf.pdf` / `temp_transcripts_pdf.pdf` in `get_local_media_dir()`.
-- **Scrollable Steps Area**:
-  - Replace `self.tabs = QTabWidget(self)` with a `QScrollArea`.
-  - Inside the scroll area, place a container widget with a vertical layout containing 7 step blocks (group boxes: "Part 1" to "Part 7").
-  - Each step block contains:
-    - PDF page selections: "Select question pages" and "Select transcript pages" buttons (disabled by default until overall temp PDFs are created).
-    - A button "Edit Prompt" to open the `PromptInputDialog`.
-    - For Part 2, keep the "Question context" text edit directly inside the step box.
-- **Enabling Step Buttons**:
-  - When overall temp PDFs are successfully generated, enable the step-specific page selection buttons.
-  - Clicking these buttons opens `PdfPageSelectorDialog` with the path pointing to the generated temp PDF file.
+#### [MODIFY] [exam.py](file:///d:/my-project/workspace-anki/jun-edu/src/models/exam.py)
+- Update `Vocabulary` schema model:
+  - Add fields `meaning: Optional[str] = None` and `status: int = 1`.
+  - Add optional field `source_text: Optional[str] = None`.
+
+#### [MODIFY] [database.py](file:///d:/my-project/workspace-anki/jun-edu/src/repositories/sqlite/database.py)
+- Update `init_db()` to automatically check and run `ALTER TABLE vocabulary ADD COLUMN ...` queries for both `meaning` and `status` columns to prevent migration errors for existing databases.
+
+### 2. Repository Layer
+
+#### [MODIFY] [base_repo.py](file:///d:/my-project/workspace-anki/jun-edu/src/repositories/base_repo.py)
+Add abstract methods for CRUD actions on vocabulary items:
+- `list_vocabulary(self) -> list[Vocabulary]`
+- `update_vocabulary_status(self, vocab_id: str, status: int) -> None`
+- `update_vocabulary_meaning(self, vocab_id: str, meaning: str) -> None`
+- `delete_vocabulary(self, vocab_id: str) -> None`
+
+#### [MODIFY] [sqlite_repo.py](file:///d:/my-project/workspace-anki/jun-edu/src/repositories/sqlite/sqlite_repo.py)
+- Implement `_vocabulary_from_orm` to dynamically load `source_text` from `db_vocabulary.context.content["text"]` if available.
+- Implement methods for listing, updating status, updating meaning, and deleting vocabulary records.
+
+### 3. ViewModel Layer
+
+#### [NEW] [vocabulary_list_viewmodel.py](file:///d:/my-project/workspace-anki/jun-edu/src/viewmodels/vocabulary_list_viewmodel.py)
+Create `VocabularyListViewModel` owning state, loading list items, and exposing triggers for:
+- Fetching vocabulary items (with optional search/filtering).
+- Changing vocabulary status (1, 2, 3, 4, 5).
+- Updating vocabulary meaning.
+- Deleting vocabulary items.
+
+### 4. View Layer
+
+#### [NEW] [vocabulary_list_view.ui](file:///d:/my-project/workspace-anki/jun-edu/ui/vocabulary_list_view.ui)
+Create a new Qt Designer UI file:
+- Layout with a search bar at the top, a back button to main menu, and a `QTableWidget` to show the list of words.
+
+#### [NEW] [ui_vocabulary_list_view.py](file:///d:/my-project/workspace-anki/jun-edu/ui_gen/ui_vocabulary_list_view.py)
+- Generate code module from `vocabulary_list_view.ui`.
+
+#### [NEW] [vocabulary_list_view.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/vocabulary_list_view.py)
+Implement the hand-written PySide6 View:
+- Use a `QTableWidget` to display text, meaning (double-click to edit, or custom delegate/editor), source context text, and the status controls.
+- Create custom cell widgets for status buttons:
+  - Button 1: Red/Orange background when selected, otherwise gray/border.
+  - Button 2: Orange background when selected.
+  - Button 3: Yellow background when selected.
+  - Button 4: Light Green background when selected.
+  - Button 5 (Check Icon): Green background when selected.
+  - Delete Button (Trash Icon): Red color.
+- Wire up interactive buttons to call viewmodel methods.
+- Filter list as user types in the search bar.
+
+#### [MODIFY] [main_window.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/main_window.py)
+- Import `VocabularyListView` and its ViewModel.
+- Register action in `setup_menu_bar` (e.g. "Vocabulary List" under Menu) that navigates the stacked widget to the vocabulary list.
 
 ## Verification Plan
 
 ### Manual Verification
-- Run the application.
-- Open the Import Questions Agent dialog.
-- Select overall PDFs and their pages in the new "Overall PDF Source Files" panel.
-- Verify that `temp_questions_pdf.pdf` and `temp_transcripts_pdf.pdf` are generated correctly.
-- Verify that individual step selection buttons become enabled and load the corresponding temp PDF.
-- Verify that prompt text can be edited via the "Edit Prompt" button in each block.
-- Validate python syntax and run Ruff.
+1. Open application and select the "Vocabulary List" action from the Menu.
+2. Confirm the table matches LingQ style layout.
+3. Edit a meaning column cell, press enter, and check if it persists.
+4. Click status buttons (1, 2, 3, 4, or Check icon) and verify the button styling updates to show active state.
+5. Click the trash icon to delete a word, and ensure the word disappears from the list.
+6. Verify database updates occur successfully.

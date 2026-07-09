@@ -33,6 +33,21 @@ class SupabaseExamRepository(IExamRepository):
     def set_context_tag(self, context_id: str, tag_name: str, enabled: bool) -> None:
         raise NotImplementedError("Supabase exam repository is not implemented yet.")
 
+    def add_vocabulary(self, word: str, context_id: str | None = None):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def list_vocabulary(self):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def update_vocabulary_status(self, vocab_id: str, status: int) -> None:
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def update_vocabulary_meaning(self, vocab_id: str, meaning: str) -> None:
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def delete_vocabulary(self, vocab_id: str) -> None:
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
     def list_contexts(self, exam_id: str, selected_tags=None):
         raise NotImplementedError("Supabase exam repository is not implemented yet.")
 
