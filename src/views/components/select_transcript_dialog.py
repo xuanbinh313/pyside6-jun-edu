@@ -1,20 +1,29 @@
-﻿from PySide6.QtCore import Qt
+from __future__ import annotations
+
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QListWidgetItem, QMessageBox
-from src.repositories.sqlite import orm_models as exam_model
-from src.repositories.sqlite.database import get_session
+from src.models.exam import ExamSrtChunk
+from src.viewmodels.select_transcript_viewmodel import SelectTranscriptViewModel
 from ui_gen.ui_select_transcript_dialog import Ui_SelectTranscriptDialog
 
 
 class SelectTranscriptDialog(QDialog):
-    def __init__(self, exam_id, parent=None):
+    def __init__(
+        self,
+        exam_id: str,
+        parent=None,
+        viewmodel: SelectTranscriptViewModel | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Select Transcript Segment")
         self.resize(600, 400)
         self.exam_id = exam_id
-        self.selected_chunks = []
+        self.viewmodel = viewmodel or SelectTranscriptViewModel(exam_id)
+        self.chunks: list[ExamSrtChunk] = []
+        self.selected_chunks: list[ExamSrtChunk] = []
         self._build_ui()
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         self.ui = Ui_SelectTranscriptDialog()
         self.ui.setupUi(self)
 
@@ -25,26 +34,24 @@ class SelectTranscriptDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
         self.ok_btn.clicked.connect(self._on_ok)
 
-        session = get_session()
-        try:
-            self.chunks = session.query(exam_model.ExamSrtChunk).filter(
-                exam_model.ExamSrtChunk.exam_id == self.exam_id
-            ).order_by(exam_model.ExamSrtChunk.index.asc()).all()
-            for chunk in self.chunks:
-                item = QListWidgetItem(f"[{chunk.start_time:.2f}s - {chunk.end_time:.2f}s]  {chunk.text}")
-                item.setData(Qt.ItemDataRole.UserRole, chunk)
-                self.list_widget.addItem(item)
-        finally:
-            session.close()
+        self.chunks = self.viewmodel.list_chunks()
+        for chunk in self.chunks:
+            item = QListWidgetItem(
+                f"[{chunk.start_time:.2f}s - {chunk.end_time:.2f}s]  {chunk.text}"
+            )
+            item.setData(Qt.ItemDataRole.UserRole, chunk)
+            self.list_widget.addItem(item)
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
         selected_items = self.list_widget.selectedItems()
         if not selected_items:
-            QMessageBox.warning(self, "No Selection", "Please select at least one transcript item.")
+            QMessageBox.warning(
+                self, "No Selection", "Please select at least one transcript item."
+            )
             return
 
         self.selected_chunks = sorted(
             [item.data(Qt.ItemDataRole.UserRole) for item in selected_items],
-            key=lambda c: c.index
+            key=lambda chunk: chunk.index,
         )
         self.accept()

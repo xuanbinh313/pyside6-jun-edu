@@ -6,16 +6,15 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from PySide6.QtCore import QObject, Signal
-from src.repositories.sqlite.database import get_session
-from src.repositories.sqlite.orm_models import (
+from src.models.exam import (
     Exam,
     ExamAttempt,
     ExamContext,
     ExamQuestion,
     ExamSrtChunk,
-    UserAnswer,
-    UserQuestionTag,
 )
+from src.repositories.base_repo import IExamRepository
+from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
 
 LETTERS = ["A", "B", "C", "D"]
 
@@ -138,17 +137,23 @@ class ExamTakeViewModel(QObject):
     result_ready = Signal()
     error_message = Signal(str)
 
-    def __init__(self, exam_id: str, user_id: Optional[str] = None):
+    def __init__(
+        self,
+        exam_id: str,
+        user_id: Optional[str] = None,
+        repo: Optional[IExamRepository] = None,
+    ):
         super().__init__()
+        self.repo: IExamRepository = repo or SQLiteExamRepository()
         self.exam_id = exam_id
         self.user_id = user_id
         self.exam: Optional[Exam] = None
         self.contexts: List[ExamContext] = []
         self.questions: List[ExamQuestion] = []
         self.srt_chunks: List[ExamSrtChunk] = []
-        self.attempts: List[ExamAttempt] = []
+        self.attempts: List[AttemptSummary] = []
         self.parts: list[int] = []
-        self.tags: List[UserQuestionTag] = []
+        self.tags: List[str] = []
         self.mode: str = "practice"
         self.active_questions: List[QuestionSession] = []
         self.started_at: Optional[float] = None
@@ -157,39 +162,20 @@ class ExamTakeViewModel(QObject):
         self.final_score: Optional[float] = None
 
     def load_exam(self):
-        session = get_session()
-        try:
-            self.exam = session.query(Exam).filter(Exam.id == self.exam_id).first()
-            if not self.exam:
-                self.error_message.emit("Exam not found.")
-                return
+        (
+            self.exam,
+            self.contexts,
+            self.questions,
+            self.srt_chunks,
+            self.tags,
+            attempts,
+        ) = self.repo.get_exam_take_data(self.exam_id, self.user_id)
+        if not self.exam:
+            self.error_message.emit("Exam not found.")
+            return
 
-            self.contexts = (
-                session.query(ExamContext)
-                .filter(ExamContext.exam_id == self.exam_id)
-                .order_by(ExamContext.part.asc(), ExamContext.index.asc())
-                .all()
-            )
-            self.questions = (
-                session.query(ExamQuestion)
-                .join(ExamContext, ExamQuestion.context_id == ExamContext.id)
-                .filter(ExamContext.exam_id == self.exam_id)
-                .order_by(ExamQuestion.question_number.asc())
-                .all()
-            )
-            self.srt_chunks = (
-                session.query(ExamSrtChunk)
-                .filter(ExamSrtChunk.exam_id == self.exam_id)
-                .order_by(ExamSrtChunk.index.asc(), ExamSrtChunk.start_time.asc())
-                .all()
-            )
-            self.parts = sorted({ctx.part for ctx in self.contexts})
-            self.tags = self._load_tags(session)
-            self.attempts = self._load_attempts(session)
-
-            session.expunge_all()
-        finally:
-            session.close()
+        self.parts = sorted({ctx.part for ctx in self.contexts})
+        self.attempts = self._attempt_summaries(attempts)
 
         self.data_loaded.emit()
 
@@ -268,40 +254,28 @@ class ExamTakeViewModel(QObject):
             self.total_correct / total_questions * 100.0 if total_questions else None
         )
 
-        session = get_session()
         try:
-            attempt = ExamAttempt(
-                user_id=self.user_id,
+            attempt_id, attempts = self.repo.save_exam_attempt(
                 exam_id=self.exam_id,
+                user_id=self.user_id,
                 total_correct=self.total_correct,
                 total_questions=total_questions,
                 final_score=self.final_score,
                 duration_seconds=duration_seconds,
-                dirty=False,
+                answers=[
+                    {
+                        "question_id": question.question_id,
+                        "user_choice": question.user_choice,
+                        "is_correct": question.is_correct,
+                    }
+                    for question in self.active_questions
+                ],
             )
-            session.add(attempt)
-            session.flush()
-
-            for question in self.active_questions:
-                session.add(
-                    UserAnswer(
-                        attempt_id=attempt.id,
-                        question_id=question.question_id,
-                        user_choice=question.user_choice,
-                        is_correct=question.is_correct,
-                        dirty=False,
-                    )
-                )
-
-            session.commit()
-            self.completed_attempt_id = attempt.id
-            self.attempts = self._load_attempts(session)
+            self.completed_attempt_id = attempt_id
+            self.attempts = self._attempt_summaries(attempts)
         except Exception as exc:
-            session.rollback()
             self.error_message.emit(f"Could not save test result: {exc}")
             return
-        finally:
-            session.close()
 
         self.result_ready.emit()
 
@@ -319,77 +293,51 @@ class ExamTakeViewModel(QObject):
         return max(0, duration - self.elapsed_seconds())
 
     def load_attempt_analytics(self, attempt_id):
-        session = get_session()
-        try:
-            attempt = (
-                session.query(ExamAttempt)
-                .filter(
-                    ExamAttempt.id == attempt_id,
-                    ExamAttempt.exam_id == self.exam_id,
-                    ExamAttempt.user_id == self.user_id,
-                )
-                .first()
-            )
-            if not attempt:
-                self.error_message.emit("Attempt not found.")
-                return None
+        attempt, rows = self.repo.get_attempt_with_answers(
+            self.exam_id, self.user_id, attempt_id
+        )
+        if not attempt:
+            self.error_message.emit("Attempt not found.")
+            return None
 
-            rows = (
-                session.query(UserAnswer, ExamQuestion, ExamContext)
-                .join(ExamQuestion, UserAnswer.question_id == ExamQuestion.id)
-                .join(ExamContext, ExamQuestion.context_id == ExamContext.id)
-                .filter(UserAnswer.attempt_id == attempt_id)
-                .order_by(ExamContext.part.asc(), ExamQuestion.question_number.asc())
-                .all()
+        answers = []
+        for user_answer, question, context in rows:
+            options = self._canonical_options(question.options)
+            correct_answer = (question.correct_answer or "").strip().upper()
+            correct_text = self._option_text(options, correct_answer)
+            user_choice = (
+                user_answer.user_choice.strip().upper()
+                if user_answer.user_choice
+                else None
+            )
+            answers.append(
+                AttemptAnswerDetail(
+                    question_id=question.id,
+                    question_number=question.question_number,
+                    part=context.part or 1,
+                    category=question.question_type or "Question",
+                    content=question.content,
+                    context_text=self._context_text(context),
+                    correct_answer=correct_answer,
+                    correct_text=correct_text,
+                    user_choice=user_choice,
+                    user_text=self._option_text(options, user_choice),
+                    is_correct=bool(user_answer.is_correct),
+                )
             )
 
-            answers = []
-            for user_answer, question, context in rows:
-                options = self._canonical_options(question.options)
-                correct_answer = (question.correct_answer or "").strip().upper()
-                correct_text = self._option_text(options, correct_answer)
-                user_choice = (
-                    user_answer.user_choice.strip().upper()
-                    if user_answer.user_choice
-                    else None
+        summary = self._attempt_summary(attempt)
+        return AttemptAnalytics(
+            summary=summary,
+            answers=answers,
+            overall_breakdown=self._breakdown_by_category(answers),
+            part_breakdowns={
+                part: self._breakdown_by_category(
+                    [answer for answer in answers if answer.part == part]
                 )
-                answers.append(
-                    AttemptAnswerDetail(
-                        question_id=question.id,
-                        question_number=question.question_number,
-                        part=context.part or 1,
-                        category=question.question_type or "Question",
-                        content=question.content,
-                        context_text=self._context_text(context),
-                        correct_answer=correct_answer,
-                        correct_text=correct_text,
-                        user_choice=user_choice,
-                        user_text=self._option_text(options, user_choice),
-                        is_correct=bool(user_answer.is_correct),
-                    )
-                )
-
-            summary = AttemptSummary(
-                id=attempt.id,
-                created_at=attempt.created_at,
-                duration_seconds=attempt.duration_seconds,
-                total_correct=attempt.total_correct,
-                total_questions=attempt.total_questions,
-                final_score=attempt.final_score,
-            )
-            return AttemptAnalytics(
-                summary=summary,
-                answers=answers,
-                overall_breakdown=self._breakdown_by_category(answers),
-                part_breakdowns={
-                    part: self._breakdown_by_category(
-                        [answer for answer in answers if answer.part == part]
-                    )
-                    for part in sorted({answer.part for answer in answers})
-                },
-            )
-        finally:
-            session.close()
+                for part in sorted({answer.part for answer in answers})
+            },
+        )
 
     def _build_question_session(self, question, context):
         raw_options = self._canonical_options(question.options)
@@ -473,61 +421,23 @@ class ExamTakeViewModel(QObject):
                 return question
         return None
 
-    def _load_tags(self, session):
-        rows = (
-            session.query(UserQuestionTag.tag_name)
-            .join(ExamContext, UserQuestionTag.context_id == ExamContext.id)
-            .filter(
-                UserQuestionTag.user_id == self.user_id,
-                ExamContext.exam_id == self.exam_id,
-            )
-            .distinct()
-            .order_by(UserQuestionTag.tag_name.asc())
-            .all()
-        )
-        return [row[0] for row in rows]
-
-    def _load_attempts(self, session):
-        rows = (
-            session.query(ExamAttempt)
-            .filter(
-                ExamAttempt.user_id == self.user_id,
-                ExamAttempt.exam_id == self.exam_id,
-            )
-            .order_by(ExamAttempt.created_at.desc())
-            .all()
-        )
-        return [
-            AttemptSummary(
-                id=row.id,
-                created_at=row.created_at,
-                duration_seconds=row.duration_seconds,
-                total_correct=row.total_correct,
-                total_questions=row.total_questions,
-                final_score=row.final_score,
-            )
-            for row in rows
-        ]
-
     def _question_tags(self):
-        session = get_session()
-        try:
-            rows = (
-                session.query(ExamQuestion.id, UserQuestionTag.tag_name)
-                .join(ExamContext, ExamQuestion.context_id == ExamContext.id)
-                .join(UserQuestionTag, UserQuestionTag.context_id == ExamContext.id)
-                .filter(
-                    UserQuestionTag.user_id == self.user_id,
-                    ExamContext.exam_id == self.exam_id,
-                )
-                .all()
-            )
-            result = {}
-            for question_id, tag_name in rows:
-                result.setdefault(question_id, set()).add(tag_name)
-            return result
-        finally:
-            session.close()
+        return self.repo.list_question_tags_by_question(self.exam_id, self.user_id)
+
+    def _attempt_summaries(
+        self, attempts: List[ExamAttempt]
+    ) -> List[AttemptSummary]:
+        return [self._attempt_summary(attempt) for attempt in attempts]
+
+    def _attempt_summary(self, attempt: ExamAttempt) -> AttemptSummary:
+        return AttemptSummary(
+            id=attempt.id,
+            created_at=attempt.created_at,
+            duration_seconds=attempt.duration_seconds,
+            total_correct=attempt.total_correct,
+            total_questions=attempt.total_questions,
+            final_score=attempt.final_score,
+        )
 
     def _context_text(self, context):
         content = context.content
@@ -542,4 +452,7 @@ class ExamTakeViewModel(QObject):
                     for line in lines
                     if isinstance(line, dict)
                 )
+        text = getattr(content, "text", "")
+        if text:
+            return str(text)
         return str(content or "")

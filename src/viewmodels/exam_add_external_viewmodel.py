@@ -6,31 +6,12 @@ from typing import Any, Callable, Optional
 import requests
 from dotenv import load_dotenv
 from PySide6.QtCore import QObject, QThread, Signal
-from src.repositories.sqlite.database import get_session
-from src.repositories.sqlite.orm_models import Exam, ExamSrtChunk, MediaFile
+from src.repositories.base_repo import IExamRepository
+from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
 from src.utils.helpers import get_local_media_path, unique_media_filename
 
 load_dotenv()
 TTS_AGENT_URL = os.getenv("TTS_AGENT_URL", "https://api.jun-edu.xyz")
-
-
-def _normalize_segment_words(segment: dict[str, Any]) -> list[dict[str, object]]:
-    raw_words = segment.get("words", [])
-    words: list[dict[str, object]] = []
-    if not isinstance(raw_words, list):
-        return words
-
-    for raw_word in raw_words:
-        if not isinstance(raw_word, dict):
-            continue
-        words.append(
-            {
-                "word": str(raw_word.get("word", "")),
-                "start": float(raw_word.get("start", 0.0)),
-                "end": float(raw_word.get("end", 0.0)),
-            }
-        )
-    return words
 
 
 def _extract_segments(result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -72,8 +53,13 @@ class ExamAddExternalViewModel(QObject):
     error_message = Signal(str)
     exam_saved = Signal(str)  # Emits the new exam_id
 
-    def __init__(self, target_exam_id: Optional[str] = None):
+    def __init__(
+        self,
+        target_exam_id: Optional[str] = None,
+        repo: Optional[IExamRepository] = None,
+    ):
         super().__init__()
+        self.repo: IExamRepository = repo or SQLiteExamRepository()
         self.target_exam_id = target_exam_id
         self.audio_file_path: Optional[str] = None
         self.audio_file_name: Optional[str] = None
@@ -192,62 +178,21 @@ class ExamAddExternalViewModel(QObject):
                 with open(target_path, "wb") as f:
                     f.write(audio_resp.content)
 
-                # Save to DB
                 emit_progress("Saving exam to database...")
-                session = get_session()
-                try:
-                    if self.target_exam_id:
-                        exam = (
-                            session.query(Exam)
-                            .filter(Exam.id == self.target_exam_id)
-                            .first()
-                        )
-                        if not exam:
-                            raise Exception("Target exam not found.")
-                        exam.audio_name = audio_name
-                        session.query(ExamSrtChunk).filter(
-                            ExamSrtChunk.exam_id == exam.id
-                        ).delete(synchronize_session="fetch")
-                    else:
-                        exam = Exam(
-                            title=self.audio_file_name or "External Exam",
-                            description="Generated from external service",
-                            duration_minutes=120,
-                            audio_name=audio_name,
-                            is_published=False,
-                        )
-                        session.add(exam)
-                        session.flush()
-
-                    session.add(
-                        MediaFile(
-                            filename=audio_name,
-                            user_id=exam.user_id,
-                            dirty=True,
-                        )
-                    )
-
-                    for idx, item in enumerate(content):
-                        words = _normalize_segment_words(item)
-                        chunk = ExamSrtChunk(
-                            exam_id=exam.id,
-                            index=idx,
-                            start_time=float(item.get("start", 0.0)),
-                            end_time=float(item.get("end", 0.0)),
-                            text=str(item.get("text", "")),
-                            additional_meta={"words": words},
-                        )
-                        session.add(chunk)
-                    session.commit()
-                    exam_id = exam.id
-                    return {
-                        "exam_id": exam_id,
-                        "audio_name": audio_name,
-                        "audio_path": str(target_path),
-                        "chunk_count": len(content),
-                    }
-                finally:
-                    session.close()
+                exam_id = self.repo.save_external_aligned_exam(
+                    target_exam_id=self.target_exam_id,
+                    title=self.audio_file_name or "External Exam",
+                    description="Generated from external service",
+                    duration_minutes=120,
+                    audio_name=audio_name,
+                    segments=content,
+                )
+                return {
+                    "exam_id": exam_id,
+                    "audio_name": audio_name,
+                    "audio_path": str(target_path),
+                    "chunk_count": len(content),
+                }
             else:
                 raise Exception("Failed to download audio.")
         else:

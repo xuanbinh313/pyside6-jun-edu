@@ -6,10 +6,12 @@ from typing import Any
 from src.models.exam import (
     ContextSchema,
     Exam,
+    ExamAttempt,
     ExamContext,
     ExamQuestion,
     ExamSrtChunk,
     QuestionSchema,
+    UserAnswer,
     Vocabulary,
 )
 
@@ -44,6 +46,62 @@ class IExamRepository(ABC):
 
     @abstractmethod
     def replace_srt_chunks(self, exam_id: str, chunks: list[ExamSrtChunk]) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_srt_chunks(self, exam_id: str) -> list[ExamSrtChunk]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_exam_take_data(
+        self, exam_id: str, user_id: str | None = None
+    ) -> tuple[
+        Exam | None,
+        list[ExamContext],
+        list[ExamQuestion],
+        list[ExamSrtChunk],
+        list[str],
+        list[ExamAttempt],
+    ]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_question_tags_by_question(
+        self, exam_id: str, user_id: str | None = None
+    ) -> dict[str, set[str]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_exam_attempt(
+        self,
+        *,
+        exam_id: str,
+        user_id: str | None,
+        total_correct: int,
+        total_questions: int,
+        final_score: float | None,
+        duration_seconds: int,
+        answers: list[dict[str, Any]],
+    ) -> tuple[str, list[ExamAttempt]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_attempt_with_answers(
+        self, exam_id: str, user_id: str | None, attempt_id: str
+    ) -> tuple[ExamAttempt | None, list[tuple[UserAnswer, ExamQuestion, ExamContext]]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_external_aligned_exam(
+        self,
+        *,
+        target_exam_id: str | None,
+        title: str,
+        description: str,
+        duration_minutes: int,
+        audio_name: str,
+        segments: list[dict[str, Any]],
+    ) -> str:
         raise NotImplementedError
 
     @abstractmethod

@@ -66,6 +66,11 @@ workflow:
 | `get_exam_details(exam_id)` | Returns pure exam, transcript chunks, contexts, and questions. |
 | `save_exam(...)` | Creates or updates exam metadata and returns the exam ID. |
 | `replace_srt_chunks(exam_id, chunks)` | Replaces persisted transcript chunks for an exam. |
+| `get_exam_take_data(exam_id, user_id)` | Loads learner-facing exam data, tags, transcript chunks, and previous attempts for `ExamTakeViewModel`. |
+| `list_question_tags_by_question(exam_id, user_id)` | Returns context tag names keyed by question ID for practice filters. |
+| `save_exam_attempt(...)` | Persists one completed test attempt and its per-question answers atomically. |
+| `get_attempt_with_answers(exam_id, user_id, attempt_id)` | Returns one attempt plus answer/question/context rows for review analytics. |
+| `save_external_aligned_exam(...)` | Saves aligned external-audio chunks and tracks the downloaded audio media row. |
 | `list_question_tags()` | Returns distinct question tag names for filters. |
 | `list_question_tags_for_context(context_id)` | Returns ordered tag names assigned to one exam context. |
 | `set_context_tag(context_id, tag_name, enabled)` | Adds or removes one context tag and marks new tags dirty for sync. |

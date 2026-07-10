@@ -292,7 +292,7 @@ Named widgets from `.ui` file:
 #### Helper Classes
 
 - **`TagMenuDialog`** — floating popup dialog (`QDialog` with `Popup | FramelessWindowHint`) for adding/removing tags on an exam context.
-- **`SelectTranscriptDialog`** — dialog to select one or more SRT chunks to set the audio segment timestamps on a question.
+- **`SelectTranscriptDialog`** — dialog to select one or more SRT chunks to set the audio segment timestamps on a question; it loads chunks through `SelectTranscriptViewModel`.
 - **`EditQuestionDialog`** — form dialog to edit question fields: Part, Correct Answer, Content, and Options A–D.
 - **`EditContextDialog`** — inline editor dialog for editing `ExamContext` text content.
 - **`OptionWidget`** — renders ABCD radio buttons for a single question in the saved option order. The correct answer is validated by original DB index.

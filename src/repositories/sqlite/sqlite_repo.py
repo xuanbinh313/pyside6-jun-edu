@@ -9,10 +9,12 @@ from sqlalchemy.orm import joinedload
 from src.models.exam import (
     ContextSchema,
     Exam,
+    ExamAttempt,
     ExamContext,
     ExamQuestion,
     ExamSrtChunk,
     QuestionSchema,
+    UserAnswer,
     Vocabulary,
 )
 from src.repositories.base_repo import IExamRepository
@@ -41,6 +43,14 @@ def _context_from_orm(db_context: orm.ExamContext) -> ExamContext:
 
 def _question_from_orm(db_question: orm.ExamQuestion) -> ExamQuestion:
     return ExamQuestion.model_validate(db_question)
+
+
+def _attempt_from_orm(db_attempt: orm.ExamAttempt) -> ExamAttempt:
+    return ExamAttempt.model_validate(db_attempt)
+
+
+def _answer_from_orm(db_answer: orm.UserAnswer) -> UserAnswer:
+    return UserAnswer.model_validate(db_answer)
 
 
 def _vocabulary_from_orm(db_vocabulary: orm.Vocabulary) -> Vocabulary:
@@ -93,6 +103,25 @@ def _save_imported_diagram_media(ctx_data: dict) -> str:
     content.pop("image_data_url", None)
     content.pop("_source_image_path", None)
     return unique_filename
+
+
+def _normalize_segment_words(segment: dict[str, Any]) -> list[dict[str, object]]:
+    raw_words = segment.get("words", [])
+    words: list[dict[str, object]] = []
+    if not isinstance(raw_words, list):
+        return words
+
+    for raw_word in raw_words:
+        if not isinstance(raw_word, dict):
+            continue
+        words.append(
+            {
+                "word": str(raw_word.get("word", "")),
+                "start": float(raw_word.get("start", 0.0)),
+                "end": float(raw_word.get("end", 0.0)),
+            }
+        )
+    return words
 
 
 class SQLiteExamRepository(IExamRepository):
@@ -313,6 +342,278 @@ class SQLiteExamRepository(IExamRepository):
             raise
         finally:
             session.close()
+
+    def list_srt_chunks(self, exam_id: str) -> list[ExamSrtChunk]:
+        session = get_session()
+        try:
+            rows = (
+                session.query(orm.ExamSrtChunk)
+                .filter(orm.ExamSrtChunk.exam_id == exam_id)
+                .order_by(orm.ExamSrtChunk.index.asc())
+                .all()
+            )
+            return [_chunk_from_orm(chunk) for chunk in rows]
+        finally:
+            session.close()
+
+    def get_exam_take_data(
+        self, exam_id: str, user_id: str | None = None
+    ) -> tuple[
+        Exam | None,
+        list[ExamContext],
+        list[ExamQuestion],
+        list[ExamSrtChunk],
+        list[str],
+        list[ExamAttempt],
+    ]:
+        session = get_session()
+        try:
+            db_exam = session.query(orm.Exam).filter(orm.Exam.id == exam_id).first()
+            if not db_exam:
+                return None, [], [], [], [], []
+
+            contexts = [
+                _context_from_orm(context)
+                for context in session.query(orm.ExamContext)
+                .filter(orm.ExamContext.exam_id == exam_id)
+                .order_by(orm.ExamContext.part.asc(), orm.ExamContext.index.asc())
+                .all()
+            ]
+            questions = [
+                _question_from_orm(question)
+                for question in session.query(orm.ExamQuestion)
+                .join(
+                    orm.ExamContext, orm.ExamQuestion.context_id == orm.ExamContext.id
+                )
+                .filter(orm.ExamContext.exam_id == exam_id)
+                .order_by(orm.ExamQuestion.question_number.asc())
+                .all()
+            ]
+            chunks = [
+                _chunk_from_orm(chunk)
+                for chunk in session.query(orm.ExamSrtChunk)
+                .filter(orm.ExamSrtChunk.exam_id == exam_id)
+                .order_by(orm.ExamSrtChunk.index.asc(), orm.ExamSrtChunk.start_time.asc())
+                .all()
+            ]
+            tag_rows = (
+                session.query(orm.UserQuestionTag.tag_name)
+                .join(
+                    orm.ExamContext,
+                    orm.UserQuestionTag.context_id == orm.ExamContext.id,
+                )
+                .filter(
+                    orm.UserQuestionTag.user_id == user_id,
+                    orm.ExamContext.exam_id == exam_id,
+                )
+                .distinct()
+                .order_by(orm.UserQuestionTag.tag_name.asc())
+                .all()
+            )
+            attempts = self._list_attempts(session, exam_id, user_id)
+            exam = _exam_from_orm(db_exam)
+            exam.contexts = contexts
+            exam.srt_chunks = chunks
+            return (
+                exam,
+                contexts,
+                questions,
+                chunks,
+                [row[0] for row in tag_rows],
+                attempts,
+            )
+        finally:
+            session.close()
+
+    def list_question_tags_by_question(
+        self, exam_id: str, user_id: str | None = None
+    ) -> dict[str, set[str]]:
+        session = get_session()
+        try:
+            rows = (
+                session.query(orm.ExamQuestion.id, orm.UserQuestionTag.tag_name)
+                .join(orm.ExamContext, orm.ExamQuestion.context_id == orm.ExamContext.id)
+                .join(
+                    orm.UserQuestionTag,
+                    orm.UserQuestionTag.context_id == orm.ExamContext.id,
+                )
+                .filter(
+                    orm.UserQuestionTag.user_id == user_id,
+                    orm.ExamContext.exam_id == exam_id,
+                )
+                .all()
+            )
+            result: dict[str, set[str]] = {}
+            for question_id, tag_name in rows:
+                result.setdefault(str(question_id), set()).add(str(tag_name))
+            return result
+        finally:
+            session.close()
+
+    def save_exam_attempt(
+        self,
+        *,
+        exam_id: str,
+        user_id: str | None,
+        total_correct: int,
+        total_questions: int,
+        final_score: float | None,
+        duration_seconds: int,
+        answers: list[dict[str, Any]],
+    ) -> tuple[str, list[ExamAttempt]]:
+        session = get_session()
+        try:
+            attempt = orm.ExamAttempt(
+                user_id=user_id,
+                exam_id=exam_id,
+                total_correct=total_correct,
+                total_questions=total_questions,
+                final_score=final_score,
+                duration_seconds=duration_seconds,
+                created_at=str(datetime.datetime.now(datetime.timezone.utc)),
+                dirty=False,
+            )
+            session.add(attempt)
+            session.flush()
+
+            for answer in answers:
+                session.add(
+                    orm.UserAnswer(
+                        attempt_id=attempt.id,
+                        question_id=str(answer["question_id"]),
+                        user_choice=answer.get("user_choice"),
+                        is_correct=bool(answer.get("is_correct", False)),
+                        dirty=False,
+                    )
+                )
+
+            session.commit()
+            attempt_id = str(attempt.id)
+            return attempt_id, self._list_attempts(session, exam_id, user_id)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def get_attempt_with_answers(
+        self, exam_id: str, user_id: str | None, attempt_id: str
+    ) -> tuple[ExamAttempt | None, list[tuple[UserAnswer, ExamQuestion, ExamContext]]]:
+        session = get_session()
+        try:
+            attempt = (
+                session.query(orm.ExamAttempt)
+                .filter(
+                    orm.ExamAttempt.id == attempt_id,
+                    orm.ExamAttempt.exam_id == exam_id,
+                    orm.ExamAttempt.user_id == user_id,
+                )
+                .first()
+            )
+            if not attempt:
+                return None, []
+
+            rows = (
+                session.query(orm.UserAnswer, orm.ExamQuestion, orm.ExamContext)
+                .join(orm.ExamQuestion, orm.UserAnswer.question_id == orm.ExamQuestion.id)
+                .join(orm.ExamContext, orm.ExamQuestion.context_id == orm.ExamContext.id)
+                .filter(orm.UserAnswer.attempt_id == attempt_id)
+                .order_by(orm.ExamContext.part.asc(), orm.ExamQuestion.question_number.asc())
+                .all()
+            )
+            return (
+                _attempt_from_orm(attempt),
+                [
+                    (
+                        _answer_from_orm(user_answer),
+                        _question_from_orm(question),
+                        _context_from_orm(context),
+                    )
+                    for user_answer, question, context in rows
+                ],
+            )
+        finally:
+            session.close()
+
+    def save_external_aligned_exam(
+        self,
+        *,
+        target_exam_id: str | None,
+        title: str,
+        description: str,
+        duration_minutes: int,
+        audio_name: str,
+        segments: list[dict[str, Any]],
+    ) -> str:
+        session = get_session()
+        try:
+            if target_exam_id:
+                exam = (
+                    session.query(orm.Exam)
+                    .filter(orm.Exam.id == target_exam_id)
+                    .first()
+                )
+                if not exam:
+                    raise ValueError("Target exam not found.")
+                exam.audio_name = audio_name
+                session.query(orm.ExamSrtChunk).filter(
+                    orm.ExamSrtChunk.exam_id == exam.id
+                ).delete(synchronize_session="fetch")
+            else:
+                exam = orm.Exam(
+                    title=title,
+                    description=description,
+                    duration_minutes=duration_minutes,
+                    audio_name=audio_name,
+                    is_published=False,
+                )
+                session.add(exam)
+                session.flush()
+
+            session.add(
+                orm.MediaFile(
+                    filename=audio_name,
+                    user_id=exam.user_id,
+                    dirty=True,
+                )
+            )
+
+            for index, segment in enumerate(segments):
+                session.add(
+                    orm.ExamSrtChunk(
+                        exam_id=exam.id,
+                        index=index,
+                        start_time=float(segment.get("start", 0.0)),
+                        end_time=float(segment.get("end", 0.0)),
+                        text=str(segment.get("text", "")),
+                        additional_meta=cast(
+                            orm.AdditionalSrtChunkMeta,
+                            {"words": _normalize_segment_words(segment)},
+                        ),
+                    )
+                )
+
+            session.commit()
+            return str(exam.id)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def _list_attempts(
+        self, session: Any, exam_id: str, user_id: str | None
+    ) -> list[ExamAttempt]:
+        rows = (
+            session.query(orm.ExamAttempt)
+            .filter(
+                orm.ExamAttempt.user_id == user_id,
+                orm.ExamAttempt.exam_id == exam_id,
+            )
+            .order_by(orm.ExamAttempt.created_at.desc())
+            .all()
+        )
+        return [_attempt_from_orm(row) for row in rows]
 
     def list_question_tags(self) -> list[str]:
         session = get_session()

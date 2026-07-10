@@ -24,6 +24,28 @@ class SupabaseExamRepository(IExamRepository):
     def replace_srt_chunks(self, exam_id: str, chunks) -> None:
         raise NotImplementedError("Supabase exam repository is not implemented yet.")
 
+    def list_srt_chunks(self, exam_id: str):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def get_exam_take_data(self, exam_id: str, user_id: str | None = None):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def list_question_tags_by_question(
+        self, exam_id: str, user_id: str | None = None
+    ):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def save_exam_attempt(self, **kwargs):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def get_attempt_with_answers(
+        self, exam_id: str, user_id: str | None, attempt_id: str
+    ):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def save_external_aligned_exam(self, **kwargs):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
     def list_question_tags(self):
         raise NotImplementedError("Supabase exam repository is not implemented yet.")
 
@@ -55,6 +77,12 @@ class SupabaseExamRepository(IExamRepository):
         raise NotImplementedError("Supabase exam repository is not implemented yet.")
 
     def get_context_question_numbers(self, context_id: str):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def get_add_question_defaults(self, exam_id: str | None):
+        raise NotImplementedError("Supabase exam repository is not implemented yet.")
+
+    def save_context_questions(self, **kwargs):
         raise NotImplementedError("Supabase exam repository is not implemented yet.")
 
     def delete_contexts_and_questions(self, context_ids, question_ids) -> None:

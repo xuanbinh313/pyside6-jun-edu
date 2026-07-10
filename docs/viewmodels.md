@@ -167,11 +167,11 @@ Manages the learner-facing exam flow: exam summary, previous attempts, practice 
 
 ### Persistence
 
-`complete_test()` creates one `ExamAttempt` plus one `UserAnswer` per active question in a single SQLAlchemy transaction. Unanswered questions are stored with `user_choice=None` and `is_correct=False`.
+`complete_test()` delegates to `IExamRepository.save_exam_attempt()` to create one attempt plus one answer per active question in a repository transaction. Unanswered questions are stored with `user_choice=None` and `is_correct=False`.
 
 ### Attempt Analytics
 
-`load_attempt_analytics(attempt_id)` joins `exam_attempts`, `user_answers`, `exam_questions`, and `exam_contexts` to produce KPI totals, part-specific category breakdowns, an overall category breakdown, and per-question answer details. `start_review_questions(question_ids)` starts a filtered practice session for retaking incorrect or skipped answers.
+`load_attempt_analytics(attempt_id)` gets attempt answer rows through `IExamRepository.get_attempt_with_answers()` and builds KPI totals, part-specific category breakdowns, an overall category breakdown, and per-question answer details. `start_review_questions(question_ids)` starts a filtered practice session for retaking incorrect or skipped answers.
 
 ---
 
@@ -219,7 +219,7 @@ All HTTP calls run on a background `QThread` via the internal `Worker` class.
 | `set_audio_file(path)` | Sets audio path, resets analysis state, emits `state_changed` |
 | `set_text(text)` | Updates `self.text` (called on every text edit) |
 | `analyze()` | Starts Phase 1 worker; emits `state_changed` |
-| `add_or_update()` | Starts Phase 2 worker; emits `state_changed` |
+| `add_or_update()` | Starts Phase 2 worker and delegates aligned-audio persistence to the repository; emits `state_changed` |
 | `reset()` | Clears all state back to initial; emits `state_changed` |
 | `poll_task_status(task_id, emit_progress)` | Polls `GET /api/check-status/{task_id}` every 2 s until `completed` or `failed` |
 
