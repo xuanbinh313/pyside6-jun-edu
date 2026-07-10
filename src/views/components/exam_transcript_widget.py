@@ -31,7 +31,9 @@ from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
 
 
 class SelectExamContextDialog(QDialog):
-    def __init__(self, viewmodel:ExamDetailsViewModel , parent:Optional[QWidget]=None):
+    def __init__(
+        self, viewmodel: ExamDetailsViewModel, parent: Optional[QWidget] = None
+    ):
         super().__init__(parent)
         self.viewmodel = viewmodel
         self.selected_context = None
@@ -47,8 +49,7 @@ class SelectExamContextDialog(QDialog):
         layout.addWidget(self.list_widget)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel,
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
         buttons.accepted.connect(self._on_accept)
@@ -64,7 +65,7 @@ class SelectExamContextDialog(QDialog):
             item.setData(Qt.ItemDataRole.UserRole, ctx)
             self.list_widget.addItem(item)
 
-    def _context_label(self, ctx:ExamContext):
+    def _context_label(self, ctx: ExamContext):
         numbers = self.viewmodel.context_question_numbers(ctx.id)
         type_label = ctx.context_type.replace("_", " ").title()
         if len(numbers) == 1:
@@ -89,7 +90,7 @@ class SrtMappingPreviewDialog(QDialog):
         self,
         results: list[tuple[str, float, float]],
         viewmodel: ExamDetailsViewModel,
-        parent:Optional[QWidget]=None,
+        parent: Optional[QWidget] = None,
     ):
         super().__init__(parent)
         self.results = results
@@ -122,8 +123,7 @@ class SrtMappingPreviewDialog(QDialog):
         layout.addWidget(self.table)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel,
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
         apply_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
@@ -170,42 +170,47 @@ class SrtMappingPreviewDialog(QDialog):
 
 
 class TimeAdjustWidget(QWidget):
-    def __init__(self, value: float, on_change:Callable[[float], None], parent:Optional[QWidget]=None):
+    def __init__(
+        self,
+        value: float,
+        on_change: Callable[[float], None],
+        parent: Optional[QWidget] = None,
+    ):
         super().__init__(parent)
         self.on_change = on_change
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
-        
+
         # Add a muted red minus icon.
         self.minus_btn = QPushButton()
         self.minus_btn.setFixedWidth(22)
-        self.minus_btn.setIcon(qta.icon('fa5s.minus', color='#c53929'))
+        self.minus_btn.setIcon(qta.icon("fa5s.minus", color="#c53929"))
         self.minus_btn.clicked.connect(self._minus)
         layout.addWidget(self.minus_btn)
-        
+
         self.val_edit = QLineEdit(f"{value:.3f}")
         self.val_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.val_edit.editingFinished.connect(self._text_changed)
         layout.addWidget(self.val_edit)
-        
+
         # Add a blue plus icon.
         self.plus_btn = QPushButton()
         self.plus_btn.setFixedWidth(22)
-        self.plus_btn.setIcon(qta.icon('fa5s.plus', color='#1a73e8'))
+        self.plus_btn.setIcon(qta.icon("fa5s.plus", color="#1a73e8"))
         self.plus_btn.clicked.connect(self._plus)
         layout.addWidget(self.plus_btn)
-        
+
     def _minus(self):
         val = max(0.0, float(self.val_edit.text()) - 0.1)
         self.val_edit.setText(f"{val:.3f}")
         self.on_change(val)
-        
+
     def _plus(self):
         val = float(self.val_edit.text()) + 0.1
         self.val_edit.setText(f"{val:.3f}")
         self.on_change(val)
-        
+
     def _text_changed(self):
         try:
             val = max(0.0, float(self.val_edit.text()))
@@ -213,21 +218,24 @@ class TimeAdjustWidget(QWidget):
         except ValueError:
             pass
 
+
 class ExamTranscriptWidget(QWidget):
-    def __init__(self, viewmodel:ExamDetailsViewModel , parent:Optional[QWidget]=None):
+    def __init__(
+        self, viewmodel: ExamDetailsViewModel, parent: Optional[QWidget] = None
+    ):
         super().__init__(parent)
         self.viewmodel = viewmodel
         self._srt_mapping_vm = SrtMappingAgentViewModel(self)
-        
+
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
         self.player.setAudioOutput(self.audio_output)
-        
+
         self.player.positionChanged.connect(self._on_position_changed)
         self.player.durationChanged.connect(self._on_duration_changed)
         # Watch media state changes to update the Play/Pause icon automatically.
         self.player.playbackStateChanged.connect(self._update_play_pause_icon)
-        
+
         self.play_until = None
         self.looping_chunk_idx = None
         self._current_highlighted_row = None
@@ -236,18 +244,18 @@ class ExamTranscriptWidget(QWidget):
         self._split_editor_row: Optional[int] = None
         self._split_editor_text: str = ""
         self._split_cursor_position: int = 0
-        
+
         self.setup_ui()
-        
+
     def setup_ui(self):
         self.ui = Ui_ExamTranscriptWidget()
         self.ui.setupUi(self)
-        
+
         # Configure the main Play/Pause button.
         self.ui.play_pause_btn.clicked.connect(self._toggle_play)
-        self._update_play_pause_icon() # Initialize the icon.
-        
-        self.ui.add_to_question_btn.setIcon(qta.icon('fa5s.plus', color='white'))
+        self._update_play_pause_icon()  # Initialize the icon.
+
+        self.ui.add_to_question_btn.setIcon(qta.icon("fa5s.plus", color="white"))
         self.ui.add_to_question_btn.setIconSize(QSize(16, 16))
         self.ui.add_to_question_btn.setStyleSheet(
             "QPushButton { background-color: #34a853; color: white; "
@@ -258,7 +266,7 @@ class ExamTranscriptWidget(QWidget):
         self.ui.add_to_question_btn.clicked.connect(self._on_add_to_question_clicked)
 
         self.auto_detect_audio_btn = QPushButton("Auto-detect Audio", self)
-        self.auto_detect_audio_btn.setIcon(qta.icon('fa5s.robot', color='white'))
+        self.auto_detect_audio_btn.setIcon(qta.icon("fa5s.robot", color="white"))
         self.auto_detect_audio_btn.setIconSize(QSize(16, 16))
         self.auto_detect_audio_btn.setStyleSheet(
             "QPushButton { background-color: #673ab7; color: white; "
@@ -272,8 +280,8 @@ class ExamTranscriptWidget(QWidget):
         self._srt_mapping_vm.mapping_ready.connect(self._on_mapping_ready)
         self._srt_mapping_vm.progress_message.connect(self._show_mapping_progress)
         self._srt_mapping_vm.error_message.connect(self._show_mapping_error)
-        
-        self.ui.save_btn.setIcon(qta.icon('fa5s.save', color='white'))
+
+        self.ui.save_btn.setIcon(qta.icon("fa5s.save", color="white"))
         self.ui.save_btn.setIconSize(QSize(16, 16))
         self.ui.save_btn.setStyleSheet(
             "QPushButton { background-color: #1a73e8; color: white; "
@@ -282,13 +290,19 @@ class ExamTranscriptWidget(QWidget):
         )
         self.ui.save_btn.clicked.connect(self._on_save_clicked)
         self.ui.save_btn.setVisible(False)
-        
-        self.ui.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+
+        self.ui.table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.Stretch
+        )
         self.ui.table.horizontalHeader().setSectionResizeMode(
             4, QHeaderView.ResizeMode.ResizeToContents
         )
-        self.ui.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.ui.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.ui.table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.ui.table.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
         self.ui.table.itemChanged.connect(self._on_item_changed)
         self.ui.table.itemDoubleClicked.connect(self._on_table_item_double_clicked)
         self.ui.table.itemSelectionChanged.connect(self._hide_split_float_button)
@@ -315,14 +329,13 @@ class ExamTranscriptWidget(QWidget):
         self.ui.seek_slider.sliderReleased.connect(self._on_slider_released)
         self._slider_dragging = False
 
-
         self.ui.seek_slider.setStyleSheet(
             "QSlider::groove:horizontal { height: 6px; background: #dadce0; border-radius: 3px; }"
             "QSlider::sub-page:horizontal { background: #1a73e8; border-radius: 3px; }"
             "QSlider::handle:horizontal { width: 14px; height: 14px; margin: -4px 0;"
             " background: #1a73e8; border-radius: 7px; }"
         )
-        
+
     def _toggle_play(self):
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
@@ -332,13 +345,13 @@ class ExamTranscriptWidget(QWidget):
     def _update_play_pause_icon(self):
         """Update the Play/Pause button styling from Python."""
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self.ui.play_pause_btn.setIcon(qta.icon('fa5s.pause', color='#d93025'))
+            self.ui.play_pause_btn.setIcon(qta.icon("fa5s.pause", color="#d93025"))
             self.ui.play_pause_btn.setText(" Pause")
         else:
-            self.ui.play_pause_btn.setIcon(qta.icon('fa5s.play', color='#1e8e3e'))
+            self.ui.play_pause_btn.setIcon(qta.icon("fa5s.play", color="#1e8e3e"))
             self.ui.play_pause_btn.setText(" Play Audio")
         self.ui.play_pause_btn.setIconSize(QSize(16, 16))
-            
+
     @staticmethod
     def _fmt_time(ms: int) -> str:
         # s = int(ms / 1000)
@@ -352,7 +365,7 @@ class ExamTranscriptWidget(QWidget):
     def _on_slider_pressed(self):
         self._slider_dragging = True
 
-    def _on_slider_moved(self, value:int):
+    def _on_slider_moved(self, value: int):
         self.ui.time_current_label.setText(self._fmt_time(value))
 
     def _on_slider_released(self):
@@ -362,10 +375,10 @@ class ExamTranscriptWidget(QWidget):
     def _on_position_changed(self, pos_ms: int):
         if self.play_until and pos_ms >= self.play_until:
             self.player.pause()
-            
+
             loop_idx = self.looping_chunk_idx
             self.play_until = None
-            
+
             if loop_idx is not None:
                 delay_ms = self.ui.delay_spin.value() * 1000
                 QTimer.singleShot(delay_ms, lambda: self._play_loop(loop_idx))
@@ -380,141 +393,161 @@ class ExamTranscriptWidget(QWidget):
         pos_sec = pos_ms / 1000.0
         for row, chunk in enumerate(self.viewmodel.srt_chunks):
             if chunk.start_time <= pos_sec <= chunk.end_time:
-                if getattr(self, '_current_highlighted_row', None) != row:
+                if getattr(self, "_current_highlighted_row", None) != row:
                     self._set_playback_highlight(row)
                 break
 
-    def _set_playback_highlight(self, row:int):
+    def _set_playback_highlight(self, row: int):
         if self._current_highlighted_row is not None:
             self._set_row_background(self._current_highlighted_row, QBrush())
         self._set_row_background(row, QBrush(QColor("#e8f0fe")))
         self._current_highlighted_row = row
 
-    def _set_row_background(self, row:int, brush:QBrush):
+    def _set_row_background(self, row: int, brush: QBrush):
         for column in (0, 3):
             item = self.ui.table.item(row, column)
             if item:
                 item.setBackground(brush)
 
-    def _play_loop(self, loop_idx:int):
+    def _play_loop(self, loop_idx: int):
         if self.looping_chunk_idx != loop_idx:
-            return 
-        
-        chunk = next((c for c in self.viewmodel.srt_chunks if c.index == loop_idx), None)
+            return
+
+        chunk = next(
+            (c for c in self.viewmodel.srt_chunks if c.index == loop_idx), None
+        )
         if chunk:
             self.play_range(chunk.start_time, chunk.end_time, loop_idx)
-            
-    def play_range(self, start_time: float, end_time: float, loop_idx: Optional[int] = None):
+
+    def play_range(
+        self, start_time: float, end_time: float, loop_idx: Optional[int] = None
+    ):
         self.looping_chunk_idx = loop_idx
         if loop_idx is not None:
             self.play_until = int(end_time * 1000)
         self.player.setPosition(int(start_time * 1000))
         self.player.play()
-        
+
     def populate(self):
         self.ui.table.blockSignals(True)
         self.ui.table.setRowCount(0)
         self._has_changes = False
         self.ui.save_btn.setVisible(False)
-        
+
         if self.viewmodel.exam and self.viewmodel.exam.audio_name:
             path = get_local_media_path(self.viewmodel.exam.audio_name)
             if path.exists():
                 self.player.setSource(QUrl.fromLocalFile(str(path)))
-                
+
         for row, chunk in enumerate(self.viewmodel.srt_chunks):
             self._insert_chunk_row(row, chunk)
-            
+
         self.ui.table.blockSignals(False)
         self._update_add_to_question_enabled()
 
-    def _insert_chunk_row(self, row: int, chunk:ExamSrtChunk):
+    def _insert_chunk_row(self, row: int, chunk: ExamSrtChunk):
         self.ui.table.insertRow(row)
-        
+
         idx_item = QTableWidgetItem(str(chunk.index))
         idx_item.setFlags(idx_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.ui.table.setItem(row, 0, idx_item)
-        
+
         # Start Time
-        start_w = TimeAdjustWidget(chunk.start_time, lambda v, c=chunk: self._update_time(c, 'start', v))
+        start_w = TimeAdjustWidget(
+            chunk.start_time, lambda v, c=chunk: self._update_time(c, "start", v)
+        )
         self.ui.table.setCellWidget(row, 1, start_w)
-        
+
         # End Time
-        end_w = TimeAdjustWidget(chunk.end_time, lambda v, c=chunk: self._update_time(c, 'end', v))
+        end_w = TimeAdjustWidget(
+            chunk.end_time, lambda v, c=chunk: self._update_time(c, "end", v)
+        )
         self.ui.table.setCellWidget(row, 2, end_w)
-        
+
         # Text
         text_item = QTableWidgetItem(chunk.text)
         self.ui.table.setItem(row, 3, text_item)
-        
+
         # --- Add icons for each row action button. ---
         action_widget = QWidget()
         action_layout = QHBoxLayout(action_widget)
         action_layout.setContentsMargins(4, 2, 4, 2)
         action_layout.setSpacing(4)
-        
+
         # 1. Preview button (Play Once) -> green
         play_btn = QPushButton()
         play_btn.setFixedSize(16, 16)
-        play_btn.setIcon(qta.icon('fa5s.play', color='#1e8e3e'))
+        play_btn.setIcon(qta.icon("fa5s.play", color="#1e8e3e"))
         play_btn.setToolTip("Play Once")
+
         def on_play_clicked(checked: bool = False, c: ExamSrtChunk = chunk) -> None:
             self.play_range(c.start_time, c.end_time)
+
         play_btn.clicked.connect(on_play_clicked)
         action_layout.addWidget(play_btn)
-        
+
         # 2. Loop segment button -> blue
         loop_btn = QPushButton()
         loop_btn.setFixedSize(16, 16)
-        loop_btn.setIcon(qta.icon('fa5s.sync-alt', color='#1a73e8'))
+        loop_btn.setIcon(qta.icon("fa5s.sync-alt", color="#1a73e8"))
         loop_btn.setToolTip("Loop")
+
         def on_loop_clicked(checked: bool = False, c: ExamSrtChunk = chunk) -> None:
             self._toggle_loop(c)
+
         loop_btn.clicked.connect(on_loop_clicked)
         action_layout.addWidget(loop_btn)
-        
+
         # 3. Duplicate button -> amber
         dup_btn = QPushButton()
         dup_btn.setFixedSize(16, 16)
-        dup_btn.setIcon(qta.icon('fa5s.copy', color='#f9ab00'))
+        dup_btn.setIcon(qta.icon("fa5s.copy", color="#f9ab00"))
         dup_btn.setToolTip("Duplicate")
+
         def on_duplicate_clicked(
             checked: bool = False, c: ExamSrtChunk = chunk
         ) -> None:
             self._duplicate_chunk(c)
+
         dup_btn.clicked.connect(on_duplicate_clicked)
         action_layout.addWidget(dup_btn)
-        
+
         # 4. Merge next row button -> dark gray
         merge_btn = QPushButton()
         merge_btn.setFixedSize(16, 16)
-        merge_btn.setIcon(qta.icon('fa5s.compress-arrows-alt', color='#5f6368'))
+        merge_btn.setIcon(qta.icon("fa5s.compress-arrows-alt", color="#5f6368"))
         merge_btn.setToolTip("Merge Next")
+
         def on_merge_clicked(checked: bool = False, c: ExamSrtChunk = chunk) -> None:
             self._merge_chunk(c)
+
         merge_btn.clicked.connect(on_merge_clicked)
         action_layout.addWidget(merge_btn)
 
         # 5. Split text at the current editor cursor -> blue
         split_btn = QPushButton()
         split_btn.setFixedSize(16, 16)
-        split_btn.setIcon(qta.icon('fa5s.cut', color='#1a73e8'))
+        split_btn.setIcon(qta.icon("fa5s.cut", color="#1a73e8"))
         split_btn.setToolTip("Split")
+
         def on_split_clicked(checked: bool = False, c: ExamSrtChunk = chunk) -> None:
             self._start_split_edit(c)
+
         split_btn.clicked.connect(on_split_clicked)
         action_layout.addWidget(split_btn)
 
         # 6. Delete row -> red
         delete_btn = QPushButton()
         delete_btn.setFixedSize(16, 16)
-        delete_btn.setIcon(qta.icon('fa5s.trash-alt', color='#d93025'))
+        delete_btn.setIcon(qta.icon("fa5s.trash-alt", color="#d93025"))
         delete_btn.setToolTip("Delete")
+
         def on_delete_clicked(checked: bool = False, c: ExamSrtChunk = chunk) -> None:
             self._delete_chunk(c)
+
         delete_btn.clicked.connect(on_delete_clicked)
         action_layout.addWidget(delete_btn)
-        
+
         self.ui.table.setCellWidget(row, 4, action_widget)
 
     def _mark_changed(self):
@@ -561,7 +594,9 @@ class ExamTranscriptWidget(QWidget):
                 continue
             idx = int(idx_item.text())
 
-            chunk:Optional[ExamSrtChunk] = next((c for c in self.viewmodel.srt_chunks if c.index == idx), None)
+            chunk: Optional[ExamSrtChunk] = next(
+                (c for c in self.viewmodel.srt_chunks if c.index == idx), None
+            )
             if chunk:
                 chunks.append(chunk)
         return chunks
@@ -588,7 +623,7 @@ class ExamTranscriptWidget(QWidget):
         ctx = dialog.selected_context
         try:
             updated_ctx = self.viewmodel.update_context_audio_segment(
-                ctx.id, float(first.start_time), float(last.end_time)
+                ctx.id, first.start_time, last.end_time
             )
             if not updated_ctx:
                 QMessageBox.warning(self, "Missing Context", "Context not found.")
@@ -669,14 +704,14 @@ class ExamTranscriptWidget(QWidget):
             f"Saved audio segments for {saved_count} context(s).",
         )
 
-    def _update_time(self, chunk:ExamSrtChunk, field:str, value: float):
-        if field == 'start':
+    def _update_time(self, chunk: ExamSrtChunk, field: str, value: float):
+        if field == "start":
             chunk.start_time = value
-        elif field == 'end':
+        elif field == "end":
             chunk.end_time = value
         self._mark_changed()
-            
-    def _on_item_changed(self, item:QTableWidgetItem):
+
+    def _on_item_changed(self, item: QTableWidgetItem):
         if item.column() == 3:
             row = item.row()
             idx_item = self.ui.table.item(row, 0)
@@ -697,15 +732,15 @@ class ExamTranscriptWidget(QWidget):
             return
         self._split_editor_chunk = chunk
         QTimer.singleShot(0, self._show_split_float_button)
-                
+
     def _toggle_loop(self, chunk: ExamSrtChunk):
         if self.looping_chunk_idx == chunk.index:
             self.looping_chunk_idx = None
             self.play_until = None
         else:
             self.play_range(chunk.start_time, chunk.end_time, chunk.index)
-            
-    def _duplicate_chunk(self, chunk:ExamSrtChunk):
+
+    def _duplicate_chunk(self, chunk: ExamSrtChunk):
         new_idx, new_chunk = self.viewmodel.duplicate_chunk(chunk)
 
         self.ui.table.blockSignals(True)
@@ -874,7 +909,7 @@ class ExamTranscriptWidget(QWidget):
         self._update_add_to_question_enabled()
         self._mark_changed()
 
-    def _merge_chunk(self, chunk:ExamSrtChunk):
+    def _merge_chunk(self, chunk: ExamSrtChunk):
         idx, _ = self.viewmodel.merge_chunk(chunk)
         if idx is None:
             return

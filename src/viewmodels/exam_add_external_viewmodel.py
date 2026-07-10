@@ -147,7 +147,7 @@ class ExamAddExternalViewModel(QObject):
         self._worker.progress.connect(self.progress_message.emit)
         self._worker.finished.connect(self._on_analyze_finished)
         self._worker.error.connect(self._on_error)
-        self._worker.run()
+        self._worker.start()
 
     def _on_analyze_finished(self, result):
         self.text = result.get("text", "")
@@ -265,7 +265,7 @@ class ExamAddExternalViewModel(QObject):
         self._worker.progress.connect(self.progress_message.emit)
         self._worker.finished.connect(self._on_add_update_finished)
         self._worker.error.connect(self._on_error)
-        self._worker.run()
+        self._worker.start()
 
     def _on_add_update_finished(self, result):
         self.is_loading = False

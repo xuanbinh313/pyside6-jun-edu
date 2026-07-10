@@ -88,7 +88,7 @@ class SrtMappingAgentWorker(QThread):
             for chunk in self.chunks
         ]
         context_rows = [
-            "context_id | part | questions | type | content_preview",
+            "context_id | part | questions | type | expected_spoken_title | content_preview",
         ]
         question_rows = [
             "context_id | part | question_number | question_text | A | B | C | D",
@@ -99,11 +99,12 @@ class SrtMappingAgentWorker(QThread):
                 question.question_number
                 for question in questions
             ]
+            spoken_title = self._format_part_34_title(context, question_numbers)
             preview = context.content.text.replace("\r", " ").replace("\n", " ")
             preview = " ".join(preview.split())[:500]
             context_rows.append(
                 f"{context.id} | {context.part} | {question_numbers} | "
-                f"{context.context_type} | {preview}"
+                f"{context.context_type} | {spoken_title} | {preview}"
             )
             for question in questions:
                 question_rows.append(self._format_question_row(context, question))
@@ -119,6 +120,10 @@ Each row: index | start_time (s) | end_time (s) | text
 
 Below is the context table. Each row is one question-group context.
 For TOEIC Part 3 and Part 4, multiple question numbers share one audio block.
+The expected_spoken_title column gives the title/preamble line that may be
+spoken immediately before the conversation/talk/announcement, for example
+"Questions 50-52 refer to the following conversation" or
+"Questions 98 through 100 refer to the following announcement".
 
 [CONTEXTS]
 {chr(10).join(context_rows)}
@@ -139,12 +144,34 @@ RULES:
 1. Return ONLY contexts where audio is present (listening parts 1-4).
    Omit contexts from reading parts (5, 6, 7) or any context where no matching
    audio is detectable. Do NOT include them in the output at all.
-2. For Part 3/4 groups sharing one audio block, the same start_chunk_index and
-   end_chunk_index may appear for multiple context_ids.
+2. For Part 3/4 groups, the context audio segment must include the spoken
+   title/preamble chunk when it exists in SRT. Start at the chunk containing
+   "Questions X-Y refer to..." or "Question X through Y refer to...", then keep
+   the whole conversation/talk/announcement through the last related line.
+   Do not start after that title line.
 3. The question and option rows are provided so you can match transcript text to
    question numbers and include A-D answer choices in Part 1/2 ranges.
 4. Output ONLY the structured JSON. No markdown, no explanation.
 """.strip()
+
+    def _format_part_34_title(
+        self, context: ExamContext, question_numbers: list[int]
+    ) -> str:
+        if context.part not in (3, 4) or not question_numbers:
+            return ""
+        first_question = min(question_numbers)
+        last_question = max(question_numbers)
+        if context.part == 3:
+            target = "conversation"
+        else:
+            target = "talk/announcement"
+        if first_question == last_question:
+            return f"Question {first_question} refers to the following {target}."
+        return (
+            f"Questions {first_question}-{last_question} refer to the following "
+            f"{target}; Questions {first_question} through {last_question} "
+            f"refer to the following {target}."
+        )
 
     def _format_question_row(
         self, context: ExamContext, question: ExamQuestion

@@ -333,7 +333,10 @@ and each context's question text/options to Gemini, asks for structured
 `SrtMappingResponseSchema` JSON, saves the raw response under
 `.codex/srt_mapping_responses/`, and emits mappings for the view to preview.
 For TOEIC Parts 1 and 2, the prompt explicitly asks Gemini to include the full
-spoken question plus A-D choices in the returned context audio window.
+spoken question plus A-D choices in the returned context audio window. For
+TOEIC Parts 3 and 4, it provides an expected spoken group title such as
+`Questions 50-52 refer to the following conversation` and instructs Gemini to
+include that preamble chunk at the start of the detected audio segment.
 
 ### Signals
 
@@ -347,7 +350,7 @@ spoken question plus A-D choices in the returned context audio window.
 
 | Method | Description |
 |---|---|
-| `start_mapping(chunks, contexts, questions_by_context)` | Starts the background Gemini worker unless another mapping request is running. `questions_by_context` contains full question records so Part 1/2 option text can be aligned. |
+| `start_mapping(chunks, contexts, questions_by_context)` | Starts the background Gemini worker unless another mapping request is running. `questions_by_context` contains full question records so Part 1/2 option text and Part 3/4 grouped question ranges can be aligned. |
 | `resolve_times(mappings, chunks)` | Converts returned chunk indexes into `(context_id, audio_start, audio_end)` tuples and silently skips invalid or unresolved mappings. |
 
 The ViewModel owns the API/background work only. The preview table, confirmation

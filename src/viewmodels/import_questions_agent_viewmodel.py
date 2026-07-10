@@ -315,7 +315,7 @@ class ImportQuestionsAgentWorker(QThread):
                 tmp_dir / "part_1_question_images",
             )
             part1_image_paths = image_paths
-            prompt_parts.append(
+            prompt_text += (
                 "\nPart 1 photograph images were split locally for saving only; "
                 "they are not attached to this agent request."
             )
