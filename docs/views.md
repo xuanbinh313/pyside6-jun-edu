@@ -121,14 +121,31 @@ ExamTakeView(viewmodel: ExamTakeViewModel, go_back_callback: Callable[[], None])
 
 | Page | Description |
 |---|---|
-| Overview | Title, description, duration, part count, question count, previous attempts, Practice and Real Test tabs |
+| Overview | Title, description, duration, part count, question count, previous attempts, Practice, Real Test, and Dictation tabs |
 | Test | Scrollable question cards with shuffled options; Practice mode includes per-question Skip |
 | Result | Score/total plus per-question question text, user's canonical letter, correct canonical letter, and correct text |
 | Attempt Analytics | KPI cards, part/overall category breakdowns, answer-sheet tiles, question detail dialogs, and Retake Wrong Answers |
+| Dictation | Transcript-driven listening exercise with range playback, typed input, and character-level diff feedback |
 
 The View submits only the selected shuffled display index. `ExamTakeViewModel` maps it back to the canonical `A`-`D` answer before grading and persistence.
 
 The previous-attempts table View action navigates to the Attempt Analytics page. Badge buttons and answer-sheet Details buttons open a modal with the context, question, user choice, and correct answer. Retake Wrong Answers starts a filtered practice session containing the attempt's incorrect or skipped questions.
+
+---
+
+## `ExerciseDictationView`
+
+**File:** [`src/views/exercise_dictation_view.py`](../src/views/exercise_dictation_view.py)
+
+Learner-facing transcript practice view embedded inside `ExamTakeView`. It receives loaded SRT chunks and the exam audio filename from `ExamTakeViewModel`, resolves the local audio path, and plays one chunk range at a time through `QMediaPlayer`.
+
+| Area | Description |
+|---|---|
+| Navigation | Previous/next icon buttons move through SRT chunks |
+| Playback | Play button seeks to `start_time` and pauses automatically at `end_time` |
+| Input | Multi-line text box submits on Enter; Shift/Ctrl/Alt+Enter keeps editing |
+| Checking | Correctness ignores case, punctuation, extra whitespace, and smart quote differences |
+| Feedback | `diff-match-patch` renders expected-vs-typed character differences with red struck deletions and blue insertions |
 
 ---
 

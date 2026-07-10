@@ -1,4 +1,5 @@
 import html
+from typing import Callable, Optional
 
 import qtawesome as qta
 from PySide6.QtCore import QSize, Qt, QTimer
@@ -25,13 +26,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from src.utils.qt import clear_layout
-from typing import Optional, Callable
 from src.viewmodels.exam_take_viewmodel import ExamTakeViewModel
+from src.views.exercise_dictation_view import ExerciseDictationView
 from ui_gen.ui_exam_take_view import Ui_ExamTakeView
 
 
 class ExamTakeView(QWidget):
-    def __init__(self, viewmodel: ExamTakeViewModel, go_back_callback: Callable[[], None], parent: Optional[QWidget] = None):
+    def __init__(
+        self,
+        viewmodel: ExamTakeViewModel,
+        go_back_callback: Callable[[], None],
+        parent: Optional[QWidget] = None,
+    ):
         super().__init__(parent)
         self.viewmodel: ExamTakeViewModel = viewmodel
         self.go_back_callback: Callable[[], None] = go_back_callback
@@ -39,6 +45,7 @@ class ExamTakeView(QWidget):
         self._tag_checks: list[QCheckBox] = []
         self._answer_groups: dict[int, QButtonGroup] = {}
         self._current_analytics = None
+        self._dictation_view: Optional[ExerciseDictationView] = None
 
         self.ui = Ui_ExamTakeView()
         self.ui.setupUi(self)
@@ -70,10 +77,16 @@ class ExamTakeView(QWidget):
         self.history_layout.setContentsMargins(0, 0, 0, 0)
         self.history_layout.setSpacing(10)
 
+        self.dictation_page = QWidget()
+        self.dictation_layout = QVBoxLayout(self.dictation_page)
+        self.dictation_layout.setContentsMargins(0, 0, 0, 0)
+        self.dictation_layout.setSpacing(10)
+
         self.ui.stacked_widget.addWidget(self.overview_page)
         self.ui.stacked_widget.addWidget(self.test_page)
         self.ui.stacked_widget.addWidget(self.result_page)
         self.ui.stacked_widget.addWidget(self.history_page)
+        self.ui.stacked_widget.addWidget(self.dictation_page)
 
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
@@ -119,15 +132,25 @@ class ExamTakeView(QWidget):
 
         table = QTableWidget()
         table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(["Date", "Duration", "Score", "Accuracy", "View"])
+        table.setHorizontalHeaderLabels(
+            ["Date", "Duration", "Score", "Accuracy", "View"]
+        )
         table.setRowCount(len(self.viewmodel.attempts))
         table.verticalHeader().setVisible(False)
         table.setAlternatingRowColors(True)
 
         for row, attempt in enumerate(self.viewmodel.attempts):
-            table.setItem(row, 0, QTableWidgetItem(attempt.created_at.strftime("%Y-%m-%d %H:%M")))
-            table.setItem(row, 1, QTableWidgetItem(self._format_seconds(attempt.duration_seconds)))
-            table.setItem(row, 2, QTableWidgetItem(f"{attempt.total_correct}/{attempt.total_questions}"))
+            table.setItem(
+                row, 0, QTableWidgetItem(attempt.created_at.strftime("%Y-%m-%d %H:%M"))
+            )
+            table.setItem(
+                row, 1, QTableWidgetItem(self._format_seconds(attempt.duration_seconds))
+            )
+            table.setItem(
+                row,
+                2,
+                QTableWidgetItem(f"{attempt.total_correct}/{attempt.total_questions}"),
+            )
             table.setItem(row, 3, QTableWidgetItem(f"{attempt.accuracy:.1f}%"))
             view_btn = QPushButton()
             view_btn.setIcon(qta.icon("fa5s.eye", color="#1a73e8"))
@@ -145,6 +168,7 @@ class ExamTakeView(QWidget):
         tabs = QTabWidget()
         tabs.addTab(self._practice_tab(), "Practice")
         tabs.addTab(self._real_test_tab(), "Real Test")
+        tabs.addTab(self._dictation_tab(), "Dictation")
         return tabs
 
     def _practice_tab(self):
@@ -213,6 +237,53 @@ class ExamTakeView(QWidget):
         layout.addStretch(1)
         return page
 
+    def _dictation_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(10)
+
+        chunk_count = len(self.viewmodel.srt_chunks)
+        audio_ready = bool(self.viewmodel.exam and self.viewmodel.exam.audio_name)
+        summary = QLabel(
+            f"{chunk_count} transcript chunk(s) available for listening practice."
+        )
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        if not chunk_count:
+            warning = QLabel("Attach or import a transcript before starting dictation.")
+            warning.setWordWrap(True)
+            warning.setStyleSheet("color: #d93025; font-weight: bold;")
+            layout.addWidget(warning)
+        if not audio_ready:
+            warning = QLabel("This exam has no audio file, so playback is unavailable.")
+            warning.setWordWrap(True)
+            warning.setStyleSheet("color: #d93025; font-weight: bold;")
+            layout.addWidget(warning)
+
+        start_btn = QPushButton("Start Dictation")
+        start_btn.setIcon(qta.icon("fa5s.headphones", color="white"))
+        start_btn.setStyleSheet(self._primary_button_style())
+        start_btn.setEnabled(bool(chunk_count and audio_ready))
+        start_btn.clicked.connect(self._start_dictation)
+        layout.addWidget(start_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addStretch(1)
+        return page
+
+    def _start_dictation(self):
+        clear_layout(self.dictation_layout)
+        self._dictation_view = ExerciseDictationView(
+            self.viewmodel.srt_chunks,
+            self.viewmodel.exam.audio_name if self.viewmodel.exam else None,
+            self,
+        )
+        self.dictation_layout.addWidget(self._dictation_view)
+        self.ui.stacked_widget.setCurrentWidget(self.dictation_page)
+        self.ui.timer_label.setVisible(False)
+        self.ui.title_label.setText("Dictation")
+        self.ui.subtitle_label.setText("Listen, type, and compare each transcript chunk")
+        self._dictation_view.start()
+
     def _render_test(self):
         clear_layout(self.test_layout)
         self._answer_groups = {}
@@ -258,7 +329,9 @@ class ExamTakeView(QWidget):
             context = QLabel(question.context_text)
             context.setTextFormat(Qt.TextFormat.PlainText)
             context.setWordWrap(True)
-            context.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            context.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
             context.setStyleSheet(
                 "QLabel { border: 1px solid #dadce0; border-radius: 6px; "
                 "background-color: #fffde7; padding: 10px; color: #202124; "
@@ -289,7 +362,11 @@ class ExamTakeView(QWidget):
         if self.viewmodel.mode == "practice":
             skip_btn = QPushButton("Skip")
             skip_btn.setIcon(qta.icon("fa5s.forward", color="#5f6368"))
-            skip_btn.clicked.connect(lambda checked=False, qid=question.question_id, g=group: self._skip_question(qid, g))
+            skip_btn.clicked.connect(
+                lambda checked=False, qid=question.question_id, g=group: (
+                    self._skip_question(qid, g)
+                )
+            )
             layout.addWidget(skip_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
         return card
@@ -346,7 +423,9 @@ class ExamTakeView(QWidget):
         layout.addWidget(self._breakdown_tabs(analytics))
 
         answer_title = QLabel("Answer Sheet")
-        answer_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #202124;")
+        answer_title.setStyleSheet(
+            "font-size: 15px; font-weight: bold; color: #202124;"
+        )
         layout.addWidget(answer_title)
         layout.addWidget(self._answer_sheet(analytics.answers))
 
@@ -377,15 +456,25 @@ class ExamTakeView(QWidget):
             ),
             2,
         )
-        row.addWidget(self._counter_card("Correct", analytics.total_correct, "#e6f4ea", "#28a745"))
-        row.addWidget(self._counter_card("Wrong", analytics.total_wrong, "#fce8e6", "#dc3545"))
-        row.addWidget(self._counter_card("Skipped", analytics.total_unanswered, "#f1f3f4", "#6c757d"))
+        row.addWidget(
+            self._counter_card("Correct", analytics.total_correct, "#e6f4ea", "#28a745")
+        )
+        row.addWidget(
+            self._counter_card("Wrong", analytics.total_wrong, "#fce8e6", "#dc3545")
+        )
+        row.addWidget(
+            self._counter_card(
+                "Skipped", analytics.total_unanswered, "#f1f3f4", "#6c757d"
+            )
+        )
         return row
 
     def _kpi_card(self, title, lines, background):
         card = QFrame()
         card.setFrameShape(QFrame.Shape.StyledPanel)
-        card.setStyleSheet(f"QFrame {{ background: {background}; border-radius: 6px; }}")
+        card.setStyleSheet(
+            f"QFrame {{ background: {background}; border-radius: 6px; }}"
+        )
         layout = QVBoxLayout(card)
         label = QLabel(title)
         label.setStyleSheet("font-weight: bold; color: #202124;")
@@ -399,11 +488,15 @@ class ExamTakeView(QWidget):
     def _counter_card(self, title, value, background, color):
         card = QFrame()
         card.setFrameShape(QFrame.Shape.StyledPanel)
-        card.setStyleSheet(f"QFrame {{ background: {background}; border-radius: 6px; }}")
+        card.setStyleSheet(
+            f"QFrame {{ background: {background}; border-radius: 6px; }}"
+        )
         layout = QVBoxLayout(card)
         value_label = QLabel(str(value))
         value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        value_label.setStyleSheet(f"font-size: 28px; font-weight: bold; color: {color};")
+        value_label.setStyleSheet(
+            f"font-size: 28px; font-weight: bold; color: {color};"
+        )
         title_label = QLabel(title)
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label.setStyleSheet("font-weight: bold; color: #202124;")
@@ -422,7 +515,14 @@ class ExamTakeView(QWidget):
         table = QTableWidget()
         table.setColumnCount(6)
         table.setHorizontalHeaderLabels(
-            ["Question Category", "Correct", "Wrong", "Skipped", "Accuracy %", "Questions"]
+            [
+                "Question Category",
+                "Correct",
+                "Wrong",
+                "Skipped",
+                "Accuracy %",
+                "Questions",
+            ]
         )
         table.verticalHeader().setVisible(False)
         table.setRowCount(len(breakdown_rows))
@@ -474,7 +574,9 @@ class ExamTakeView(QWidget):
             badge = QPushButton(str(answer.question_number))
             badge.setFixedSize(34, 24)
             badge.setStyleSheet(self._answer_badge_style(answer))
-            badge.clicked.connect(lambda checked=False, item=answer: self._show_answer_dialog(item))
+            badge.clicked.connect(
+                lambda checked=False, item=answer: self._show_answer_dialog(item)
+            )
             list_widget.setItemWidget(item, badge)
 
         return list_widget
@@ -518,7 +620,9 @@ class ExamTakeView(QWidget):
         layout.addWidget(label, 1)
 
         details_btn = QPushButton("Details")
-        details_btn.clicked.connect(lambda checked=False, item=answer: self._show_answer_dialog(item))
+        details_btn.clicked.connect(
+            lambda checked=False, item=answer: self._show_answer_dialog(item)
+        )
         layout.addWidget(details_btn)
         return tile
 
@@ -558,12 +662,12 @@ class ExamTakeView(QWidget):
 
     def _retake_wrong_answers(self, analytics):
         wrong_ids = [
-            answer.question_id
-            for answer in analytics.answers
-            if not answer.is_correct
+            answer.question_id for answer in analytics.answers if not answer.is_correct
         ]
         if not wrong_ids:
-            QMessageBox.information(self, "Retake", "There are no wrong or skipped answers to retake.")
+            QMessageBox.information(
+                self, "Retake", "There are no wrong or skipped answers to retake."
+            )
             return
         self.viewmodel.start_review_questions(wrong_ids)
 
@@ -594,14 +698,10 @@ class ExamTakeView(QWidget):
 
     def _start_practice(self):
         selected_parts = [
-            check.property("part")
-            for check in self._part_checks
-            if check.isChecked()
+            check.property("part") for check in self._part_checks if check.isChecked()
         ]
         selected_tags = [
-            check.property("tag")
-            for check in self._tag_checks
-            if check.isChecked()
+            check.property("tag") for check in self._tag_checks if check.isChecked()
         ]
         self.viewmodel.start_test("practice", selected_parts, selected_tags)
 
@@ -619,7 +719,9 @@ class ExamTakeView(QWidget):
     def _on_timer_tick(self):
         remaining = self.viewmodel.real_test_remaining_seconds()
         if remaining is None:
-            self.ui.timer_label.setText(f"Elapsed {self._format_seconds(self.viewmodel.elapsed_seconds())}")
+            self.ui.timer_label.setText(
+                f"Elapsed {self._format_seconds(self.viewmodel.elapsed_seconds())}"
+            )
             return
         self.ui.timer_label.setText(f"Remaining {self._format_seconds(remaining)}")
         if remaining <= 0:
@@ -635,7 +737,13 @@ class ExamTakeView(QWidget):
             if confirm != QMessageBox.StandardButton.Yes:
                 return
             self._timer.stop()
-        if self.ui.stacked_widget.currentWidget() in (self.history_page, self.result_page):
+        if self.ui.stacked_widget.currentWidget() in (
+            self.history_page,
+            self.result_page,
+            self.dictation_page,
+        ):
+            if self._dictation_view is not None:
+                self._dictation_view.stop()
             self._render_overview()
             return
         self.go_back_callback()

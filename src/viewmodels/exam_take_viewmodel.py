@@ -12,6 +12,7 @@ from src.repositories.sqlite.orm_models import (
     ExamAttempt,
     ExamContext,
     ExamQuestion,
+    ExamSrtChunk,
     UserAnswer,
     UserQuestionTag,
 )
@@ -144,6 +145,7 @@ class ExamTakeViewModel(QObject):
         self.exam: Optional[Exam] = None
         self.contexts: List[ExamContext] = []
         self.questions: List[ExamQuestion] = []
+        self.srt_chunks: List[ExamSrtChunk] = []
         self.attempts: List[ExamAttempt] = []
         self.parts: list[int] = []
         self.tags: List[UserQuestionTag] = []
@@ -173,6 +175,12 @@ class ExamTakeViewModel(QObject):
                 .join(ExamContext, ExamQuestion.context_id == ExamContext.id)
                 .filter(ExamContext.exam_id == self.exam_id)
                 .order_by(ExamQuestion.question_number.asc())
+                .all()
+            )
+            self.srt_chunks = (
+                session.query(ExamSrtChunk)
+                .filter(ExamSrtChunk.exam_id == self.exam_id)
+                .order_by(ExamSrtChunk.index.asc(), ExamSrtChunk.start_time.asc())
                 .all()
             )
             self.parts = sorted({ctx.part for ctx in self.contexts})

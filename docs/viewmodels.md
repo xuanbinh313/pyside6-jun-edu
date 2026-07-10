@@ -157,6 +157,7 @@ Manages the learner-facing exam flow: exam summary, previous attempts, practice 
 | `exam` | `Exam \| None` | Loaded exam metadata |
 | `contexts` | `List[ExamContext]` | Exam contexts ordered by part/index |
 | `questions` | `List[ExamQuestion]` | Exam questions ordered by question number |
+| `srt_chunks` | `List[ExamSrtChunk]` | Transcript chunks ordered by index/start time for dictation |
 | `attempts` | `List[AttemptSummary]` | Previous attempts |
 | `active_questions` | `List[QuestionSession]` | Current test questions with shuffled option mapping |
 
