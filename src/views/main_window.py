@@ -288,6 +288,7 @@ class MainWindow(QMainWindow):
             msg_box.setText("What would you like to do?")
             msg_box.setInformativeText(
                 f"Run in background: set a {self.close_event_minutes}-minute study reminder.\n"
+                "Back: return to the application.\n"
                 "Exit: close the application completely."
             )
             msg_box.setIcon(QMessageBox.Icon.Question)
@@ -295,11 +296,15 @@ class MainWindow(QMainWindow):
             btn_tray = msg_box.addButton(
                 "Run in Background (System Tray)", QMessageBox.ButtonRole.AcceptRole
             )
-            msg_box.addButton("Exit Completely", QMessageBox.ButtonRole.RejectRole)
+            btn_back = msg_box.addButton("Back", QMessageBox.ButtonRole.ResetRole)
+            btn_exit = msg_box.addButton(
+                "Exit Completely", QMessageBox.ButtonRole.RejectRole
+            )
             msg_box.setDefaultButton(btn_tray)
             msg_box.exec()
 
-            if msg_box.clickedButton() == btn_tray:
+            clicked_button = msg_box.clickedButton()
+            if clicked_button == btn_tray:
                 minutes = self.close_event_minutes
 
                 # Start the background countdown with the configured number of minutes.
@@ -318,9 +323,11 @@ class MainWindow(QMainWindow):
 
                 # Prevent the application from exiting completely.
                 event.ignore()
-            else:
+            elif clicked_button == btn_exit:
                 # Exit completely.
                 QApplication.quit()
+            elif clicked_button == btn_back or clicked_button is None:
+                event.ignore()
 
     def wakeup_and_focus_app(self):
         """Force window into user focus and display study contents."""
