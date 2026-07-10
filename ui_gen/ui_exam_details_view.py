@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QSpacerItem,
     QTabWidget,
     QVBoxLayout,
-    QWidget
+    QWidget,
 )
 
 

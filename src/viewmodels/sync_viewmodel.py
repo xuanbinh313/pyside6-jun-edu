@@ -1,5 +1,4 @@
-from typing import Any
-from typing import Callable
+from typing import Any, Callable
 
 from PySide6.QtCore import QObject, QThread, Signal
 from src.repositories.supabase.sync import (
@@ -25,10 +24,10 @@ class SyncWorker(QThread):
 
 class SyncViewModel(QObject):
     sync_started = Signal()
-    sync_finished = Signal(list[Any])
+    sync_finished = Signal(list)
     sync_failed = Signal(str)
     local_sync_started = Signal()
-    local_sync_finished = Signal(list[Any])
+    local_sync_finished = Signal(list)
     local_sync_failed = Signal(str)
 
     def __init__(self):
@@ -72,6 +71,7 @@ class SyncViewModel(QObject):
 
     def _on_local_finished(self, results: list[Any]):
         self.is_syncing = False
+        print("results", results)
         self.local_sync_finished.emit(results)
         self._worker = None
 

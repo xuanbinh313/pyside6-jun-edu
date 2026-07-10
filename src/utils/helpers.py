@@ -15,7 +15,6 @@ from urllib.parse import unquote
 from urllib.request import Request, urlopen
 
 from slugify import slugify
-
 from src.models.exam import ExamQuestion
 
 

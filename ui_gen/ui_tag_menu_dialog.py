@@ -9,7 +9,7 @@
 ################################################################################
 
 from PySide6.QtCore import QCoreApplication, QMetaObject
-from PySide6.QtWidgets import QLabel, QLineEdit, QVBoxLayout, QDialog
+from PySide6.QtWidgets import QDialog, QLabel, QLineEdit, QVBoxLayout
 
 
 class Ui_TagMenuDialog(object):

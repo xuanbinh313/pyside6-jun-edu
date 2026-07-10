@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
-    QWidget
+    QWidget,
 )
 
 
