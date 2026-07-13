@@ -8,20 +8,16 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import QCoreApplication, QMetaObject
-from PySide6.QtWidgets import (
-    QCheckBox,
-    QFormLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QSpinBox,
-    QTextEdit,
-    QVBoxLayout,
-    QWidget,
-)
-
+from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
+    QMetaObject, QObject, QPoint, QRect,
+    QSize, QTime, QUrl, Qt)
+from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
+    QFont, QFontDatabase, QGradient, QIcon,
+    QImage, QKeySequence, QLinearGradient, QPainter,
+    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtWidgets import (QApplication, QCheckBox, QFormLayout, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QSizePolicy,
+    QSpinBox, QTextEdit, QVBoxLayout, QWidget)
 
 class Ui_ExamFormWidget(object):
     def setupUi(self, ExamFormWidget: QWidget):
@@ -127,7 +123,7 @@ class Ui_ExamFormWidget(object):
         ExamFormWidget.setWindowTitle(QCoreApplication.translate("ExamFormWidget", u"Exam Details", None))
         self.title_label.setText(QCoreApplication.translate("ExamFormWidget", u"Title:", None))
         self.description_label.setText(QCoreApplication.translate("ExamFormWidget", u"Description:", None))
-        self.audio_label.setText(QCoreApplication.translate("ExamFormWidget", u"Audio URL:", None))
+        self.audio_label.setText(QCoreApplication.translate("ExamFormWidget", u"Audio Name:", None))
         self.upload_audio_btn.setText(QCoreApplication.translate("ExamFormWidget", u"Upload Audio", None))
         self.duration_label.setText(QCoreApplication.translate("ExamFormWidget", u"Duration (minutes):", None))
         self.published_label.setText(QCoreApplication.translate("ExamFormWidget", u"Published:", None))

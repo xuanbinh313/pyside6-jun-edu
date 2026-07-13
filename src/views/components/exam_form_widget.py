@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QWidget,
 )
-from src.utils.helpers import get_local_media_path, local_media_filename_from_source
+from src.utils.helpers import local_media_filename_from_source
 from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from ui_gen.ui_exam_form_widget import Ui_ExamFormWidget
@@ -72,9 +72,7 @@ class ExamFormWidget(QWidget):
         if self.viewmodel.exam:
             self.title_input.setText(self.viewmodel.exam.title or "")
             self.description_input.setText(self.viewmodel.exam.description or "")
-            audio_name = self.viewmodel.exam.audio_name or ""
-            audio_path = str(get_local_media_path(audio_name)) if audio_name else ""
-            self.audio_input.setText(audio_path)
+            self.audio_input.setText(self.viewmodel.exam.audio_name or "")
             self.duration_input.setValue(self.viewmodel.exam.duration_minutes or 0)
             self.published_checkbox.setChecked(bool(self.viewmodel.exam.is_published))
         self.external_viewmodel.target_exam_id = self.viewmodel.exam_id
@@ -207,8 +205,8 @@ class ExamFormWidget(QWidget):
         QMessageBox.critical(self, "External Audio Import", msg)
 
     def on_external_exam_saved(self, exam_id: str):
-        if self.external_viewmodel.imported_audio_path:
-            self.audio_input.setText(self.external_viewmodel.imported_audio_path)
+        if self.external_viewmodel.imported_audio_name:
+            self.audio_input.setText(self.external_viewmodel.imported_audio_name)
         count = self.external_viewmodel.imported_chunk_count
         self.external_progress_label.setText(f"Imported audio and {count} transcript chunks.")
         self.viewmodel.load_exam()
@@ -233,7 +231,7 @@ class ExamFormWidget(QWidget):
         if not audio_source:
             return None
         audio_name = local_media_filename_from_source(audio_source)
-        self.audio_input.setText(str(get_local_media_path(audio_name)))
+        self.audio_input.setText(audio_name)
         return audio_name
 
     def on_save(self):

@@ -75,6 +75,7 @@ paddlex==3.7.2
 pandas==2.3.3
 pefile==2024.8.26
 pillow==11.3.0
+platformdirs==4.4.0
 postgrest==2.31.0
 prettytable==3.16.0
 propcache==0.4.1

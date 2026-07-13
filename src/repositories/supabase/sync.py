@@ -102,6 +102,26 @@ def _serialize_mediafile_row(row: MediaFile) -> dict[str, Any]:
     return data
 
 
+def _serialize_sync_row(row: Any, user_id: str) -> dict[str, Any]:
+    data = _serialize_row(row)
+    if isinstance(row, UserQuestionTag):
+        data.pop("dirty", None)
+        data["user_id"] = user_id
+    return data
+
+
+def _filter_sync_rows(session, model: type, rows: list[Any]) -> list[Any]:
+    if model is not UserQuestionTag:
+        return rows
+
+    context_ids = {context_id for (context_id,) in session.query(ExamContext.id).all()}
+    return [
+        row
+        for row in rows
+        if getattr(row, "context_id", None) in context_ids
+    ]
+
+
 def _chunked(rows: list[dict[str, Any]], size: int) -> Iterable[list[dict[str, Any]]]:
     for index in range(0, len(rows), size):
         yield rows[index : index + size]
@@ -171,6 +191,22 @@ def _apply_current_user_id(rows: list[Any], user_id: str) -> None:
             row.user_id = user_id
 
 
+def _remote_mediafile_exists(
+    supabase_client: Client,
+    user_id: str,
+    filename: str,
+) -> bool:
+    response = (
+        supabase_client.table(MediaFile.__tablename__)
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("filename", filename)
+        .range(0, 0)
+        .execute()
+    )
+    return bool(response.data)
+
+
 def _sync_dirty_mediafiles(
     session,
     supabase_client: Client,
@@ -189,9 +225,16 @@ def _sync_dirty_mediafiles(
     synced_count = 0
     for row in dirty_rows:
         row.user_id = user_id
+        if _remote_mediafile_exists(supabase_client, user_id, row.filename):
+            row.dirty = False
+            session.commit()
+            continue
         if not row.is_deleted:
+            local_media_path = get_local_media_path(row.filename)
+            if not local_media_path.exists():
+                continue
             upload_media_file(
-                local_path=get_local_media_path(row.filename),
+                local_path=local_media_path,
                 user_id=user_id,
                 filename=row.filename,
             )
@@ -314,9 +357,10 @@ def sync_sqlite_to_supabase(batch_size: int = 500) -> list[TableSyncResult]:
         for model in SYNC_MODELS:
             table_name = model.__tablename__
             local_rows = session.query(model).all()
+            local_rows = _filter_sync_rows(session, model, local_rows)
             if _has_user_id_column(model):
                 _apply_current_user_id(local_rows, user_id)
-            rows = [_serialize_row(row) for row in local_rows]
+            rows = [_serialize_sync_row(row, user_id) for row in local_rows]
             _upsert_rows(
                 supabase_client=supabase_client,
                 table_name=table_name,

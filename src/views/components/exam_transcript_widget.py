@@ -434,8 +434,10 @@ class ExamTranscriptWidget(QWidget):
         self._has_changes = False
         self.ui.save_btn.setVisible(False)
 
-        if self.viewmodel.exam and self.viewmodel.exam.audio_name:
-            path = get_local_media_path(self.viewmodel.exam.audio_name)
+        self.player.setSource(QUrl())
+        audio_name = self.viewmodel.exam.audio_name if self.viewmodel.exam else None
+        if audio_name:
+            path = get_local_media_path(audio_name)
             if path.exists():
                 self.player.setSource(QUrl.fromLocalFile(str(path)))
 

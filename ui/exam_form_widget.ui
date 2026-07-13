@@ -39,7 +39,7 @@
      <item row="2" column="0">
       <widget class="QLabel" name="audio_label">
        <property name="text">
-        <string>Audio URL:</string>
+        <string>Audio Name:</string>
        </property>
       </widget>
      </item>

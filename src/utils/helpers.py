@@ -8,12 +8,12 @@ import html
 import mimetypes
 import re
 import shutil
-import tempfile
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import unquote
 from urllib.request import Request, urlopen
 
+from platformdirs import user_data_dir
 from slugify import slugify
 from src.models.exam import ExamQuestion
 
@@ -68,7 +68,7 @@ def get_valid_name(filename: str) -> str:
 
 
 def get_local_media_dir() -> Path:
-    media_dir = Path(tempfile.gettempdir()) / "jun_edu_media"
+    media_dir = Path(user_data_dir("jun-toeic", appauthor=False, roaming=True))
     media_dir.mkdir(parents=True, exist_ok=True)
     return media_dir
 

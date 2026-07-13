@@ -68,7 +68,7 @@ class ExamAddExternalViewModel(QObject):
         self.is_analyzed: bool = False
         self.current_task_id: Optional[str] = None
         self._worker: Optional[Worker] = None
-        self.imported_audio_path: str = ""
+        self.imported_audio_name: str = ""
         self.imported_chunk_count = 0
 
     def set_audio_file(self, path: str):
@@ -214,7 +214,7 @@ class ExamAddExternalViewModel(QObject):
 
     def _on_add_update_finished(self, result):
         self.is_loading = False
-        self.imported_audio_path = result.get("audio_path", "")
+        self.imported_audio_name = result.get("audio_name", "")
         self.imported_chunk_count = int(result.get("chunk_count", 0) or 0)
         self.state_changed.emit()
         self.exam_saved.emit(result["exam_id"])
@@ -226,6 +226,6 @@ class ExamAddExternalViewModel(QObject):
         self.is_loading = False
         self.is_analyzed = False
         self.current_task_id = None
-        self.imported_audio_path = ""
+        self.imported_audio_name = ""
         self.imported_chunk_count = 0
         self.state_changed.emit()
