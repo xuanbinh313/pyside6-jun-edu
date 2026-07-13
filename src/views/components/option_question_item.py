@@ -2,7 +2,7 @@ import html
 import json
 from typing import Callable, Optional
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QSize, Qt
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -34,6 +34,11 @@ class OptionVocabularyTextBrowser(VocabularyTextBrowser):
             Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint,
         )
         self.destroyed.connect(self.add_vocabulary_button.close)
+
+    def sizeHint(self) -> QSize:
+        hint = super(VocabularyTextBrowser, self).sizeHint()
+        height = int(self.document().documentLayout().documentSize().height()) + 6
+        return QSize(hint.width(), max(height, 24))
 
     def _position_add_button(self) -> None:
         cursor = self.textCursor()
@@ -85,6 +90,7 @@ class OptionQuestionItem(QWidget):
     def _build(self, q: ExamQuestion) -> None:
         self.ui = Ui_OptionQuestionItem()
         self.ui.setupUi(self)
+        self.ui.options_layout.setSpacing(1)
 
         self.stem_browser = self._replace_label(
             self.ui.stem,
@@ -152,6 +158,7 @@ class OptionQuestionItem(QWidget):
             option_label = OptionVocabularyTextBrowser(
                 self._save_selected_vocabulary, row
             )
+            option_label.document().setDocumentMargin(0)
             option_label.setPlainText(f"{display_letter}.  {opt_text}")
             option_label.setStyleSheet("""
                 QTextBrowser {

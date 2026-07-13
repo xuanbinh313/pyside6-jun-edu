@@ -151,6 +151,28 @@ class VocabularyTextBrowser(QTextBrowser):
         self.add_vocabulary_button.hide()
 
 
+class NoteTextBrowser(QTextBrowser):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setReadOnly(True)
+        self.setOpenExternalLinks(False)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.document().documentLayout().documentSizeChanged.connect(
+            self._update_document_height
+        )
+
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        height = int(self.document().documentLayout().documentSize().height()) + 22
+        return QSize(hint.width(), max(height, 44))
+
+    def _update_document_height(self) -> None:
+        self.setFixedHeight(self.sizeHint().height())
+
+
 class ExamContextSection(QWidget):
     def __init__(
         self,
@@ -182,15 +204,10 @@ class ExamContextSection(QWidget):
             self._build_body(content_html, on_anchor, on_add_vocabulary)
         )
 
-        self.note_label = QLabel()
-        self.note_label.setTextFormat(Qt.TextFormat.RichText)
-        self.note_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        self.note_label.setWordWrap(True)
+        self.note_label = NoteTextBrowser(self)
         self.note_label.setVisible(False)
         self.note_label.setStyleSheet("""
-            QLabel {
+            QTextBrowser {
                 border: 1px solid #dadce0;
                 border-radius: 6px;
                 background-color: #f8f9fa;

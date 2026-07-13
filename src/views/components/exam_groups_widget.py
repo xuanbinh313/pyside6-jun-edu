@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QTabBar,
+    QTextBrowser,
     QWidget,
 )
 from src.models.exam import (
@@ -67,7 +68,7 @@ class ImportDialogResult(Protocol):
 
 QuestionWidgetMap = dict[int, OptionQuestionItem]
 ContextWidgetMap = dict[str, ExamContextSection]
-ContextNoteLabelMap = dict[str, QLabel]
+ContextNoteLabelMap = dict[str, QTextBrowser]
 QuestionsByContextMap = dict[str, list[ExamQuestion]]
 
 
@@ -724,7 +725,7 @@ class ExamGroupsWidget(QWidget):
             return
 
         safe_note = html.escape(note).replace("\n", "<br>")
-        label.setText(f"{safe_note}")
+        label.setHtml(safe_note)
         label.setVisible(True)
         self._restore_options_scroll_position(scroll_position)
 
