@@ -204,9 +204,12 @@ current_task_id set → pick_btn disabled (audio locked)
 
 **File:** [`src/views/vocabulary_list_view.py`](../src/views/vocabulary_list_view.py)
 
-Menu-accessible LingQ-style vocabulary table with search, editable meanings,
-source context, five colored learning-status buttons, and delete controls. Its
-layout is sourced from `ui/vocabulary_list_view.ui`.
+Menu-accessible LingQ-style vocabulary page with search and scrollable cards.
+Each card shows the word, editable meaning, optional source context, five colored
+learning-status buttons, and a delete control. The header includes an **AI
+Translate Empty** action that starts the ViewModel's Gemini worker for vocabulary
+items whose meanings are blank. Its layout is sourced from
+`ui/vocabulary_list_view.ui`.
 
 ### `ExamFormWidget`
 

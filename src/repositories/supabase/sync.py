@@ -1,3 +1,8 @@
+from src.models.exam import ContextContent
+from src.repositories.sqlite.sqlite_repo import _context_from_orm
+from asyncio.log import logger
+from src.repositories.sqlite.sqlite_repo import _mediafile_from_orm
+from sqlalchemy.orm import Session
 import datetime
 import os
 from dataclasses import dataclass
@@ -110,7 +115,7 @@ def _serialize_sync_row(row: Any, user_id: str) -> dict[str, Any]:
     return data
 
 
-def _filter_sync_rows(session, model: type, rows: list[Any]) -> list[Any]:
+def _filter_sync_rows(session: Session, model: type, rows: list[Any]) -> list[Any]:
     if model is not UserQuestionTag:
         return rows
 
@@ -208,7 +213,7 @@ def _remote_mediafile_exists(
 
 
 def _sync_dirty_mediafiles(
-    session,
+    session: Session,
     supabase_client: Client,
     batch_size: int,
     user_id: str,
@@ -225,19 +230,24 @@ def _sync_dirty_mediafiles(
     synced_count = 0
     for row in dirty_rows:
         row.user_id = user_id
-        if _remote_mediafile_exists(supabase_client, user_id, row.filename):
+        media = _mediafile_from_orm(row)
+        if _remote_mediafile_exists(supabase_client, user_id, media.filename):
             row.dirty = False
             session.commit()
             continue
-        if not row.is_deleted:
-            local_media_path = get_local_media_path(row.filename)
+        if not media.is_deleted:
+            local_media_path = get_local_media_path(media.filename)
             if not local_media_path.exists():
                 continue
-            upload_media_file(
-                local_path=local_media_path,
-                user_id=user_id,
-                filename=row.filename,
-            )
+            try:
+                upload_media_file(
+                    local_path=local_media_path,
+                    user_id=user_id,
+                    filename=media.filename,
+                )
+            except Exception as e:
+                logger.error(f"Failed to upload media file {media.filename}: {e}")
+                continue
 
         mediafile_payload = _serialize_mediafile_row(row)
         _upsert_rows(
@@ -257,7 +267,7 @@ def _sync_dirty_mediafiles(
 
 
 def _sync_remote_mediafiles_to_sqlite(
-    session,
+    session: Session,
     supabase_client: Client,
     batch_size: int,
     user_id: str,
@@ -294,7 +304,7 @@ def _path_leaf(value: str) -> str:
     return value.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
 
 
-def _rewrite_remote_media_references(session) -> None:
+def _rewrite_remote_media_references(session: Session) -> None:
     mediafiles = (
         session.query(MediaFile)
         .filter(MediaFile.is_deleted.is_(False))
@@ -302,23 +312,25 @@ def _rewrite_remote_media_references(session) -> None:
         .all()
     )
     for mediafile in mediafiles:
-        local_path = str(get_local_media_path(mediafile.filename))
+        media = _mediafile_from_orm(mediafile)
+        local_path = str(get_local_media_path(media.filename))
         contexts = (
             session.query(ExamContext)
             .filter(ExamContext.context_type == "IMAGE_DIAGRAM")
             .all()
         )
-        for context in contexts:
-            content = context.content if isinstance(context.content, dict) else {}
-            if content.get("image_filename") != mediafile.filename:
+        for row in contexts:
+            context = _context_from_orm(row)
+            content = context.content if isinstance(context.content, ContextContent) else ContextContent(text="", image_filename="", image_path=None)
+            if content.image_filename != media.filename:
                 continue
-            content["image_path"] = local_path
-            context.content = dict(content)
+            content.image_path = local_path
+            context.content = content
     session.commit()
 
 
 def _sync_remote_table_to_sqlite(
-    session,
+    session: Session,
     supabase_client: Client,
     model: type,
     batch_size: int,

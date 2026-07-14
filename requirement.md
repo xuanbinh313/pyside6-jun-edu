@@ -1,62 +1,48 @@
-# Implementation Plan - Dictation Exercise Feature
+Here is the updated implementation plan for your review:
 
-This plan outlines the implementation of a new "Dictation" exercise feature within the Exam Take View. It allows users to practice and learn transcripts by typing what they hear, with precise character-level diff highlighting using the `diff-match-patch` library.
+# Implementation Plan - Vocabulary List View Update
 
-## User Review Required
-
-> [!IMPORTANT]
-> - The new "Dictation" mode will load the SRT (transcript) chunks associated with the exam.
-> - An interactive `ExerciseDictationView` will be displayed when the user clicks "Start Dictation".
-> - Character-level comparison will use `diff-match-patch` to highlight omitted/incorrect characters in red strikethrough and inserted characters in blue.
-> - Normalizing text (ignoring extra whitespace and smart quotes) will be performed before comparing for the correctness check.
+This plan outlines the changes to [vocabulary_list_view.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/vocabulary_list_view.py) to replace the QTableWidget with a modern, responsive card-based layout, and to add a button for auto-translating vocabulary words with empty meanings using the Gemini AI agent API.
 
 ## Proposed Changes
 
----
+### View Layer
 
-### 1. Database & ViewModel Layer
+#### [MODIFY] [vocabulary_list_view.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/vocabulary_list_view.py)
 
-#### [MODIFY] [exam_take_viewmodel.py](file:///d:/my-project/workspace-anki/jun-edu/src/viewmodels/exam_take_viewmodel.py)
-- Update `load_exam()` to query and load `ExamSrtChunk` records associated with the current `exam_id` from the database.
-- Store these chunks as `self.srt_chunks: List[ExamSrtChunk] = []`.
-- Expose properties/methods to retrieve the list of srt chunks for dictation.
-
----
-
-### 2. View Layer
-
-#### [NEW] [exercise_dictation_view.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/exercise_dictation_view.py)
-Create `ExerciseDictationView` subclassing `QWidget`:
-- **Audio Playback**: Embed a `QMediaPlayer` and `QAudioOutput` to handle range-based playback using the `start_time` and `end_time` (converted to milliseconds) from the selected `ExamSrtChunk`.
-- **Top Right Navigation**: Next/Prev buttons with icons (e.g. using `qtawesome` icons) to cycle through the chunks.
-- **Audio Control**: A prominent "Play" button to play/replay the current chunk's audio segment.
-- **Multi-line Dictation Input**: A `QTextEdit` input. Install an event filter or subclass it to capture `Enter`/`Return` (without Shift/Ctrl) to submit the typed text.
-- **Correctness Evaluation**:
-  - Compare user input to `chunk.text` (case-insensitive and ignoring punctuation differences).
-  - Show a status label ("Correct!" in green or "Incorrect" in red).
-  - Use `diff-match-patch` to compute differences and display a beautiful HTML representation in a read-only `QTextEdit` or `QLabel` below, highlighting insertions (blue background) and deletions (red background with strikethrough).
-
-#### [MODIFY] [exam_take_view.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/exam_take_view.py)
-- Import `ExerciseDictationView`.
-- In `_setup_pages()`, initialize `dictation_page` and add it to `self.ui.stacked_widget`.
-- In `_mode_tabs()`, add a third tab labeled `"Dictation"` next to `"Real Test"`.
-- Implement `_dictation_tab()` returning a page containing exam transcript info, warning message if no transcripts/audio exist, and a `"Start Dictation"` button.
-- Wire the `"Start Dictation"` button to switch the stacked widget to the dictation exercise screen and trigger audio playback of the first chunk.
-- Update `_on_back_clicked` to handle returning from the dictation screen to the overview page.
-
----
+- **UI Setup**:
+  - Remove the table widget `self.ui.table` from the layout programmatically (or ignore it) and replace it with a dynamically populated `QScrollArea`. Set its widget resizable to `True`.
+  - Create a container `QWidget` with a `QVBoxLayout` inside the scroll area to hold the cards.
+  - Create a new header button `self.translate_button = QPushButton("AI Translate Empty")` with a robot icon (`fa5s.robot`) and add it to `self.ui.header_layout` next to the search bar.
+- **Card Rendering**:
+  - Update `_populate()` to clear the card container layout instead of table row items.
+  - For each `Vocabulary` item, create a custom `QFrame` card:
+    - **Styling**: Sleek card layout (border, padding, border-radius, background colors).
+    - **Word**: Bold title label.
+    - **Meaning / Edit Mode**: 
+      - Initially show the meaning as a read-only `QLabel` next to an **"Edit"** button.
+      - Clicking the "Edit" button replaces the label with a `QLineEdit` and changes the button to a "Save" icon/text.
+      - Editing is saved to the database calling `self.viewmodel.update_meaning(vocab.id, line_edit.text())`, reverting the field back to a read-only label.
+    - **Source Context**: Word-wrapped secondary text label.
+    - **Status**: The 5-button status indicator widget.
+    - **Delete**: Trash icon button.
+- **AI Translation Handler**:
+  - Add a worker class `VocabularyTranslateWorker(QThread)` inside `vocabulary_list_view.py` or as a helper:
+    - Queries the words needing translation.
+    - Calls the Gemini API using `google.genai` with system instructions to translate the vocabulary words to Vietnamese.
+    - Emits a signal with the translations or updates them via the viewmodel.
+  - Connect the translate button to spawn the worker, showing a progress dialog or status message during the translation process.
+  - Call `self.viewmodel.load_vocabulary()` once completed.
 
 ## Verification Plan
 
 ### Automated Tests
-- Syntax validation check:
+- Run syntax validation check:
   `.\.venv\Scripts\python.exe -B -c "import pathlib; [compile(path.read_text(encoding='utf-8-sig'), str(path), 'exec') for root in ('src','ui_gen') for path in pathlib.Path(root).rglob('*.py')]; print('syntax ok')"`
-- Pyright strict typing check:
+- Run Pyright strict typing check:
   `.\.venv\Scripts\python.exe -m pyright`
 
 ### Manual Verification
-1. Navigate to an exam details page and choose to take the exam.
-2. Select the "Dictation" tab next to the "Real Test" tab.
-3. Click "Start Dictation". Verify it loads the dictation page and plays the first chunk's audio.
-4. Test navigation using the Prev/Next buttons.
-5. Type in the input text area and press Enter. Verify the comparison output displays with correct/incorrect status and beautiful character-level diff highlights.
+1. Open the vocabulary view in the app and verify the list is displayed as elegant cards.
+2. Edit a meaning inside a card's text field and check that it updates/saves.
+3. Click "AI Translate Empty" and verify that words with empty meanings get automated Vietnamese translations filled in.

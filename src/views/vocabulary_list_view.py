@@ -5,14 +5,19 @@ from collections.abc import Callable
 import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
-    QHeaderView,
+    QLabel,
+    QLineEdit,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
-    QTableWidgetItem,
+    QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 from src.models.exam import Vocabulary
+from src.utils.qt import clear_layout
 from src.viewmodels.vocabulary_list_viewmodel import VocabularyListViewModel
 from ui_gen.ui_vocabulary_list_view import Ui_VocabularyListView
 
@@ -37,60 +42,138 @@ class VocabularyListView(QWidget):
         self.ui.setupUi(self)
         self.viewmodel = viewmodel
         self._navigate_back = navigate_back
-        self._is_populating = False
+        self._progress_dialog: QProgressDialog | None = None
 
-        header = self.ui.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self.ui.table.verticalHeader().setVisible(False)
+        self.ui.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.ui.cards_layout.setContentsMargins(4, 8, 4, 8)
+        self.ui.cards_layout.setSpacing(10)
+        self.ui.translate_button.setIcon(qta.icon("fa5s.robot", color="#ffffff"))
+        self.ui.translate_button.setStyleSheet(
+            "QPushButton { background: #1a73e8; color: white; border: none; "
+            "border-radius: 4px; padding: 7px 12px; font-weight: 600; }"
+            "QPushButton:disabled { background: #9aa0a6; }"
+        )
 
         self.ui.back_button.clicked.connect(self._navigate_back)
         self.ui.search_input.textChanged.connect(self.viewmodel.set_search_query)
-        self.ui.table.itemChanged.connect(self._on_item_changed)
+        self.ui.translate_button.clicked.connect(self.viewmodel.translate_empty_meanings)
         self.viewmodel.data_changed.connect(self._populate)
         self.viewmodel.error_occurred.connect(self._show_error)
+        self.viewmodel.translation_started.connect(self._on_translation_started)
+        self.viewmodel.translation_progress.connect(self._on_translation_progress)
+        self.viewmodel.translation_finished.connect(self._on_translation_finished)
         self.viewmodel.load_vocabulary()
 
     def _populate(self) -> None:
-        self._is_populating = True
-        self.ui.table.blockSignals(True)
-        try:
-            self.ui.table.setRowCount(len(self.viewmodel.vocabulary))
-            for row, vocabulary in enumerate(self.viewmodel.vocabulary):
-                self._populate_row(row, vocabulary)
-            self.ui.table.resizeRowsToContents()
-        finally:
-            self.ui.table.blockSignals(False)
-            self._is_populating = False
+        clear_layout(self.ui.cards_layout)
+        if not self.viewmodel.vocabulary:
+            empty_label = QLabel("No vocabulary found.")
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_label.setStyleSheet("color: #5f6368; padding: 36px;")
+            self.ui.cards_layout.addWidget(empty_label)
+            self.ui.cards_layout.addStretch(1)
+            return
 
-    def _populate_row(self, row: int, vocabulary: Vocabulary) -> None:
-        word_item = QTableWidgetItem(vocabulary.word)
-        word_item.setFlags(word_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        word_item.setData(Qt.ItemDataRole.UserRole, vocabulary.id)
-        self.ui.table.setItem(row, 0, word_item)
+        for vocabulary in self.viewmodel.vocabulary:
+            self.ui.cards_layout.addWidget(self._card_widget(vocabulary))
+        self.ui.cards_layout.addStretch(1)
 
-        meaning_item = QTableWidgetItem(vocabulary.meaning or "")
-        meaning_item.setToolTip("Double-click to edit the meaning")
-        self.ui.table.setItem(row, 1, meaning_item)
+    def _card_widget(self, vocabulary: Vocabulary) -> QFrame:
+        card = QFrame()
+        card.setObjectName("vocabularyCard")
+        card.setFrameShape(QFrame.Shape.StyledPanel)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        card.setStyleSheet(
+            "QFrame#vocabularyCard { background: #ffffff; border: 1px solid #dadce0; "
+            "border-radius: 8px; }"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
 
-        source_item = QTableWidgetItem(vocabulary.source_text or "")
-        source_item.setFlags(source_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        source_item.setToolTip(vocabulary.source_text or "")
-        self.ui.table.setItem(row, 2, source_item)
-        self.ui.table.setCellWidget(row, 3, self._status_widget(vocabulary))
-        self.ui.table.setCellWidget(row, 4, self._delete_widget(vocabulary))
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(8)
+        word_label = QLabel(vocabulary.word)
+        word_label.setWordWrap(True)
+        word_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        word_label.setStyleSheet("font-size: 18px; font-weight: 700; color: #202124;")
+        header_layout.addWidget(word_label, 1)
+        header_layout.addWidget(self._delete_button(vocabulary), 0, Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(header_layout)
+
+        layout.addWidget(self._meaning_widget(vocabulary))
+
+        source_text = (vocabulary.source_text or "").strip()
+        if source_text:
+            source_label = QLabel(source_text)
+            source_label.setWordWrap(True)
+            source_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            source_label.setStyleSheet(
+                "color: #5f6368; background: #f8fafd; border-radius: 6px; "
+                "padding: 8px;"
+            )
+            layout.addWidget(source_label)
+
+        footer_layout = QHBoxLayout()
+        footer_layout.setSpacing(8)
+        footer_layout.addWidget(self._status_widget(vocabulary), 0)
+        footer_layout.addStretch(1)
+        layout.addLayout(footer_layout)
+        return card
+
+    def _meaning_widget(self, vocabulary: Vocabulary) -> QWidget:
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        meaning_text = (vocabulary.meaning or "").strip()
+        meaning_label = QLabel(meaning_text or "No meaning yet")
+        meaning_label.setWordWrap(True)
+        meaning_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        meaning_label.setStyleSheet(
+            "color: #202124;" if meaning_text else "color: #9aa0a6; font-style: italic;"
+        )
+        meaning_edit = QLineEdit(meaning_text)
+        meaning_edit.setVisible(False)
+        meaning_edit.setPlaceholderText("Enter meaning...")
+
+        edit_button = QPushButton()
+        edit_button.setIcon(qta.icon("fa5s.edit", color="#1a73e8"))
+        edit_button.setToolTip("Edit meaning")
+        edit_button.setFixedSize(34, 30)
+
+        def start_edit() -> None:
+            meaning_label.setVisible(False)
+            meaning_edit.setVisible(True)
+            meaning_edit.setFocus()
+            meaning_edit.selectAll()
+            edit_button.setIcon(qta.icon("fa5s.save", color="#188038"))
+            edit_button.setToolTip("Save meaning")
+            try:
+                edit_button.clicked.disconnect()
+            except RuntimeError:
+                pass
+            edit_button.clicked.connect(save_edit)
+
+        def save_edit() -> None:
+            self.viewmodel.update_meaning(vocabulary.id, meaning_edit.text())
+
+        meaning_edit.returnPressed.connect(save_edit)
+        edit_button.clicked.connect(start_edit)
+
+        layout.addWidget(meaning_label, 1)
+        layout.addWidget(meaning_edit, 1)
+        layout.addWidget(edit_button, 0, Qt.AlignmentFlag.AlignTop)
+        return container
 
     def _status_widget(self, vocabulary: Vocabulary) -> QWidget:
         container = QWidget()
         layout = QHBoxLayout(container)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(3)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
         for status in range(1, 6):
-            label = "✓" if status == 5 else str(status)
-            button = QPushButton(label)
+            button = QPushButton(str(status))
             button.setFixedSize(30, 28)
             button.setToolTip("Known" if status == 5 else f"Status {status}")
             color = self.STATUS_COLORS[status]
@@ -112,28 +195,15 @@ class VocabularyListView(QWidget):
             layout.addWidget(button)
         return container
 
-    def _delete_widget(self, vocabulary: Vocabulary) -> QWidget:
-        container = QWidget()
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(4, 2, 4, 2)
+    def _delete_button(self, vocabulary: Vocabulary) -> QPushButton:
         button = QPushButton()
         button.setIcon(qta.icon("fa5s.trash-alt", color="#d93025"))
         button.setToolTip(f'Delete "{vocabulary.word}"')
+        button.setFixedSize(34, 30)
         button.clicked.connect(
             lambda _checked=False, item=vocabulary: self._confirm_delete(item)
         )
-        layout.addWidget(button)
-        return container
-
-    def _on_item_changed(self, item: QTableWidgetItem) -> None:
-        if self._is_populating or item.column() != 1:
-            return
-        id_item = self.ui.table.item(item.row(), 0)
-        if id_item is None:
-            return
-        vocab_id = id_item.data(Qt.ItemDataRole.UserRole)
-        if isinstance(vocab_id, str):
-            self.viewmodel.update_meaning(vocab_id, item.text())
+        return button
 
     def _confirm_delete(self, vocabulary: Vocabulary) -> None:
         answer = QMessageBox.question(
@@ -144,5 +214,45 @@ class VocabularyListView(QWidget):
         if answer == QMessageBox.StandardButton.Yes:
             self.viewmodel.delete_vocabulary(vocabulary.id)
 
+    def _on_translation_started(self, count: int) -> None:
+        self.ui.translate_button.setEnabled(False)
+        self._progress_dialog = QProgressDialog(
+            f"Translating {count} vocabulary item(s)...",
+            "",
+            0,
+            0,
+            self,
+        )
+        self._progress_dialog.setWindowTitle("AI Translate Empty")
+        self._progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self._progress_dialog.setCancelButton(None)
+        self._progress_dialog.show()
+
+    def _on_translation_progress(self, message: str) -> None:
+        if self._progress_dialog is not None:
+            self._progress_dialog.setLabelText(message)
+
+    def _on_translation_finished(self, count: int) -> None:
+        self.ui.translate_button.setEnabled(True)
+        if self._progress_dialog is not None:
+            self._progress_dialog.close()
+            self._progress_dialog = None
+        if count == 0:
+            QMessageBox.information(
+                self,
+                "AI Translate Empty",
+                "All vocabulary entries already have meanings.",
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "AI Translate Empty",
+                f"Updated {count} vocabulary meaning(s).",
+            )
+
     def _show_error(self, message: str) -> None:
+        self.ui.translate_button.setEnabled(True)
+        if self._progress_dialog is not None:
+            self._progress_dialog.close()
+            self._progress_dialog = None
         QMessageBox.critical(self, "Vocabulary Error", message)

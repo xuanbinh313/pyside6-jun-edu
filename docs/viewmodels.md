@@ -12,7 +12,10 @@
 
 Loads vocabulary through `IExamRepository`, applies word/meaning/context search
 filtering, and owns status, meaning, and delete actions. It emits `data_changed`
-after list changes and `error_occurred` when persistence fails.
+after list changes and `error_occurred` when persistence fails. It also owns the
+`VocabularyTranslateWorker` background Gemini call used by the vocabulary page's
+**AI Translate Empty** button, then saves returned Vietnamese meanings through
+the repository before reloading the list.
 
 ## `ExamListViewModel`
 

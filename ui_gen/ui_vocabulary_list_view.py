@@ -8,24 +8,19 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import QCoreApplication, QMetaObject, QSize
-from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QSizePolicy,
-    QSpacerItem,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
-
+from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
+    QMetaObject, QObject, QPoint, QRect,
+    QSize, QTime, QUrl, Qt)
+from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
+    QFont, QFontDatabase, QGradient, QIcon,
+    QImage, QKeySequence, QLinearGradient, QPainter,
+    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QLineEdit,
+    QPushButton, QScrollArea, QSizePolicy, QSpacerItem,
+    QVBoxLayout, QWidget)
 
 class Ui_VocabularyListView(object):
-    def setupUi(self, VocabularyListView:QWidget):
+    def setupUi(self, VocabularyListView: QWidget):
         if not VocabularyListView.objectName():
             VocabularyListView.setObjectName(u"VocabularyListView")
         VocabularyListView.resize(1000, 650)
@@ -48,6 +43,11 @@ class Ui_VocabularyListView(object):
 
         self.header_layout.addItem(self.header_spacer)
 
+        self.translate_button = QPushButton(VocabularyListView)
+        self.translate_button.setObjectName(u"translate_button")
+
+        self.header_layout.addWidget(self.translate_button)
+
         self.search_input = QLineEdit(VocabularyListView)
         self.search_input.setObjectName(u"search_input")
         self.search_input.setMinimumSize(QSize(280, 0))
@@ -57,25 +57,17 @@ class Ui_VocabularyListView(object):
 
         self.main_layout.addLayout(self.header_layout)
 
-        self.table = QTableWidget(VocabularyListView)
-        if (self.table.columnCount() < 5):
-            self.table.setColumnCount(5)
-        __qtablewidgetitem = QTableWidgetItem()
-        self.table.setHorizontalHeaderItem(0, __qtablewidgetitem)
-        __qtablewidgetitem1 = QTableWidgetItem()
-        self.table.setHorizontalHeaderItem(1, __qtablewidgetitem1)
-        __qtablewidgetitem2 = QTableWidgetItem()
-        self.table.setHorizontalHeaderItem(2, __qtablewidgetitem2)
-        __qtablewidgetitem3 = QTableWidgetItem()
-        self.table.setHorizontalHeaderItem(3, __qtablewidgetitem3)
-        __qtablewidgetitem4 = QTableWidgetItem()
-        self.table.setHorizontalHeaderItem(4, __qtablewidgetitem4)
-        self.table.setObjectName(u"table")
-        self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setColumnCount(5)
+        self.scroll_area = QScrollArea(VocabularyListView)
+        self.scroll_area.setObjectName(u"scroll_area")
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_contents = QWidget()
+        self.scroll_contents.setObjectName(u"scroll_contents")
+        self.scroll_contents.setGeometry(QRect(0, 0, 980, 580))
+        self.cards_layout = QVBoxLayout(self.scroll_contents)
+        self.cards_layout.setObjectName(u"cards_layout")
+        self.scroll_area.setWidget(self.scroll_contents)
 
-        self.main_layout.addWidget(self.table)
+        self.main_layout.addWidget(self.scroll_area)
 
 
         self.retranslateUi(VocabularyListView)
@@ -83,20 +75,11 @@ class Ui_VocabularyListView(object):
         QMetaObject.connectSlotsByName(VocabularyListView)
     # setupUi
 
-    def retranslateUi(self, VocabularyListView:QWidget):
+    def retranslateUi(self, VocabularyListView: QWidget):
         VocabularyListView.setWindowTitle(QCoreApplication.translate("VocabularyListView", u"Vocabulary List", None))
-        self.back_button.setText(QCoreApplication.translate("VocabularyListView", u"\u2190 Back", None))
+        self.back_button.setText(QCoreApplication.translate("VocabularyListView", u"Back", None))
         self.title_label.setText(QCoreApplication.translate("VocabularyListView", u"Vocabulary List", None))
+        self.translate_button.setText(QCoreApplication.translate("VocabularyListView", u"AI Translate Empty", None))
         self.search_input.setPlaceholderText(QCoreApplication.translate("VocabularyListView", u"Search words, meanings, or context...", None))
-        ___qtablewidgetitem = self.table.horizontalHeaderItem(0)
-        ___qtablewidgetitem.setText(QCoreApplication.translate("VocabularyListView", u"Word", None))
-        ___qtablewidgetitem1 = self.table.horizontalHeaderItem(1)
-        ___qtablewidgetitem1.setText(QCoreApplication.translate("VocabularyListView", u"Meaning", None))
-        ___qtablewidgetitem2 = self.table.horizontalHeaderItem(2)
-        ___qtablewidgetitem2.setText(QCoreApplication.translate("VocabularyListView", u"Source Context", None))
-        ___qtablewidgetitem3 = self.table.horizontalHeaderItem(3)
-        ___qtablewidgetitem3.setText(QCoreApplication.translate("VocabularyListView", u"Status", None))
-        ___qtablewidgetitem4 = self.table.horizontalHeaderItem(4)
-        ___qtablewidgetitem4.setText(QCoreApplication.translate("VocabularyListView", u"Actions", None))
     # retranslateUi
 

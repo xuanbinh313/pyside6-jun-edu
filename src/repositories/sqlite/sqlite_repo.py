@@ -1,7 +1,5 @@
-﻿from __future__ import annotations
-
-import datetime
-from typing import Any, cast
+﻿import datetime
+from typing import Any, Optional, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -13,6 +11,7 @@ from src.models.exam import (
     ExamContext,
     ExamQuestion,
     ExamSrtChunk,
+    MediaFile,
     QuestionSchema,
     UserAnswer,
     Vocabulary,
@@ -27,6 +26,10 @@ from src.utils.helpers import (
     optimize_image_to_webp_file,
     unique_media_filename,
 )
+
+
+def _mediafile_from_orm(db_mediafile: orm.MediaFile) -> MediaFile:
+    return MediaFile.model_validate(db_mediafile)
 
 
 def _exam_from_orm(db_exam: orm.Exam) -> Exam:
@@ -54,21 +57,23 @@ def _answer_from_orm(db_answer: orm.UserAnswer) -> UserAnswer:
 
 
 def _vocabulary_from_orm(db_vocabulary: orm.Vocabulary) -> Vocabulary:
-    source_text: str | None = None
+    source_text: Optional[str] = None
     if db_vocabulary.context is not None:
         content = db_vocabulary.context.content
         text_value = content.get("text")
         if isinstance(text_value, str):
             source_text = text_value
-    return Vocabulary(
-        id=db_vocabulary.id,
-        word=db_vocabulary.word,
-        meaning=db_vocabulary.meaning,
-        status=db_vocabulary.status,
-        source_text=source_text,
-        context_id=db_vocabulary.context_id,
-        created_at=db_vocabulary.created_at,
-        user_id=db_vocabulary.user_id,
+    return Vocabulary.model_validate(
+        {
+            "id": db_vocabulary.id,
+            "word": db_vocabulary.word,
+            "meaning": db_vocabulary.meaning,
+            "status": db_vocabulary.status,
+            "context_id": db_vocabulary.context_id,
+            "created_at": db_vocabulary.created_at,
+            "user_id": db_vocabulary.user_id,
+            "source_text": source_text,
+        }
     )
 
 
@@ -149,7 +154,7 @@ class SQLiteExamRepository(IExamRepository):
             session.close()
 
     def add_vocabulary(
-        self, word: str, context_id: str | None = None
+        self, word: str, context_id: Optional[str] = None
     ) -> Vocabulary:
         normalized_word = word.strip()
         if not normalized_word:
@@ -224,7 +229,7 @@ class SQLiteExamRepository(IExamRepository):
 
     def get_exam_details(
         self, exam_id: str
-    ) -> tuple[Exam | None, list[ExamSrtChunk], list[ExamContext], list[ExamQuestion]]:
+    ) -> tuple[Optional[Exam], list[ExamSrtChunk], list[ExamContext], list[ExamQuestion]]:
         session = get_session()
         try:
             db_exam = (
@@ -268,12 +273,12 @@ class SQLiteExamRepository(IExamRepository):
     def save_exam(
         self,
         *,
-        exam_id: str | None,
+        exam_id: Optional[str],
         title: str,
-        description: str | None,
+        description: Optional[str],
         duration_minutes: int,
         is_published: bool,
-        audio_name: str | None = None,
+        audio_name: Optional[str] = None,
     ) -> str:
         session = get_session()
         try:
@@ -357,9 +362,9 @@ class SQLiteExamRepository(IExamRepository):
             session.close()
 
     def get_exam_take_data(
-        self, exam_id: str, user_id: str | None = None
+        self, exam_id: str, user_id: Optional[str] = None
     ) -> tuple[
-        Exam | None,
+        Optional[Exam],
         list[ExamContext],
         list[ExamQuestion],
         list[ExamSrtChunk],
@@ -426,7 +431,7 @@ class SQLiteExamRepository(IExamRepository):
             session.close()
 
     def list_question_tags_by_question(
-        self, exam_id: str, user_id: str | None = None
+        self, exam_id: str, user_id: Optional[str] = None
     ) -> dict[str, set[str]]:
         session = get_session()
         try:
@@ -454,10 +459,10 @@ class SQLiteExamRepository(IExamRepository):
         self,
         *,
         exam_id: str,
-        user_id: str | None,
+        user_id: Optional[str],
         total_correct: int,
         total_questions: int,
-        final_score: float | None,
+        final_score: Optional[float],
         duration_seconds: int,
         answers: list[dict[str, Any]],
     ) -> tuple[str, list[ExamAttempt]]:
@@ -497,8 +502,8 @@ class SQLiteExamRepository(IExamRepository):
             session.close()
 
     def get_attempt_with_answers(
-        self, exam_id: str, user_id: str | None, attempt_id: str
-    ) -> tuple[ExamAttempt | None, list[tuple[UserAnswer, ExamQuestion, ExamContext]]]:
+        self, exam_id: str, user_id: Optional[str], attempt_id: str
+    ) -> tuple[Optional[ExamAttempt], list[tuple[UserAnswer, ExamQuestion, ExamContext]]]:
         session = get_session()
         try:
             attempt = (
@@ -538,7 +543,7 @@ class SQLiteExamRepository(IExamRepository):
     def save_external_aligned_exam(
         self,
         *,
-        target_exam_id: str | None,
+        target_exam_id: Optional[str],
         title: str,
         description: str,
         duration_minutes: int,
@@ -602,7 +607,7 @@ class SQLiteExamRepository(IExamRepository):
             session.close()
 
     def _list_attempts(
-        self, session: Any, exam_id: str, user_id: str | None
+        self, session: Any, exam_id: str, user_id: Optional[str]
     ) -> list[ExamAttempt]:
         rows = (
             session.query(orm.ExamAttempt)
@@ -665,7 +670,7 @@ class SQLiteExamRepository(IExamRepository):
             session.close()
 
     def list_contexts(
-        self, exam_id: str, selected_tags: list[str] | None = None
+        self, exam_id: str, selected_tags: Optional[list[str]] = None
     ) -> list[ExamContext]:
         session = get_session()
         try:
@@ -720,7 +725,7 @@ class SQLiteExamRepository(IExamRepository):
         finally:
             session.close()
 
-    def get_add_question_defaults(self, exam_id: str | None) -> tuple[int, int]:
+    def get_add_question_defaults(self, exam_id: Optional[str]) -> tuple[int, int]:
         if not exam_id:
             return 1, 0
 
@@ -751,8 +756,8 @@ class SQLiteExamRepository(IExamRepository):
     def save_context_questions(
         self,
         *,
-        exam_id: str | None,
-        context_id: str | None,
+        exam_id: Optional[str],
+        context_id: Optional[str],
         part: int,
         context_type: str,
         content: dict[str, Any],
@@ -763,7 +768,7 @@ class SQLiteExamRepository(IExamRepository):
     ) -> tuple[ExamContext, list[ExamQuestion]]:
         session = get_session()
         try:
-            db_ctx: orm.ExamContext | None = None
+            db_ctx: Optional[orm.ExamContext] = None
             if context_id:
                 db_ctx = (
                     session.query(orm.ExamContext)
@@ -808,7 +813,7 @@ class SQLiteExamRepository(IExamRepository):
 
             saved_questions: list[orm.ExamQuestion] = []
             for value in questions:
-                db_q: orm.ExamQuestion | None = None
+                db_q: Optional[orm.ExamQuestion] = None
                 question_id = str(value.get("id", "") or "")
                 if question_id:
                     db_q = (
@@ -873,7 +878,7 @@ class SQLiteExamRepository(IExamRepository):
 
     def update_context_audio_segment(
         self, context_id: str, audio_start: float, audio_end: float
-    ) -> ExamContext | None:
+    ) -> Optional[ExamContext]:
         session = get_session()
         try:
             db_ctx = (
@@ -976,7 +981,7 @@ class SQLiteExamRepository(IExamRepository):
 
             for ctx_data in contexts_data:
                 llm_id = ctx_data.get("llm_id", "")
-                new_ctx: orm.ExamContext | None = None
+                new_ctx: Optional[orm.ExamContext] = None
                 real_ctx_id = llm_to_real_id.get(str(llm_id)) if llm_id else None
                 if real_ctx_id:
                     new_ctx = (

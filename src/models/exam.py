@@ -270,3 +270,12 @@ class SrtMappingResponseSchema(BaseModel):
     """Structured output returned by the SRT mapping agent."""
 
     mappings: List[SrtChunkMapping]
+
+class MediaFile(BaseModel):
+    id: str
+    filename: str
+    updated_at: str 
+    is_deleted: bool
+    user_id: Optional[str]
+    created_at: str
+    
