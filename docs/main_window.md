@@ -15,12 +15,18 @@ The startup sequence is executed from the root [`main.py`](../main.py):
 # main.py entry block
 init_db()              # Create DB tables if missing
 app = QApplication()
-widget = MainWindow()
+splash = create_startup_splash()
+splash.show()
+widget = MainWindow(splash=splash)
 widget.show()
+splash.finish(widget)
 app.exec()
 ```
 
-`MainWindow` opens immediately. It owns `AuthViewModel`, checks for a saved
+`main.py` shows a lightweight `QSplashScreen` from
+`create_startup_splash()` while `MainWindow` builds the application shell.
+`MainWindow` updates the splash message during setup, then the splash closes
+once the main window is visible. It owns `AuthViewModel`, checks for a saved
 Supabase session in the background, and opens `AuthView` as a modal account
 dialog only when the user chooses Login / Register from the menu.
 

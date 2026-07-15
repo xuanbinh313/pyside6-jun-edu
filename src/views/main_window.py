@@ -5,13 +5,14 @@ from typing import Optional
 
 import qtawesome as qta
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QColor, QFont, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QInputDialog,
     QMainWindow,
     QMenu,
     QMessageBox,
+    QSplashScreen,
     QSystemTrayIcon,
 )
 
@@ -35,12 +36,66 @@ from src.views.vocabulary_list_view import VocabularyListView
 from ui_gen.ui_main_window import Ui_MainWindow
 
 
+def create_startup_splash() -> QSplashScreen:
+    """Create the startup splash screen shown while the main window is built."""
+    pixmap = QPixmap(520, 300)
+    pixmap.fill(QColor("#f7f9fc"))
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#1a73e8"))
+    painter.drawRoundedRect(0, 0, 520, 300, 18, 18)
+
+    painter.setBrush(QColor("#ffffff"))
+    painter.drawRoundedRect(24, 24, 472, 252, 14, 14)
+
+    icon = qta.icon("fa5s.graduation-cap", color="#1a73e8")
+    icon.paint(painter, 44, 50, 68, 68)
+
+    title_font = QFont()
+    title_font.setPointSize(28)
+    title_font.setBold(True)
+    painter.setFont(title_font)
+    painter.setPen(QColor("#102a43"))
+    painter.drawText(132, 72, "Jun Edu")
+
+    subtitle_font = QFont()
+    subtitle_font.setPointSize(11)
+    painter.setFont(subtitle_font)
+    painter.setPen(QColor("#52616b"))
+    painter.drawText(134, 102, "Preparing your study workspace")
+
+    painter.setBrush(QColor("#e8f0fe"))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawRoundedRect(44, 190, 432, 12, 6, 6)
+    painter.setBrush(QColor("#1a73e8"))
+    painter.drawRoundedRect(44, 190, 150, 12, 6, 6)
+
+    painter.setPen(QColor("#7b8794"))
+    painter.drawText(44, 238, "Loading...")
+    painter.end()
+
+    splash = QSplashScreen(pixmap)
+    splash.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+    splash.setEnabled(False)
+    return splash
+
+
 class MainWindow(QMainWindow):
-    def __init__(self, parent: Optional[QMainWindow] = None):
+    def __init__(
+        self,
+        parent: Optional[QMainWindow] = None,
+        splash: Optional[QSplashScreen] = None,
+    ):
         super().__init__(parent)
+        self._startup_splash = splash
+        self._show_startup_message("Setting up application shell...")
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
 
+        self._show_startup_message("Preparing view models...")
         self.auth_viewmodel = AuthViewModel()
         self.reminder_viewmodel = ReminderViewModel()
         self.sync_viewmodel = SyncViewModel()
@@ -48,6 +103,7 @@ class MainWindow(QMainWindow):
 
         self.stacked_widget = self.ui.stacked_widget
 
+        self._show_startup_message("Loading exam list...")
         self.list_viewmodel = ExamListViewModel()
         self.list_view = ExamListView(
             self.list_viewmodel,
@@ -58,11 +114,25 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.list_view)
 
         self.close_event_minutes = 10
+        self._show_startup_message("Configuring menus...")
         self.setup_menu_bar()
 
+        self._show_startup_message("Configuring system tray...")
         self.setup_system_tray()
+        self._show_startup_message("Connecting app signals...")
         self.setup_mvvm_connections()
         self.auth_viewmodel.check_saved_session()
+        self._show_startup_message("Ready")
+
+    def _show_startup_message(self, message: str) -> None:
+        if self._startup_splash is None:
+            return
+        self._startup_splash.showMessage(
+            message,
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
+            QColor("#334e68"),
+        )
+        QApplication.processEvents()
 
     def navigate_to_details(self, exam_id: str):
         if exam_id == "EXTERNAL":
@@ -355,6 +425,10 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     init_db()
     app = QApplication(sys.argv)
-    widget = MainWindow()
+    splash = create_startup_splash()
+    splash.show()
+    app.processEvents()
+    widget = MainWindow(splash=splash)
     widget.show()
+    splash.finish(widget)
     sys.exit(app.exec())
