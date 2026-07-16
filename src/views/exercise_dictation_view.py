@@ -1,6 +1,4 @@
 import html
-import re
-import string
 from typing import Optional, Protocol, Sequence
 
 import qtawesome as qta
@@ -242,17 +240,9 @@ class ExerciseDictationView(QWidget):
 
     @staticmethod
     def _normalize_for_check(text: str) -> str:
-        quote_map = str.maketrans(
-            {
-                "\u2018": "'",
-                "\u2019": "'",
-                "\u201c": '"',
-                "\u201d": '"',
-            }
+        normalized = "".join(
+            char.lower() for char in text if char.isalnum() or char.isspace()
         )
-        normalized = text.translate(quote_map).lower()
-        punctuation = re.escape(string.punctuation)
-        normalized = re.sub(f"[{punctuation}]", " ", normalized)
         return " ".join(normalized.split())
 
     @staticmethod
