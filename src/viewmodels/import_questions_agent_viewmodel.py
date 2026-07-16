@@ -485,10 +485,20 @@ class ImportQuestionsAgentWorker(QThread):
             raise ValueError(f"Could not read extracted image: {image_path.name}")
 
         h_orig, w_orig, _ = img.shape
+        
+        # 1. Chuyển hệ xám và làm mịn
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        _, thresh = cv2.threshold(blurred, 230, 255, cv2.THRESH_BINARY_INV)
+        
+        # 🌟 ĐỔI MỚI 1: Dùng THRESH_OTSU để tự động tính toán tách nền giấy quét
+        _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
+        # 🌟 ĐỔI MỚI 2: Dùng phép đóng hình thái học để nối liền các mảng sáng tối trong ảnh thành 1 khối đặc
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 20))
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        thresh = cv2.dilate(thresh, kernel, iterations=1) # Làm dày thêm đường biên vùng ảnh
+
+        # Xóa viền lề 5% chống nhiễu quét biên trang giấy
         margin_w = int(w_orig * 0.05)
         margin_h = int(h_orig * 0.05)
         thresh[0:margin_h, :] = 0
@@ -496,27 +506,37 @@ class ImportQuestionsAgentWorker(QThread):
         thresh[:, 0:margin_w] = 0
         thresh[:, w_orig - margin_w : w_orig] = 0
 
-        contours, _ = cv2.findContours(
-            thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        # 2. Tìm các vùng chứa cấu trúc hình học
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
         valid_boxes: list[tuple[int, int, int, int]] = []
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
-            is_large_enough = (w > w_orig * 0.25) and (h > h_orig * 0.18)
+            is_large_enough = (w > w_orig * 0.25) and (h > h_orig * 0.15)
             is_not_full_page = (w < w_orig * 0.98) and (h < h_orig * 0.98)
+            
             if is_large_enough and is_not_full_page:
                 valid_boxes.append((x, y, w, h))
 
-        if len(valid_boxes) != 2:
+        # 🌟 ĐỔI MỚI 3: Lấy 2 vùng có diện tích lớn nhất (Tránh lỗi do chữ số "3.", "4." tạo ra contour nhỏ)
+        if len(valid_boxes) < 2:
             return []
+        
+        # Sắp xếp theo diện tích giảm dần và lấy 2 thằng to nhất
+        valid_boxes.sort(key=lambda box: box[2] * box[3], reverse=True)
+        target_boxes = valid_boxes[:2]
 
-        valid_boxes.sort(key=lambda box: box[1])
+        # Sắp xếp lại 2 thằng từ trên xuống dưới theo trục Y để lưu đúng thứ tự Part 1, Part 2
+        target_boxes.sort(key=lambda box: box[1])
+
         output_paths: list[Path] = []
-        for index, (x, y, w, h) in enumerate(valid_boxes, start=1):
+        for index, (x, y, w, h) in enumerate(target_boxes, start=1):
+            # Cắt ảnh gốc dựa trên vùng tọa độ đã tìm được
             cropped_img = img[y : y + h, x : x + w]
             output_path = output_dir / f"{image_path.stem}_part_{index}.png"
             cv2.imwrite(str(output_path), cropped_img)
             output_paths.append(output_path)
+            
         return output_paths
 
     def _slice_pdf(
