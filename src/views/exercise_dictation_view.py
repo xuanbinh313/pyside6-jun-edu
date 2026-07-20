@@ -1,8 +1,8 @@
 import html
+import re
 from typing import Optional, Protocol, Sequence
 
 import qtawesome as qta
-from diff_match_patch import diff_match_patch
 from PySide6.QtCore import QSize, Qt, QUrl, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -170,6 +170,12 @@ class ExerciseDictationView(QWidget):
         self.input_edit.submitted.connect(self._check_answer)
         layout.addWidget(self.input_edit)
 
+        self.typed_answer_label = QLabel("")
+        self.typed_answer_label.setTextFormat(Qt.TextFormat.RichText)
+        self.typed_answer_label.setWordWrap(True)
+        self.typed_answer_label.setStyleSheet("color: #3c4043;")
+        layout.addWidget(self.typed_answer_label)
+
         self.status_label = QLabel("")
         self.status_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(self.status_label)
@@ -223,6 +229,7 @@ class ExerciseDictationView(QWidget):
         )
         self.input_edit.clear()
         self.diff_view.clear()
+        self.typed_answer_label.clear()
         self.status_label.clear()
         self.show_answer_btn.hide()
         self._last_expected_text = ""
@@ -267,6 +274,9 @@ class ExerciseDictationView(QWidget):
         is_correct = self._normalize_for_check(typed_text) == self._normalize_for_check(
             expected_text
         )
+        self.typed_answer_label.setText(
+            self._typed_answer_html(expected_text, typed_text)
+        )
         if is_correct:
             self.status_label.setText("Correct!")
             self.status_label.setStyleSheet("font-weight: bold; color: #188038;")
@@ -283,7 +293,7 @@ class ExerciseDictationView(QWidget):
         self._answer_revealed = True
         self.show_answer_btn.hide()
         self.diff_view.setHtml(
-            self._diff_html(
+            self._answer_html(
                 self._last_expected_text,
                 self._last_typed_text,
                 self.show_full_answer_check.isChecked(),
@@ -304,7 +314,7 @@ class ExerciseDictationView(QWidget):
         if not self._has_checked_answer or not self._answer_revealed:
             return
         self.diff_view.setHtml(
-            self._diff_html(
+            self._answer_html(
                 self._last_expected_text,
                 self._last_typed_text,
                 checked,
@@ -327,31 +337,67 @@ class ExerciseDictationView(QWidget):
         return " ".join(normalized.split())
 
     @staticmethod
-    def _diff_html(expected_text: str, typed_text: str, show_full_answer: bool) -> str:
-        differ = diff_match_patch()
-        diffs = differ.diff_main(expected_text, typed_text)
-        differ.diff_cleanupSemantic(diffs)
+    def _typed_answer_html(expected_text: str, typed_text: str) -> str:
+        typed_tokens = ExerciseDictationView._answer_tokens(typed_text)
+        attention_index = ExerciseDictationView._typed_attention_token_index(
+            expected_text,
+            typed_tokens,
+        )
 
-        fragments = []
-        for op, text in diffs:
-            display_text = (
-                text
-                if show_full_answer or op > 0
-                else ExerciseDictationView._mask_answer_text(text)
-            )
-            safe_text = html.escape(display_text).replace("\n", "<br>")
-            if op == 0:
-                fragments.append(safe_text)
-            elif op < 0:
+        fragments: list[str] = []
+        for index, token in enumerate(typed_tokens):
+            safe_text = html.escape(token).replace("\n", "<br>")
+            if attention_index == index:
                 fragments.append(
-                    '<span style="background:#fce8e6;color:#b3261e;'
-                    f'text-decoration:line-through;">{safe_text}</span>'
+                    '<span style="background:#fff3bf;color:#7a4f01;'
+                    f'font-weight:bold;">{safe_text}</span>'
                 )
             else:
+                fragments.append(safe_text)
+
+        return (
+            "<div style='font-family: Segoe UI, Arial, sans-serif; "
+            "font-size: 14px; line-height: 1.6;'>"
+            "<span style='color:#5f6368;'>Your answer: </span>"
+            + "".join(fragments)
+            + "</div>"
+        )
+
+    @staticmethod
+    def _answer_html(
+        expected_text: str, typed_text: str, show_full_answer: bool
+    ) -> str:
+        expected_tokens = ExerciseDictationView._answer_tokens(expected_text)
+        attention_index = ExerciseDictationView._attention_token_index(
+            expected_tokens,
+            typed_text,
+        )
+
+        fragments: list[str] = []
+        for index, token in enumerate(expected_tokens):
+            if token.isspace():
+                fragments.append(html.escape(token).replace("\n", "<br>"))
+                continue
+
+            should_highlight = attention_index == index
+            should_mask = (
+                not show_full_answer
+                and attention_index is not None
+                and index > attention_index
+            )
+            display_text = (
+                ExerciseDictationView._mask_answer_text(token)
+                if should_mask
+                else token
+            )
+            safe_text = html.escape(display_text).replace("\n", "<br>")
+            if should_highlight:
                 fragments.append(
-                    '<span style="background:#d2e3fc;color:#174ea6;">'
-                    f"{safe_text}</span>"
+                    '<span style="background:#fce8e6;color:#b3261e;'
+                    f'font-weight:bold;">{safe_text}</span>'
                 )
+            else:
+                fragments.append(safe_text)
 
         return (
             "<div style='font-family: Segoe UI, Arial, sans-serif; "
@@ -359,6 +405,62 @@ class ExerciseDictationView(QWidget):
             + "".join(fragments)
             + "</div>"
         )
+
+    @staticmethod
+    def _answer_tokens(text: str) -> list[str]:
+        return re.findall(r"\s+|\S+", text)
+
+    @staticmethod
+    def _typed_attention_token_index(
+        expected_text: str, typed_tokens: list[str]
+    ) -> Optional[int]:
+        expected_words = [
+            ExerciseDictationView._normalize_answer_word(token)
+            for token in re.findall(r"\S+", expected_text)
+        ]
+        expected_words = [word for word in expected_words if word]
+
+        typed_word_index = 0
+        for token_index, token in enumerate(typed_tokens):
+            if token.isspace():
+                continue
+            typed_word = ExerciseDictationView._normalize_answer_word(token)
+            if not typed_word:
+                continue
+            if typed_word_index >= len(expected_words):
+                return token_index
+            if typed_word != expected_words[typed_word_index]:
+                return token_index
+            typed_word_index += 1
+        return None
+
+    @staticmethod
+    def _attention_token_index(
+        expected_tokens: list[str], typed_text: str
+    ) -> Optional[int]:
+        typed_words = [
+            ExerciseDictationView._normalize_answer_word(token)
+            for token in re.findall(r"\S+", typed_text)
+        ]
+        typed_words = [word for word in typed_words if word]
+
+        typed_word_index = 0
+        for token_index, token in enumerate(expected_tokens):
+            if token.isspace():
+                continue
+            expected_word = ExerciseDictationView._normalize_answer_word(token)
+            if not expected_word:
+                continue
+            if typed_word_index >= len(typed_words):
+                return token_index
+            if expected_word != typed_words[typed_word_index]:
+                return token_index
+            typed_word_index += 1
+        return None
+
+    @staticmethod
+    def _normalize_answer_word(text: str) -> str:
+        return "".join(char.lower() for char in text if char.isalnum())
 
     @staticmethod
     def _mask_answer_text(text: str) -> str:

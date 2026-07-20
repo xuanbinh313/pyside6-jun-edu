@@ -189,7 +189,7 @@ Handles the two-phase async workflow for importing an exam from an external audi
 
 All HTTP calls run on a background `QThread` via the internal `Worker` class.
 
-### Environment
+### Application Config
 
 | Variable | Default | Description |
 |---|---|---|

@@ -4,14 +4,11 @@ import time as time_module
 from typing import Any, Callable, Optional
 
 import requests
-from dotenv import load_dotenv
 from PySide6.QtCore import QObject, QThread, Signal
+from src.config import TTS_AGENT_URL
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
 from src.utils.helpers import get_local_media_path, unique_media_filename
-
-load_dotenv()
-TTS_AGENT_URL = os.getenv("TTS_AGENT_URL", "https://api.jun-edu.xyz")
 
 
 def _extract_segments(result: dict[str, Any]) -> list[dict[str, Any]]:

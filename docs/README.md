@@ -29,7 +29,15 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (or `SUPABASE_KEY`) in `.env` for login/register/logout. Set `TTS_AGENT_URL` when using the external audio import flow. The default API base URL is `https://api.jun-edu.xyz`.
+For local development/build machines, keep service settings in `.env`, then
+generate the embedded config module:
+
+```bash
+python cmd/generate_config.py --env .env --out src/config.py
+```
+
+The app reads `src.config` at runtime. One-file builds run this generation step
+before PyInstaller, so the executable does not need `.env` in `dist/`.
 
 ## Agent Checklist
 

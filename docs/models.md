@@ -124,7 +124,7 @@ SQLite and downloads each `mediafiles` object from R2 key
 rows are marked `dirty=False` locally; exam audio continues to reference the
 downloaded file by `audio_name`.
 
-R2 sync reads these `.env` settings:
+R2 sync reads these application config settings from `src.config`:
 
 | Variable | Description |
 |---|---|

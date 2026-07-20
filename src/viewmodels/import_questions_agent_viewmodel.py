@@ -7,16 +7,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from dotenv import load_dotenv
 from google.genai import Client, types
 from pydantic import BaseModel, Field
 from PySide6.QtCore import QObject, QThread, Signal
+from src.config import (
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
+    GOOGLE_CLOUD_LOCATION,
+    GOOGLE_CLOUD_PROJECT,
+)
 from src.models.exam import ImportAgentTask, ToeicPartResponseSchema
 from src.repositories.sqlite.import_agent_task_repo import ImportAgentTaskRepository
 from src.utils.helpers import get_local_media_dir
 from src.viewmodels.import_questions_viewmodel import ImportQuestionsViewModel
 
-load_dotenv()
 os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "0")
 
 
@@ -149,16 +153,18 @@ class ImportQuestionsAgentWorker(QThread):
         )
 
     def _run_agent(self) -> AgentImportResult:
-        api_key = os.getenv("GEMINI_API_KEY", "").strip()
-        project = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
-        location = os.getenv("GOOGLE_CLOUD_LOCATION", "").strip()
-        model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        api_key = GEMINI_API_KEY.strip()
+        project = GOOGLE_CLOUD_PROJECT.strip()
+        location = GOOGLE_CLOUD_LOCATION.strip()
+        model_name = GEMINI_MODEL.strip() or "gemini-2.5-flash"
         if not api_key:
-            raise ValueError("GEMINI_API_KEY is not set in .env.")
+            raise ValueError("GEMINI_API_KEY is missing from application config.")
         if not project:
-            raise ValueError("GOOGLE_CLOUD_PROJECT is not set in .env.")
+            raise ValueError("GOOGLE_CLOUD_PROJECT is missing from application config.")
         if not location:
-            raise ValueError("GOOGLE_CLOUD_LOCATION is not set in .env.")
+            raise ValueError(
+                "GOOGLE_CLOUD_LOCATION is missing from application config."
+            )
 
         try:
             from google import genai

@@ -88,3 +88,4 @@ CMakeLists.txt.user*
 *.db
 build/
 dist/
+config.py

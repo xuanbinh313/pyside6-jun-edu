@@ -1,18 +1,15 @@
-from src.models.exam import ContextContent
-from src.repositories.sqlite.sqlite_repo import _context_from_orm
-from asyncio.log import logger
-from src.repositories.sqlite.sqlite_repo import _mediafile_from_orm
-from sqlalchemy.orm import Session
 import datetime
-import os
+from asyncio.log import logger
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from dotenv import load_dotenv
 from sqlalchemy import DateTime
 from sqlalchemy.inspection import inspect
+from sqlalchemy.orm import Session
 from supabase import Client
 
+from src.config import SUPABASE_SCHEMA
+from src.models.exam import ContextContent
 from src.repositories.sqlite.database import get_session
 from src.repositories.sqlite.orm_models import (
     Exam,
@@ -24,12 +21,11 @@ from src.repositories.sqlite.orm_models import (
     UserAnswer,
     UserQuestionTag,
 )
+from src.repositories.sqlite.sqlite_repo import _context_from_orm, _mediafile_from_orm
 from src.repositories.supabase.auth import restore_session
 from src.repositories.supabase.client import get_supabase_client
 from src.utils.helpers import get_local_media_path
 from src.utils.r2_service import download_media_file, upload_media_file
-
-load_dotenv()
 
 SYNC_MODELS = (
     Exam,
@@ -53,7 +49,7 @@ class SupabaseSyncError(Exception):
 
 
 def _get_supabase_schema() -> str:
-    schema = os.getenv("SUPABASE_SCHEMA", "public").strip() or "public"
+    schema = SUPABASE_SCHEMA.strip() or "public"
     get_supabase_client()
     return schema
 

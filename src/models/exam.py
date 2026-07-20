@@ -272,6 +272,7 @@ class SrtMappingResponseSchema(BaseModel):
     mappings: List[SrtChunkMapping]
 
 class MediaFile(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: str
     filename: str
     updated_at: str 

@@ -1,48 +1,137 @@
-Here is the updated implementation plan for your review:
+Below is a requirement specification you can give to an AI agent.
 
-# Implementation Plan - Vocabulary List View Update
+---
 
-This plan outlines the changes to [vocabulary_list_view.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/vocabulary_list_view.py) to replace the QTableWidget with a modern, responsive card-based layout, and to add a button for auto-translating vocabulary words with empty meanings using the Gemini AI agent API.
+# Requirement: Attach Environment Variables During One-File Build (No Runtime `.env`)
 
-## Proposed Changes
+## Objective
 
-### View Layer
+Refactor the application so it no longer depends on an external `.env` file at runtime.
 
-#### [MODIFY] [vocabulary_list_view.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/vocabulary_list_view.py)
+All required environment variables must be attached to the application before the
+PyInstaller one-file build runs, allowing the generated executable to run
+without requiring a separate `.env` file beside it.
 
-- **UI Setup**:
-  - Remove the table widget `self.ui.table` from the layout programmatically (or ignore it) and replace it with a dynamically populated `QScrollArea`. Set its widget resizable to `True`.
-  - Create a container `QWidget` with a `QVBoxLayout` inside the scroll area to hold the cards.
-  - Create a new header button `self.translate_button = QPushButton("AI Translate Empty")` with a robot icon (`fa5s.robot`) and add it to `self.ui.header_layout` next to the search bar.
-- **Card Rendering**:
-  - Update `_populate()` to clear the card container layout instead of table row items.
-  - For each `Vocabulary` item, create a custom `QFrame` card:
-    - **Styling**: Sleek card layout (border, padding, border-radius, background colors).
-    - **Word**: Bold title label.
-    - **Meaning / Edit Mode**: 
-      - Initially show the meaning as a read-only `QLabel` next to an **"Edit"** button.
-      - Clicking the "Edit" button replaces the label with a `QLineEdit` and changes the button to a "Save" icon/text.
-      - Editing is saved to the database calling `self.viewmodel.update_meaning(vocab.id, line_edit.text())`, reverting the field back to a read-only label.
-    - **Source Context**: Word-wrapped secondary text label.
-    - **Status**: The 5-button status indicator widget.
-    - **Delete**: Trash icon button.
-- **AI Translation Handler**:
-  - Add a worker class `VocabularyTranslateWorker(QThread)` inside `vocabulary_list_view.py` or as a helper:
-    - Queries the words needing translation.
-    - Calls the Gemini API using `google.genai` with system instructions to translate the vocabulary words to Vietnamese.
-    - Emits a signal with the translations or updates them via the viewmodel.
-  - Connect the translate button to spawn the worker, showing a progress dialog or status message during the translation process.
-  - Call `self.viewmodel.load_vocabulary()` once completed.
+The `.env` file may be used as a local build input only. It must not be loaded,
+searched for, bundled as PyInstaller data, or required after the executable is
+built.
 
-## Verification Plan
+---
 
-### Automated Tests
-- Run syntax validation check:
-  `.\.venv\Scripts\python.exe -B -c "import pathlib; [compile(path.read_text(encoding='utf-8-sig'), str(path), 'exec') for root in ('src','ui_gen') for path in pathlib.Path(root).rglob('*.py')]; print('syntax ok')"`
-- Run Pyright strict typing check:
-  `.\.venv\Scripts\python.exe -m pyright`
+## Requirements
 
-### Manual Verification
-1. Open the vocabulary view in the app and verify the list is displayed as elegant cards.
-2. Edit a meaning inside a card's text field and check that it updates/saves.
-3. Click "AI Translate Empty" and verify that words with empty meanings get automated Vietnamese translations filled in.
+### 1. Remove Runtime Dependency on `.env`
+
+* The application must not require a `.env` file when running.
+* Remove all calls to:
+
+  * `load_dotenv()`
+  * `find_dotenv()`
+  * Any logic that searches for a `.env` file.
+
+---
+
+### 2. Create a Centralized Configuration Module
+
+Create a new module (for example `config.py`) responsible for all application configuration.
+
+Example:
+
+```python
+import os
+
+os.environ["SUPABASE_URL"] = "https://example.supabase.co"
+os.environ["SUPABASE_ANON_KEY"] = "your-anon-key"
+
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_ANON_KEY = os.environ["SUPABASE_ANON_KEY"]
+```
+
+All configuration values should be exposed through constants instead of calling `os.getenv()` throughout the project.
+
+Recommended build flow:
+
+1. Keep local secrets in `.env` for development/build machines only.
+2. Generate or update the centralized configuration module from `.env` before
+   running PyInstaller.
+3. Build the one-file executable with `JunEdu.spec`.
+4. Run the executable without copying `.env` into `dist/`.
+
+Example generated module:
+
+```python
+import os
+
+SUPABASE_URL = "https://example.supabase.co"
+SUPABASE_ANON_KEY = "your-anon-key"
+TTS_AGENT_URL = "https://api.jun-edu.xyz"
+
+os.environ.setdefault("SUPABASE_URL", SUPABASE_URL)
+os.environ.setdefault("SUPABASE_ANON_KEY", SUPABASE_ANON_KEY)
+os.environ.setdefault("TTS_AGENT_URL", TTS_AGENT_URL)
+```
+
+This module is included automatically in the PyInstaller one-file executable
+because it is imported by the application. Do not add `.env` to `datas` in
+`JunEdu.spec`.
+
+---
+
+### 3. Replace All `os.getenv()` Calls
+
+Search the entire project for:
+
+```python
+os.getenv(...)
+```
+
+Replace them with imports from the centralized configuration module.
+
+Example:
+
+Before:
+
+```python
+url = os.getenv("SUPABASE_URL")
+```
+
+After:
+
+```python
+from config import SUPABASE_URL
+
+url = SUPABASE_URL
+```
+
+---
+
+### 4. Single Source of Truth
+
+All application configuration must exist in exactly one place.
+
+No hardcoded configuration values should exist elsewhere in the project.
+
+---
+
+## One-File Build Requirement
+
+The build command should attach environment values by generating the
+centralized configuration module before invoking PyInstaller:
+
+```powershell
+.\.venv\Scripts\python.exe cmd\generate_config.py --env .env --out src\config.py
+.\.venv\Scripts\pyinstaller.exe --clean JunEdu.spec
+```
+
+The resulting executable must satisfy these checks:
+
+* `dist/JunEdu.exe` starts when `.env` is absent.
+* `dist/` does not need a copied `.env` file.
+* The executable reads config constants from the centralized module.
+* Error messages must not say a value is missing from `.env`; they should say
+  the application configuration value is missing.
+
+Because these values are embedded into the executable, treat the one-file build
+artifact as containing the same secrets as the original `.env`.
+
+---

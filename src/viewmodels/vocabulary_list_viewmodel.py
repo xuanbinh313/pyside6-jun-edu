@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
-from dotenv import load_dotenv
 from google.genai import types
 from pydantic import BaseModel, Field
 from PySide6.QtCore import QObject, QThread, Signal
+from src.config import GEMINI_API_KEY, GEMINI_MODEL
 from src.models.exam import Vocabulary
 from src.repositories.base_repo import IExamRepository
 from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
-
-load_dotenv()
 
 
 class VocabularyTranslation(BaseModel):
@@ -41,10 +38,10 @@ class VocabularyTranslateWorker(QThread):
             self.error.emit(str(exc))
 
     def _run_agent(self) -> dict[str, str]:
-        api_key = os.getenv("GEMINI_API_KEY", "").strip()
-        model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        api_key = GEMINI_API_KEY.strip()
+        model_name = GEMINI_MODEL.strip() or "gemini-2.5-flash"
         if not api_key:
-            raise ValueError("GEMINI_API_KEY is not set in .env.")
+            raise ValueError("GEMINI_API_KEY is missing from application config.")
 
         try:
             from google import genai

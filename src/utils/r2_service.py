@@ -1,11 +1,20 @@
-import os
 from pathlib import Path
 from typing import Union
 
 from botocore.config import Config
-from dotenv import load_dotenv
-
-load_dotenv()
+from src.config import (
+    CLOUDFLARE_ACCESS_KEY,
+    CLOUDFLARE_ACCESS_KEY_ID,
+    CLOUDFLARE_BUCKET,
+    CLOUDFLARE_BUCKET_NAME,
+    CLOUDFLARE_ENDPOINT,
+    CLOUDFLARE_R2_ACCESS_KEY_ID,
+    CLOUDFLARE_R2_BUCKET,
+    CLOUDFLARE_R2_ENDPOINT,
+    CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    CLOUDFLARE_SECRET_ACCESS_KEY,
+    CLOUDFLARE_SECRET_KEY,
+)
 
 
 class R2UploadError(Exception):
@@ -16,9 +25,24 @@ class R2DownloadError(Exception):
     """Raised when a remote media file cannot be downloaded from Cloudflare R2."""
 
 
-def _env(*names: str) -> str:
+_CONFIG_BY_NAME = {
+    "CLOUDFLARE_R2_ENDPOINT": CLOUDFLARE_R2_ENDPOINT,
+    "CLOUDFLARE_ENDPOINT": CLOUDFLARE_ENDPOINT,
+    "CLOUDFLARE_R2_ACCESS_KEY_ID": CLOUDFLARE_R2_ACCESS_KEY_ID,
+    "CLOUDFLARE_ACCESS_KEY_ID": CLOUDFLARE_ACCESS_KEY_ID,
+    "CLOUDFLARE_ACCESS_KEY": CLOUDFLARE_ACCESS_KEY,
+    "CLOUDFLARE_R2_SECRET_ACCESS_KEY": CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    "CLOUDFLARE_SECRET_ACCESS_KEY": CLOUDFLARE_SECRET_ACCESS_KEY,
+    "CLOUDFLARE_SECRET_KEY": CLOUDFLARE_SECRET_KEY,
+    "CLOUDFLARE_R2_BUCKET": CLOUDFLARE_R2_BUCKET,
+    "CLOUDFLARE_BUCKET": CLOUDFLARE_BUCKET,
+    "CLOUDFLARE_BUCKET_NAME": CLOUDFLARE_BUCKET_NAME,
+}
+
+
+def _config_value(*names: str) -> str:
     for name in names:
-        value = os.getenv(name, "").strip()
+        value = _CONFIG_BY_NAME.get(name, "").strip()
         if value:
             return value
     return ""
@@ -34,18 +58,20 @@ def _endpoint_url(endpoint: str) -> str:
 
 
 def _r2_settings() -> tuple[str, str, str, str]:
-    endpoint = _endpoint_url(_env("CLOUDFLARE_R2_ENDPOINT", "CLOUDFLARE_ENDPOINT"))
-    access_key = _env(
+    endpoint = _endpoint_url(
+        _config_value("CLOUDFLARE_R2_ENDPOINT", "CLOUDFLARE_ENDPOINT")
+    )
+    access_key = _config_value(
         "CLOUDFLARE_R2_ACCESS_KEY_ID",
         "CLOUDFLARE_ACCESS_KEY_ID",
         "CLOUDFLARE_ACCESS_KEY",
     )
-    secret_key = _env(
+    secret_key = _config_value(
         "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
         "CLOUDFLARE_SECRET_ACCESS_KEY",
         "CLOUDFLARE_SECRET_KEY",
     )
-    bucket = _env(
+    bucket = _config_value(
         "CLOUDFLARE_R2_BUCKET",
         "CLOUDFLARE_BUCKET",
         "CLOUDFLARE_BUCKET_NAME",
