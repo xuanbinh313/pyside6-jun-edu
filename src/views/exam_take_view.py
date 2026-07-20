@@ -1,8 +1,9 @@
 import html
-from typing import Callable, Optional
+from typing import Callable, Optional, cast
 
 import qtawesome as qta
-from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -25,8 +26,17 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from src.models.exam import ExamContext
+from src.utils.helpers import get_local_media_path
 from src.utils.qt import clear_layout
 from src.viewmodels.exam_take_viewmodel import ExamTakeViewModel
+from src.views.components.exam_context_html import context_content_html
+from src.views.components.exam_context_section import (
+    ExamContextSection,
+    context_audio_range,
+)
+from src.views.components.option_question_item import OptionVocabularyTextBrowser
+from src.views.components.tag_menu_dialog import TagMenuDialog
 from src.views.exercise_dictation_view import ExerciseDictationView
 from ui_gen.ui_exam_take_view import Ui_ExamTakeView
 
@@ -43,12 +53,20 @@ class ExamTakeView(QWidget):
         self.go_back_callback: Callable[[], None] = go_back_callback
         self._part_checks: list[QCheckBox] = []
         self._tag_checks: list[QCheckBox] = []
-        self._answer_groups: dict[int, QButtonGroup] = {}
+        self._answer_groups: dict[str, QButtonGroup] = {}
         self._current_analytics = None
         self._dictation_view: Optional[ExerciseDictationView] = None
+        self._current_test_part: Optional[int] = None
+        self._context_map: dict[str, ExamContext] = {}
+        self._question_widgets: dict[int, QWidget] = {}
 
         self.ui = Ui_ExamTakeView()
         self.ui.setupUi(self)
+        self.audio_output = QAudioOutput(self)
+        self.player = QMediaPlayer(self)
+        self.player.setAudioOutput(self.audio_output)
+        self.play_until: Optional[int] = None
+        self.player.positionChanged.connect(self._on_audio_position_changed)
         self._setup_pages()
         self._connect_signals()
         self.viewmodel.load_exam()
@@ -56,37 +74,27 @@ class ExamTakeView(QWidget):
     def _setup_pages(self):
         self.ui.timer_label.setVisible(False)
         self.ui.back_btn.clicked.connect(self._on_back_clicked)
+        self.ui.part_list.currentItemChanged.connect(self._on_part_selection_changed)
 
-        self.overview_page = QWidget()
-        self.overview_layout = QVBoxLayout(self.overview_page)
-        self.overview_layout.setContentsMargins(0, 0, 0, 0)
+        self.overview_page = self.ui.overview_page
+        self.overview_layout = self.ui.overview_layout
         self.overview_layout.setSpacing(12)
 
-        self.test_page = QWidget()
-        self.test_layout = QVBoxLayout(self.test_page)
-        self.test_layout.setContentsMargins(0, 0, 0, 0)
+        self.test_page = self.ui.test_page
+        self.test_layout = self.ui.test_layout
         self.test_layout.setSpacing(10)
 
-        self.result_page = QWidget()
-        self.result_layout = QVBoxLayout(self.result_page)
-        self.result_layout.setContentsMargins(0, 0, 0, 0)
+        self.result_page = self.ui.result_page
+        self.result_layout = self.ui.result_layout
         self.result_layout.setSpacing(10)
 
-        self.history_page = QWidget()
-        self.history_layout = QVBoxLayout(self.history_page)
-        self.history_layout.setContentsMargins(0, 0, 0, 0)
+        self.history_page = self.ui.history_page
+        self.history_layout = self.ui.history_layout
         self.history_layout.setSpacing(10)
 
-        self.dictation_page = QWidget()
-        self.dictation_layout = QVBoxLayout(self.dictation_page)
-        self.dictation_layout.setContentsMargins(0, 0, 0, 0)
+        self.dictation_page = self.ui.dictation_page
+        self.dictation_layout = self.ui.dictation_layout
         self.dictation_layout.setSpacing(10)
-
-        self.ui.stacked_widget.addWidget(self.overview_page)
-        self.ui.stacked_widget.addWidget(self.test_page)
-        self.ui.stacked_widget.addWidget(self.result_page)
-        self.ui.stacked_widget.addWidget(self.history_page)
-        self.ui.stacked_widget.addWidget(self.dictation_page)
 
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
@@ -285,47 +293,138 @@ class ExamTakeView(QWidget):
         self._dictation_view.start()
 
     def _render_test(self):
-        clear_layout(self.test_layout)
         self._answer_groups = {}
+        self._context_map = {ctx.id: ctx for ctx in self.viewmodel.contexts}
         self.ui.stacked_widget.setCurrentWidget(self.test_page)
         self.ui.timer_label.setVisible(True)
+        self._populate_test_parts()
+        self._render_test_questions()
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        container = QWidget()
-        questions_layout = QVBoxLayout(container)
-        questions_layout.setSpacing(10)
-
-        for question in self.viewmodel.active_questions:
-            card = self._question_card(question)
-            questions_layout.addWidget(card)
-        questions_layout.addStretch(1)
-        scroll.setWidget(container)
-        self.test_layout.addWidget(scroll)
-
-        footer = QHBoxLayout()
+        clear_layout(self.ui.test_footer_layout)
+        footer = self.ui.test_footer_layout
         footer.addStretch(1)
         submit_btn = QPushButton("Submit")
         submit_btn.setIcon(qta.icon("fa5s.check", color="white"))
         submit_btn.setStyleSheet(self._primary_button_style())
         submit_btn.clicked.connect(self._submit_test)
         footer.addWidget(submit_btn)
-        self.test_layout.addLayout(footer)
 
         self._timer.start()
         self._on_timer_tick()
 
-    def _question_card(self, question):
+    def _populate_test_parts(self):
+        self.ui.part_list.blockSignals(True)
+        self.ui.part_list.clear()
+
+        all_item = QListWidgetItem("All Parts")
+        all_item.setData(Qt.ItemDataRole.UserRole, None)
+        self.ui.part_list.addItem(all_item)
+
+        active_parts = sorted({question.part for question in self.viewmodel.active_questions})
+        for part in active_parts:
+            count = sum(
+                1 for question in self.viewmodel.active_questions if question.part == part
+            )
+            item = QListWidgetItem(f"Part {part} ({count})")
+            item.setData(Qt.ItemDataRole.UserRole, part)
+            self.ui.part_list.addItem(item)
+
+        self.ui.part_list.setCurrentRow(0)
+        self._current_test_part = None
+        self.ui.part_list.blockSignals(False)
+
+    def _on_part_selection_changed(self, current, previous):
+        if current is None:
+            self._current_test_part = None
+        else:
+            value = current.data(Qt.ItemDataRole.UserRole)
+            self._current_test_part = cast(Optional[int], value)
+        if self.ui.stacked_widget.currentWidget() == self.test_page:
+            self._render_test_questions()
+
+    def _render_test_questions(self):
+        clear_layout(self.ui.test_questions_layout)
+        self._answer_groups = {}
+        self._question_widgets = {}
+
+        filtered_questions = [
+            question
+            for question in self.viewmodel.active_questions
+            if self._current_test_part is None or question.part == self._current_test_part
+        ]
+
+        context_order: list[str] = []
+        questions_by_context: dict[str, list[object]] = {}
+        for question in filtered_questions:
+            if question.context_id not in questions_by_context:
+                questions_by_context[question.context_id] = []
+                context_order.append(question.context_id)
+            questions_by_context[question.context_id].append(question)
+
+        for context_id in context_order:
+            ctx = self._context_map.get(context_id)
+            context_questions = questions_by_context[context_id]
+            self.ui.test_questions_layout.addWidget(
+                self._context_question_section(ctx, context_questions)
+            )
+
+        self.ui.test_questions_layout.addStretch(1)
+
+    def _context_question_section(self, ctx, questions):
+        section = QFrame()
+        section.setFrameShape(QFrame.Shape.StyledPanel)
+        section.setStyleSheet(
+            "QFrame { background: #ffffff; border: 1px solid #dadce0; "
+            "border-radius: 6px; }"
+        )
+        layout = QVBoxLayout(section)
+        layout.setSpacing(8)
+
+        if ctx is not None:
+            context_section = ExamContextSection(
+                ctx=ctx,
+                title_text=self._context_title(ctx, questions),
+                content_html=context_content_html(ctx),
+                on_play=self._play_context,
+                on_select_audio=self._ignore_context_action,
+                on_edit=self._ignore_context_action,
+                on_tags=self._show_context_tag_menu,
+                tag_names=self.viewmodel.list_question_tags_for_context(ctx.id),
+                on_anchor=self._on_context_anchor_clicked,
+                on_add_vocabulary=self._add_vocabulary,
+                show_select_audio=False,
+                show_edit=False,
+                parent=section,
+            )
+            layout.addWidget(context_section)
+        else:
+            title = QLabel(self._context_title(ctx, questions))
+            title.setWordWrap(True)
+            title.setStyleSheet(
+                "font-size: 14px; font-weight: bold; color: #1a73e8; padding: 0 2px;"
+            )
+            layout.addWidget(title)
+
+        for question in questions:
+            layout.addWidget(self._question_card(question, show_context=False))
+
+        return section
+
+    def _question_card(self, question, show_context=True):
         card = QFrame()
         card.setFrameShape(QFrame.Shape.StyledPanel)
+        card.setStyleSheet(
+            "QFrame { background: #f8f9fa; border: 1px solid #e8eaed; "
+            "border-radius: 6px; }"
+        )
         layout = QVBoxLayout(card)
         layout.setSpacing(8)
 
-        header = QLabel(f"Part {question.part} | Question {question.question_number}")
-        header.setStyleSheet("font-weight: bold; color: #1a73e8;")
+        header = QLabel(f"Question {question.question_number}")
+        header.setStyleSheet("font-weight: bold; color: #202124;")
         layout.addWidget(header)
 
-        if question.context_text:
+        if show_context and question.context_text:
             context = QLabel(question.context_text)
             context.setTextFormat(Qt.TextFormat.PlainText)
             context.setWordWrap(True)
@@ -339,16 +438,33 @@ class ExamTakeView(QWidget):
             )
             layout.addWidget(context)
 
-        stem = QLabel(html.escape(question.content))
-        stem.setTextFormat(Qt.TextFormat.RichText)
-        stem.setWordWrap(True)
-        stem.setStyleSheet("font-size: 13px; color: #202124;")
+        stem = OptionVocabularyTextBrowser(
+            lambda word, context_id=question.context_id: self._add_vocabulary(
+                word, context_id
+            ),
+            card,
+        )
+        stem.document().setDocumentMargin(0)
+        stem.setHtml(html.escape(question.content).replace("\n", "<br>"))
+        stem.setStyleSheet("""
+            QTextBrowser {
+                border: none;
+                background: transparent;
+                font-size: 13px;
+                color: #202124;
+            }
+        """)
         layout.addWidget(stem)
 
         group = QButtonGroup(card)
         group.setExclusive(True)
         for option in question.options:
-            radio = QRadioButton(f"{option.display_letter}. {option.text}")
+            row = QWidget(card)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(4)
+
+            radio = QRadioButton()
             radio.setProperty("display_index", option.display_index)
             radio.toggled.connect(
                 lambda checked, qid=question.question_id, idx=option.display_index: (
@@ -356,8 +472,28 @@ class ExamTakeView(QWidget):
                 )
             )
             group.addButton(radio, option.display_index)
-            layout.addWidget(radio)
+            row_layout.addWidget(radio, 0, Qt.AlignmentFlag.AlignTop)
+
+            option_label = OptionVocabularyTextBrowser(
+                lambda word, context_id=question.context_id: self._add_vocabulary(
+                    word, context_id
+                ),
+                row,
+            )
+            option_label.document().setDocumentMargin(0)
+            option_label.setPlainText(f"{option.display_letter}.  {option.text}")
+            option_label.setStyleSheet("""
+                QTextBrowser {
+                    border: none;
+                    background: transparent;
+                    font-size: 12px;
+                    color: #3c4043;
+                }
+            """)
+            row_layout.addWidget(option_label, 1)
+            layout.addWidget(row)
         self._answer_groups[question.question_id] = group
+        self._question_widgets[question.question_number] = card
 
         if self.viewmodel.mode == "practice":
             skip_btn = QPushButton("Skip")
@@ -370,6 +506,85 @@ class ExamTakeView(QWidget):
             layout.addWidget(skip_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
         return card
+
+    def _context_title(self, ctx, questions):
+        first_question = questions[0] if questions else None
+        part = getattr(ctx, "part", None) or getattr(first_question, "part", 1)
+        if not questions:
+            return f"Part {part}"
+        question_numbers = [str(question.question_number) for question in questions]
+        if len(question_numbers) == 1:
+            question_label = f"Question {question_numbers[0]}"
+        else:
+            question_label = f"Questions {question_numbers[0]}-{question_numbers[-1]}"
+        if ctx is None:
+            return f"Part {part} | {question_label}"
+        type_label = str(ctx.context_type or "Context").replace("_", " ").title()
+        return f"Part {part} | Context {ctx.index} | {question_label} | {type_label}"
+
+    def _play_context(self, ctx):
+        audio_start, audio_end = context_audio_range(ctx)
+        if audio_end <= 0.0:
+            return
+        if not self.viewmodel.exam or not self.viewmodel.exam.audio_name:
+            QMessageBox.warning(self, "Audio", "This exam has no audio file.")
+            return
+
+        path = get_local_media_path(self.viewmodel.exam.audio_name)
+        if not path.exists():
+            QMessageBox.warning(self, "Audio", f"Audio file not found:\n{path}")
+            return
+
+        self.play_until = int(audio_end * 1000)
+        self.player.setSource(QUrl.fromLocalFile(str(path)))
+        self.player.setPosition(int(audio_start * 1000))
+        self.player.play()
+
+    def _ignore_context_action(self, ctx):
+        _ = ctx
+
+    def _on_context_anchor_clicked(self, url):
+        q_num_str = url.toString() if isinstance(url, QUrl) else str(url)
+        try:
+            question_number = int(q_num_str)
+        except ValueError:
+            return
+
+        target = self._question_widgets.get(question_number)
+        if target is not None:
+            self.ui.test_scroll.ensureWidgetVisible(target)
+
+    def _add_vocabulary(self, word: str, context_id: str) -> None:
+        try:
+            vocabulary = self.viewmodel.add_vocabulary(word, context_id)
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Error Saving Vocabulary", f"Could not save vocabulary:\n{exc}"
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Vocabulary Saved",
+            f'Added "{vocabulary.word}" to your vocabulary.',
+        )
+
+    def _on_audio_position_changed(self, pos_ms):
+        if self.play_until is None:
+            return
+        if pos_ms >= self.play_until:
+            self.player.pause()
+            self.play_until = None
+
+    def _show_context_tag_menu(self, ctx, button):
+        popup = TagMenuDialog(ctx, self, viewmodel=self.viewmodel, context_id=ctx.id)
+        global_pos = button.mapToGlobal(button.rect().bottomLeft())
+        popup.move(global_pos)
+        popup.exec()
+
+    def on_question_tag_changed(self, context_id=None):
+        if self.ui.stacked_widget.currentWidget() == self.test_page:
+            self._render_test_questions()
 
     def _render_result(self):
         clear_layout(self.result_layout)

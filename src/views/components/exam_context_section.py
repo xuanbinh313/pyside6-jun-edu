@@ -186,6 +186,8 @@ class ExamContextSection(QWidget):
         tag_names: list[str],
         on_anchor: AnchorCallback,
         on_add_vocabulary: VocabularyCallback,
+        show_select_audio: bool = True,
+        show_edit: bool = True,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -197,7 +199,14 @@ class ExamContextSection(QWidget):
         layout.setSpacing(6)
         layout.addLayout(
             self._build_header(
-                title_text, on_play, on_select_audio, on_edit, on_tags, tag_names
+                title_text,
+                on_play,
+                on_select_audio,
+                on_edit,
+                on_tags,
+                tag_names,
+                show_select_audio,
+                show_edit,
             )
         )
         layout.addWidget(
@@ -227,6 +236,8 @@ class ExamContextSection(QWidget):
         on_edit: ContextCallback,
         on_tags: ContextTagCallback,
         tag_names: list[str],
+        show_select_audio: bool,
+        show_edit: bool,
     ) -> QHBoxLayout:
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
@@ -241,14 +252,14 @@ class ExamContextSection(QWidget):
         )
         header_layout.addWidget(self.title_label, 1)
 
-        self.play_btn = QPushButton()
+        self.play_btn = QPushButton(self)
         refresh_context_play_button(self.play_btn, self.ctx)
         self.play_btn.setFixedSize(24, 24)
         self.play_btn.setStyleSheet(ICON_BUTTON_STYLE)
         self.play_btn.clicked.connect(lambda checked=False: on_play(self.ctx))
         header_layout.addWidget(self.play_btn)
 
-        self.tag_btn = QPushButton()
+        self.tag_btn = QPushButton(self)
         has_tags = bool(tag_names)
         self.tag_btn.setIcon(
             qta.icon("fa5s.tags", color="#1a73e8" if has_tags else "#5f6368")
@@ -265,7 +276,7 @@ class ExamContextSection(QWidget):
         )
         header_layout.addWidget(self.tag_btn)
 
-        self.audio_btn = QPushButton()
+        self.audio_btn = QPushButton(self)
         self.audio_btn.setIcon(
             qta.icon("fa5s.music", color=context_audio_icon_color(self.ctx))
         )
@@ -273,15 +284,21 @@ class ExamContextSection(QWidget):
         self.audio_btn.setFixedSize(24, 24)
         self.audio_btn.setStyleSheet(ICON_BUTTON_STYLE)
         self.audio_btn.clicked.connect(lambda checked=False: on_select_audio(self.ctx))
-        header_layout.addWidget(self.audio_btn)
+        if show_select_audio:
+            header_layout.addWidget(self.audio_btn)
+        else:
+            self.audio_btn.hide()
 
-        edit_btn = QPushButton()
-        edit_btn.setIcon(qta.icon("fa5s.edit", color="#1a73e8"))
-        edit_btn.setToolTip("Edit context")
-        edit_btn.setFixedSize(24, 24)
-        edit_btn.setStyleSheet(ICON_BUTTON_STYLE)
-        edit_btn.clicked.connect(lambda checked=False: on_edit(self.ctx))
-        header_layout.addWidget(edit_btn)
+        self.edit_btn = QPushButton(self)
+        self.edit_btn.setIcon(qta.icon("fa5s.edit", color="#1a73e8"))
+        self.edit_btn.setToolTip("Edit context")
+        self.edit_btn.setFixedSize(24, 24)
+        self.edit_btn.setStyleSheet(ICON_BUTTON_STYLE)
+        self.edit_btn.clicked.connect(lambda checked=False: on_edit(self.ctx))
+        if show_edit:
+            header_layout.addWidget(self.edit_btn)
+        else:
+            self.edit_btn.hide()
         return header_layout
 
     def _build_body(

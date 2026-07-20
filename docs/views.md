@@ -146,6 +146,7 @@ Learner-facing transcript practice view embedded inside `ExamTakeView`. It recei
 | Input | Multi-line text box submits on Enter; Shift/Ctrl/Alt+Enter keeps editing |
 | Checking | Correctness ignores case, punctuation, extra whitespace, and smart quote differences |
 | Feedback | `diff-match-patch` renders expected-vs-typed character differences with red struck deletions and blue insertions |
+| Answer options | Checkboxes control whether feedback appears immediately or behind a **Show Answer** button, and whether the correct answer text is fully shown or masked with `*` characters |
 
 ---
 

@@ -7,6 +7,7 @@ from PySide6.QtCore import QSize, Qt, QUrl, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -57,6 +58,10 @@ class ExerciseDictationView(QWidget):
         self._audio_name = audio_name
         self._current_index = 0
         self._clip_end_ms = 0
+        self._last_expected_text = ""
+        self._last_typed_text = ""
+        self._has_checked_answer = False
+        self._answer_revealed = False
 
         self.player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)
@@ -134,6 +139,26 @@ class ExerciseDictationView(QWidget):
         self.play_btn.clicked.connect(self.play_current)
         layout.addWidget(self.play_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
+        options_layout = QHBoxLayout()
+        options_layout.setContentsMargins(0, 0, 0, 0)
+        options_layout.setSpacing(16)
+
+        self.show_answer_immediately_check = QCheckBox("Show answer immediately")
+        self.show_answer_immediately_check.setChecked(True)
+        # self.show_answer_immediately_check.setStyleSheet("color: #3c4043;")
+        self.show_answer_immediately_check.toggled.connect(
+            self._on_show_answer_immediately_changed
+        )
+        options_layout.addWidget(self.show_answer_immediately_check)
+
+        self.show_full_answer_check = QCheckBox("Show full answer")
+        self.show_full_answer_check.setChecked(True)
+        # self.show_full_answer_check.setStyleSheet("color: #3c4043;")
+        self.show_full_answer_check.toggled.connect(self._on_show_full_answer_changed)
+        options_layout.addWidget(self.show_full_answer_check)
+        options_layout.addStretch(1)
+        layout.addLayout(options_layout)
+
         prompt = QLabel("Type what you hear")
         prompt.setStyleSheet("font-weight: bold; color: #202124;")
         layout.addWidget(prompt)
@@ -148,6 +173,17 @@ class ExerciseDictationView(QWidget):
         self.status_label = QLabel("")
         self.status_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(self.status_label)
+
+        self.show_answer_btn = QPushButton("Show Answer")
+        self.show_answer_btn.setIcon(qta.icon("fa5s.eye", color="#1a73e8"))
+        self.show_answer_btn.setStyleSheet(
+            "QPushButton { color: #1a73e8; background: #ffffff; "
+            "border: 1px solid #d2e3fc; border-radius: 4px; padding: 7px 14px; }"
+            "QPushButton:hover { background: #e8f0fe; }"
+        )
+        self.show_answer_btn.clicked.connect(self._show_answer)
+        self.show_answer_btn.hide()
+        layout.addWidget(self.show_answer_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.diff_view = QTextEdit()
         self.diff_view.setReadOnly(True)
@@ -188,6 +224,11 @@ class ExerciseDictationView(QWidget):
         self.input_edit.clear()
         self.diff_view.clear()
         self.status_label.clear()
+        self.show_answer_btn.hide()
+        self._last_expected_text = ""
+        self._last_typed_text = ""
+        self._has_checked_answer = False
+        self._answer_revealed = False
         self.input_edit.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _current_chunk(self) -> Optional[DictationChunk]:
@@ -219,6 +260,10 @@ class ExerciseDictationView(QWidget):
             return
         typed_text = self.input_edit.toPlainText()
         expected_text = chunk.text or ""
+        self._last_expected_text = expected_text
+        self._last_typed_text = typed_text
+        self._has_checked_answer = True
+        self._answer_revealed = False
         is_correct = self._normalize_for_check(typed_text) == self._normalize_for_check(
             expected_text
         )
@@ -228,7 +273,43 @@ class ExerciseDictationView(QWidget):
         else:
             self.status_label.setText("Incorrect")
             self.status_label.setStyleSheet("font-weight: bold; color: #d93025;")
-        self.diff_view.setHtml(self._diff_html(expected_text, typed_text))
+        if self.show_answer_immediately_check.isChecked():
+            self._show_answer()
+            return
+        self.diff_view.clear()
+        self.show_answer_btn.show()
+
+    def _show_answer(self) -> None:
+        self._answer_revealed = True
+        self.show_answer_btn.hide()
+        self.diff_view.setHtml(
+            self._diff_html(
+                self._last_expected_text,
+                self._last_typed_text,
+                self.show_full_answer_check.isChecked(),
+            )
+        )
+
+    def _on_show_answer_immediately_changed(self, checked: bool) -> None:
+        if not self._has_checked_answer:
+            return
+        if checked:
+            self._show_answer()
+            return
+        self._answer_revealed = False
+        self.diff_view.clear()
+        self.show_answer_btn.show()
+
+    def _on_show_full_answer_changed(self, checked: bool) -> None:
+        if not self._has_checked_answer or not self._answer_revealed:
+            return
+        self.diff_view.setHtml(
+            self._diff_html(
+                self._last_expected_text,
+                self._last_typed_text,
+                checked,
+            )
+        )
 
     def _on_position_changed(self, position_ms: int) -> None:
         if (
@@ -246,14 +327,19 @@ class ExerciseDictationView(QWidget):
         return " ".join(normalized.split())
 
     @staticmethod
-    def _diff_html(expected_text: str, typed_text: str) -> str:
+    def _diff_html(expected_text: str, typed_text: str, show_full_answer: bool) -> str:
         differ = diff_match_patch()
         diffs = differ.diff_main(expected_text, typed_text)
         differ.diff_cleanupSemantic(diffs)
 
         fragments = []
         for op, text in diffs:
-            safe_text = html.escape(text).replace("\n", "<br>")
+            display_text = (
+                text
+                if show_full_answer or op > 0
+                else ExerciseDictationView._mask_answer_text(text)
+            )
+            safe_text = html.escape(display_text).replace("\n", "<br>")
             if op == 0:
                 fragments.append(safe_text)
             elif op < 0:
@@ -273,3 +359,7 @@ class ExerciseDictationView(QWidget):
             + "".join(fragments)
             + "</div>"
         )
+
+    @staticmethod
+    def _mask_answer_text(text: str) -> str:
+        return "".join(char if char.isspace() else "*" for char in text)

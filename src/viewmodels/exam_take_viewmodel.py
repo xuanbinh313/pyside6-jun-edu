@@ -424,6 +424,19 @@ class ExamTakeViewModel(QObject):
     def _question_tags(self):
         return self.repo.list_question_tags_by_question(self.exam_id, self.user_id)
 
+    def list_question_tags(self):
+        return self.repo.list_question_tags()
+
+    def list_question_tags_for_context(self, context_id: str):
+        return self.repo.list_question_tags_for_context(context_id)
+
+    def set_context_tag(self, context_id: str, tag_name: str, enabled: bool) -> None:
+        self.repo.set_context_tag(context_id, tag_name, enabled)
+        self.tags = self.repo.list_question_tags()
+
+    def add_vocabulary(self, word: str, context_id: Optional[str] = None):
+        return self.repo.add_vocabulary(word, context_id)
+
     def _attempt_summaries(
         self, attempts: List[ExamAttempt]
     ) -> List[AttemptSummary]:
