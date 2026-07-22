@@ -69,6 +69,7 @@ class ExerciseDictationView(QWidget):
         self.audio_output = QAudioOutput(self)
         self.player.setAudioOutput(self.audio_output)
         self.player.positionChanged.connect(self._on_position_changed)
+        self.player.playbackStateChanged.connect(self._update_play_button)
 
         self._build_ui()
         self._load_audio()
@@ -89,6 +90,22 @@ class ExerciseDictationView(QWidget):
             return
         self._clip_end_ms = int(chunk.end_time * 1000)
         self.player.setPosition(int(chunk.start_time * 1000))
+        self.player.play()
+
+    def _toggle_playback(self) -> None:
+        chunk = self._current_chunk()
+        if chunk is None:
+            return
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+            return
+
+        start_ms = int(chunk.start_time * 1000)
+        end_ms = int(chunk.end_time * 1000)
+        position_ms = self.player.position()
+        self._clip_end_ms = end_ms
+        if position_ms < start_ms or position_ms >= end_ms:
+            self.player.setPosition(start_ms)
         self.player.play()
 
     def _build_ui(self) -> None:
@@ -149,7 +166,7 @@ class ExerciseDictationView(QWidget):
             "QPushButton:hover { background-color: #1558b0; }"
             "QPushButton:disabled { background-color: #dadce0; color: #5f6368; }"
         )
-        self.play_btn.clicked.connect(self.play_current)
+        self.play_btn.clicked.connect(self._toggle_playback)
         layout.addWidget(self.play_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
         options_layout = QHBoxLayout()
@@ -218,6 +235,15 @@ class ExerciseDictationView(QWidget):
         self.title_label.setFont(app_font)
         self.time_label.setFont(app_font)
 
+    def _update_play_button(self) -> None:
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.play_btn.setText("Pause")
+            self.play_btn.setIcon(qta.icon("fa5s.pause", color="white"))
+        else:
+            self.play_btn.setText("Play")
+            self.play_btn.setIcon(qta.icon("fa5s.play", color="white"))
+        self.play_btn.setIconSize(QSize(16, 16))
+
     def changeEvent(self, event: QEvent) -> None:
         if event.type() in (
             QEvent.Type.ApplicationFontChange,
@@ -285,6 +311,7 @@ class ExerciseDictationView(QWidget):
         self._last_typed_text = ""
         self._has_checked_answer = False
         self._answer_revealed = False
+        self._update_play_button()
         self.input_edit.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _current_chunk(self) -> Optional[DictationChunk]:
