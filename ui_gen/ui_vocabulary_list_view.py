@@ -8,16 +8,20 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
-    QMetaObject, QObject, QPoint, QRect,
-    QSize, QTime, QUrl, Qt)
-from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
-    QFont, QFontDatabase, QGradient, QIcon,
-    QImage, QKeySequence, QLinearGradient, QPainter,
-    QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QScrollArea, QSizePolicy, QSpacerItem,
-    QVBoxLayout, QWidget)
+from PySide6.QtCore import QCoreApplication, QMetaObject, QRect, QSize
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSpacerItem,
+    QVBoxLayout,
+    QWidget,
+)
+
 
 class Ui_VocabularyListView(object):
     def setupUi(self, VocabularyListView: QWidget):
@@ -47,6 +51,11 @@ class Ui_VocabularyListView(object):
         self.translate_button.setObjectName(u"translate_button")
 
         self.header_layout.addWidget(self.translate_button)
+
+        self.due_only_checkbox = QCheckBox(VocabularyListView)
+        self.due_only_checkbox.setObjectName(u"due_only_checkbox")
+
+        self.header_layout.addWidget(self.due_only_checkbox)
 
         self.search_input = QLineEdit(VocabularyListView)
         self.search_input.setObjectName(u"search_input")
@@ -80,6 +89,7 @@ class Ui_VocabularyListView(object):
         self.back_button.setText(QCoreApplication.translate("VocabularyListView", u"Back", None))
         self.title_label.setText(QCoreApplication.translate("VocabularyListView", u"Vocabulary List", None))
         self.translate_button.setText(QCoreApplication.translate("VocabularyListView", u"AI Translate Empty", None))
+        self.due_only_checkbox.setText(QCoreApplication.translate("VocabularyListView", u"Due Today", None))
         self.search_input.setPlaceholderText(QCoreApplication.translate("VocabularyListView", u"Search words, meanings, or context...", None))
     # retranslateUi
 

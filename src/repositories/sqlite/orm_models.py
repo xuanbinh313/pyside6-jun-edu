@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -28,6 +28,7 @@ class Exam(Base):
     updated_at: Mapped[str] = mapped_column(
         String, nullable=False, default=str(datetime.now(timezone.utc))
     )
+    dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     srt_chunks: Mapped[List["ExamSrtChunk"]] = relationship(
         "ExamSrtChunk", back_populates="exam", cascade="all, delete-orphan"
@@ -65,6 +66,7 @@ class ExamSrtChunk(Base):
         JSON,
         default=lambda: {"words": []},
     )
+    dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class AdditionalMeta(TypedDict):
@@ -126,6 +128,7 @@ class ExamContext(Base):
         "Vocabulary", back_populates="context"
     )
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class ExamQuestion(Base):
@@ -154,6 +157,7 @@ class ExamQuestion(Base):
         "UserAnswer", back_populates="question", cascade="all, delete-orphan"
     )
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class UserQuestionTag(Base):
@@ -178,6 +182,26 @@ class Vocabulary(Base):
     word: Mapped[str] = mapped_column(String, nullable=False, index=True)
     meaning: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     status: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    source_text: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    ord: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    due_at: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        default=lambda: str(datetime.now(timezone.utc)),
+    )
+    stability: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    difficulty: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    reps: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lapses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    step: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    state: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_review_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    updated_at: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        default=lambda: str(datetime.now(timezone.utc)),
+    )
     context_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("exam_contexts.id", ondelete="SET NULL"), nullable=True
     )
@@ -190,6 +214,7 @@ class Vocabulary(Base):
     context: Mapped[Optional["ExamContext"]] = relationship(
         "ExamContext", back_populates="vocabulary"
     )
+    dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class ExamAttempt(Base):
@@ -269,3 +294,4 @@ class ImportAgentTaskLocal(Base):
     created_at: Mapped[str] = mapped_column(String, nullable=False)
     updated_at: Mapped[str] = mapped_column(String, nullable=False)
     next_retry_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

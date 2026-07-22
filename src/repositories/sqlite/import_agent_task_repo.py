@@ -73,13 +73,22 @@ class ImportAgentTaskRepository:
                 for column in inspector.get_columns("import_agent_tasks")
             }
             if "ocr" in columns:
-                return
-            session.execute(
-                text(
-                    "ALTER TABLE import_agent_tasks "
-                    "ADD COLUMN ocr TEXT NOT NULL DEFAULT ''"
+                if "dirty" in columns:
+                    return
+            if "ocr" not in columns:
+                session.execute(
+                    text(
+                        "ALTER TABLE import_agent_tasks "
+                        "ADD COLUMN ocr TEXT NOT NULL DEFAULT ''"
+                    )
                 )
-            )
+            if "dirty" not in columns:
+                session.execute(
+                    text(
+                        "ALTER TABLE import_agent_tasks "
+                        "ADD COLUMN dirty BOOLEAN NOT NULL DEFAULT 1"
+                    )
+                )
             session.commit()
         finally:
             session.close()
@@ -99,6 +108,7 @@ class ImportAgentTaskRepository:
                 result={},
                 created_at=now,
                 updated_at=now,
+                dirty=True,
             )
             session.add(row)
             session.commit()
@@ -138,6 +148,7 @@ class ImportAgentTaskRepository:
             row.error_message = ""
             row.next_retry_at = None
             row.updated_at = _datetime_to_db(_now())
+            row.dirty = True
             session.commit()
             session.refresh(row)
             return _task_from_orm(row)
@@ -155,6 +166,7 @@ class ImportAgentTaskRepository:
             row.error_message = ""
             row.next_retry_at = None
             row.updated_at = _datetime_to_db(_now())
+            row.dirty = True
             session.commit()
         finally:
             session.close()
@@ -171,6 +183,7 @@ class ImportAgentTaskRepository:
             row.error_message = error_message
             row.next_retry_at = None
             row.updated_at = _datetime_to_db(_now())
+            row.dirty = True
             session.commit()
             session.refresh(row)
             return _task_from_orm(row)
@@ -187,6 +200,7 @@ class ImportAgentTaskRepository:
             row.auto_retry = False
             row.next_retry_at = _datetime_to_db(_now())
             row.updated_at = _datetime_to_db(_now())
+            row.dirty = True
             session.commit()
             session.refresh(row)
             return _task_from_orm(row)
@@ -201,6 +215,7 @@ class ImportAgentTaskRepository:
                 return None
             row.payload = payload
             row.updated_at = _datetime_to_db(_now())
+            row.dirty = True
             session.commit()
             session.refresh(row)
             return _task_from_orm(row)
@@ -215,6 +230,7 @@ class ImportAgentTaskRepository:
                 return None
             row.ocr = ocr
             row.updated_at = _datetime_to_db(_now())
+            row.dirty = True
             session.commit()
             session.refresh(row)
             return _task_from_orm(row)

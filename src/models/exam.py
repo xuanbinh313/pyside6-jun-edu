@@ -143,6 +143,21 @@ class Vocabulary(BaseModel):
     meaning: Optional[str] = None
     status: int = 1
     source_text: Optional[str] = None
+    ord: int = 0
+    due_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    stability: float = 0.0
+    difficulty: float = 0.0
+    reps: int = 0
+    lapses: int = 0
+    step: Optional[int] = None
+    data: dict[str, Any] = Field(default_factory=dict)
+    state: int = 0
+    last_review_at: Optional[datetime.datetime] = None
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
     id: str = Field(default_factory=generate_uuid)
     context_id: Optional[str] = None
     created_at: datetime.datetime = Field(
@@ -279,4 +294,3 @@ class MediaFile(BaseModel):
     is_deleted: bool
     user_id: Optional[str]
     created_at: str
-    

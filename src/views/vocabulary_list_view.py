@@ -56,6 +56,7 @@ class VocabularyListView(QWidget):
 
         self.ui.back_button.clicked.connect(self._navigate_back)
         self.ui.search_input.textChanged.connect(self.viewmodel.set_search_query)
+        self.ui.due_only_checkbox.toggled.connect(self.viewmodel.set_due_only)
         self.ui.translate_button.clicked.connect(self.viewmodel.translate_empty_meanings)
         self.viewmodel.data_changed.connect(self._populate)
         self.viewmodel.error_occurred.connect(self._show_error)
@@ -177,7 +178,7 @@ class VocabularyListView(QWidget):
             button.setFixedSize(30, 28)
             button.setToolTip("Known" if status == 5 else f"Status {status}")
             color = self.STATUS_COLORS[status]
-            if vocabulary.status == status:
+            if vocabulary.reps > 0 and vocabulary.status == status:
                 text_color = "#ffffff" if status != 3 else "#202124"
                 button.setStyleSheet(
                     f"background: {color}; color: {text_color}; "

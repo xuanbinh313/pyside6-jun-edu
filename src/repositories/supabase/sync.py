@@ -20,6 +20,7 @@ from src.repositories.sqlite.orm_models import (
     MediaFile,
     UserAnswer,
     UserQuestionTag,
+    Vocabulary,
 )
 from src.repositories.sqlite.sqlite_repo import _context_from_orm, _mediafile_from_orm
 from src.repositories.supabase.auth import restore_session
@@ -33,6 +34,7 @@ SYNC_MODELS = (
     ExamContext,
     ExamQuestion,
     UserQuestionTag,
+    Vocabulary,
     ExamAttempt,
     UserAnswer,
 )

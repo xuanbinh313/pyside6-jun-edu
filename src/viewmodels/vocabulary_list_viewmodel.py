@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from google.genai import types
@@ -133,6 +134,7 @@ class VocabularyListViewModel(QObject):
         self.vocabulary: list[Vocabulary] = []
         self._all_vocabulary: list[Vocabulary] = []
         self._search_query = ""
+        self.due_only = False
         self.is_translating = False
         self._translate_worker: VocabularyTranslateWorker | None = None
 
@@ -145,6 +147,10 @@ class VocabularyListViewModel(QObject):
 
     def set_search_query(self, query: str) -> None:
         self._search_query = query.strip().casefold()
+        self._apply_filter()
+
+    def set_due_only(self, val: bool) -> None:
+        self.due_only = val
         self._apply_filter()
 
     def update_status(self, vocab_id: str, status: int) -> None:
@@ -190,15 +196,27 @@ class VocabularyListViewModel(QObject):
 
     def _apply_filter(self) -> None:
         query = self._search_query
+        now = datetime.now(timezone.utc)
         self.vocabulary = [
             item
             for item in self._all_vocabulary
-            if not query
-            or query in item.word.casefold()
-            or query in (item.meaning or "").casefold()
-            or query in (item.source_text or "").casefold()
+            if self._matches_due_filter(item, now)
+            and (
+                not query
+                or query in item.word.casefold()
+                or query in (item.meaning or "").casefold()
+                or query in (item.source_text or "").casefold()
+            )
         ]
         self.data_changed.emit()
+
+    def _matches_due_filter(self, item: Vocabulary, now: datetime) -> bool:
+        if not self.due_only:
+            return True
+        due_at = item.due_at
+        if due_at.tzinfo is None:
+            due_at = due_at.replace(tzinfo=timezone.utc)
+        return due_at <= now
 
     def _on_translation_finished(self, translations: dict[str, str]) -> None:
         updated_count = 0

@@ -1,4 +1,5 @@
 ﻿import datetime
+import math
 from typing import Any, Optional, cast
 
 from sqlalchemy import select
@@ -57,11 +58,11 @@ def _answer_from_orm(db_answer: orm.UserAnswer) -> UserAnswer:
 
 
 def _vocabulary_from_orm(db_vocabulary: orm.Vocabulary) -> Vocabulary:
-    source_text: Optional[str] = None
+    source_text: Optional[str] = db_vocabulary.source_text
     if db_vocabulary.context is not None:
         content = db_vocabulary.context.content
         text_value = content.get("text")
-        if isinstance(text_value, str):
+        if not source_text and isinstance(text_value, str):
             source_text = text_value
     return Vocabulary.model_validate(
         {
@@ -69,12 +70,116 @@ def _vocabulary_from_orm(db_vocabulary: orm.Vocabulary) -> Vocabulary:
             "word": db_vocabulary.word,
             "meaning": db_vocabulary.meaning,
             "status": db_vocabulary.status,
+            "source_text": source_text,
+            "ord": db_vocabulary.ord,
+            "due_at": db_vocabulary.due_at,
+            "stability": db_vocabulary.stability,
+            "difficulty": db_vocabulary.difficulty,
+            "reps": db_vocabulary.reps,
+            "lapses": db_vocabulary.lapses,
+            "step": db_vocabulary.step,
+            "data": db_vocabulary.data,
+            "state": db_vocabulary.state,
+            "last_review_at": db_vocabulary.last_review_at,
+            "updated_at": db_vocabulary.updated_at,
             "context_id": db_vocabulary.context_id,
             "created_at": db_vocabulary.created_at,
             "user_id": db_vocabulary.user_id,
-            "source_text": source_text,
         }
     )
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(value, maximum))
+
+
+def _fsrs_quality_from_status(status: int) -> int:
+    if status <= 1:
+        return 1
+    if status == 2:
+        return 2
+    if status == 3:
+        return 3
+    return 4
+
+
+def _first_review_stability(status: int) -> float:
+    if status <= 1:
+        return 0.4
+    if status == 2:
+        return 1.2
+    if status == 3:
+        return 3.1
+    if status == 4:
+        return 15.5
+    return 30.0
+
+
+def _first_review_difficulty(quality: int) -> float:
+    difficulty = 7.2 - math.exp((quality - 1) * 0.53) + 1.0
+    return _clamp(difficulty, 1.0, 10.0)
+
+
+def _review_interval_days(status: int, stability: float) -> float:
+    if status <= 1:
+        return 5.0 / (24.0 * 60.0)
+    interval_days = max(1.0, stability)
+    if status == 2:
+        return max(1.0, interval_days * 0.6)
+    if status == 3:
+        return interval_days
+    if status == 4:
+        return interval_days * 1.8
+    return interval_days * 3.0
+
+
+def _schedule_vocabulary_review(
+    db_vocabulary: orm.Vocabulary, status: int
+) -> dict[str, Any]:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    quality = _fsrs_quality_from_status(status)
+    previous_stability = float(db_vocabulary.stability or 0.0)
+    previous_difficulty = float(db_vocabulary.difficulty or 0.0)
+    reps = int(db_vocabulary.reps or 0) + 1
+    lapses = int(db_vocabulary.lapses or 0)
+
+    if previous_stability <= 0.0:
+        stability = _first_review_stability(status)
+        difficulty = _first_review_difficulty(quality)
+    else:
+        difficulty_delta = (3 - quality) * 0.8
+        difficulty = _clamp(previous_difficulty + difficulty_delta, 1.0, 10.0)
+        if status <= 1:
+            lapses += 1
+            stability = max(0.4, previous_stability * 0.35)
+        elif status == 2:
+            stability = max(1.0, previous_stability * 1.2)
+        elif status == 3:
+            stability = max(1.0, previous_stability * 2.2)
+        elif status == 4:
+            stability = max(1.0, previous_stability * 3.0)
+        else:
+            stability = max(1.0, previous_stability * 4.0)
+
+    interval_days = _review_interval_days(status, stability)
+    due_at = now + datetime.timedelta(days=interval_days)
+    review_data = db_vocabulary.data if isinstance(db_vocabulary.data, dict) else {}
+    review_data = dict(review_data)
+    review_data["last_rating"] = status
+    review_data["last_interval_days"] = interval_days
+
+    return {
+        "status": status,
+        "due_at": str(due_at),
+        "stability": stability,
+        "difficulty": difficulty,
+        "reps": reps,
+        "lapses": lapses,
+        "step": None,
+        "data": review_data,
+        "state": 1 if status <= 1 else 2,
+        "last_review_at": str(now),
+    }
 
 
 def _save_imported_diagram_media(ctx_data: dict) -> str:
@@ -162,9 +267,21 @@ class SQLiteExamRepository(IExamRepository):
 
         session = get_session()
         try:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            source_text: Optional[str] = None
+            if context_id:
+                context = session.get(orm.ExamContext, context_id)
+                if context is not None:
+                    text_value = context.content.get("text")
+                    if isinstance(text_value, str):
+                        source_text = text_value
             db_vocabulary = orm.Vocabulary(
                 word=normalized_word,
                 context_id=context_id,
+                source_text=source_text,
+                due_at=str(now),
+                updated_at=str(now),
+                dirty=True,
             )
             session.add(db_vocabulary)
             session.commit()
@@ -192,7 +309,22 @@ class SQLiteExamRepository(IExamRepository):
     def update_vocabulary_status(self, vocab_id: str, status: int) -> None:
         if status not in range(1, 6):
             raise ValueError("Vocabulary status must be between 1 and 5.")
-        self._update_vocabulary(vocab_id, status=status)
+        session = get_session()
+        try:
+            row = session.get(orm.Vocabulary, vocab_id)
+            if row is None:
+                raise ValueError("Vocabulary item was not found.")
+            values = _schedule_vocabulary_review(row, status)
+            values["updated_at"] = str(datetime.datetime.now(datetime.timezone.utc))
+            values["dirty"] = True
+            for key, value in values.items():
+                setattr(row, key, value)
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     def update_vocabulary_meaning(self, vocab_id: str, meaning: str) -> None:
         self._update_vocabulary(vocab_id, meaning=meaning.strip() or None)
@@ -200,6 +332,8 @@ class SQLiteExamRepository(IExamRepository):
     def _update_vocabulary(self, vocab_id: str, **values: Any) -> None:
         session = get_session()
         try:
+            values["updated_at"] = str(datetime.datetime.now(datetime.timezone.utc))
+            values["dirty"] = True
             updated = (
                 session.query(orm.Vocabulary)
                 .filter(orm.Vocabulary.id == vocab_id)
@@ -295,6 +429,7 @@ class SQLiteExamRepository(IExamRepository):
             db_exam.is_published = is_published
             db_exam.audio_name = audio_name
             db_exam.updated_at = str(datetime.datetime.now(datetime.timezone.utc))
+            db_exam.dirty = True
             if not db_exam.created_at:
                 db_exam.created_at = str(datetime.datetime.now(datetime.timezone.utc))
             if audio_name:
@@ -339,6 +474,7 @@ class SQLiteExamRepository(IExamRepository):
                             orm.AdditionalSrtChunkMeta,
                             chunk.additional_meta.model_dump(),
                         ),
+                        dirty=True,
                     )
                 )
             session.commit()
@@ -476,7 +612,7 @@ class SQLiteExamRepository(IExamRepository):
                 final_score=final_score,
                 duration_seconds=duration_seconds,
                 created_at=str(datetime.datetime.now(datetime.timezone.utc)),
-                dirty=False,
+                dirty=True,
             )
             session.add(attempt)
             session.flush()
@@ -488,7 +624,8 @@ class SQLiteExamRepository(IExamRepository):
                         question_id=str(answer["question_id"]),
                         user_choice=answer.get("user_choice"),
                         is_correct=bool(answer.get("is_correct", False)),
-                        dirty=False,
+                        user_id=user_id,
+                        dirty=True,
                     )
                 )
 
@@ -561,6 +698,7 @@ class SQLiteExamRepository(IExamRepository):
                 if not exam:
                     raise ValueError("Target exam not found.")
                 exam.audio_name = audio_name
+                exam.dirty = True
                 session.query(orm.ExamSrtChunk).filter(
                     orm.ExamSrtChunk.exam_id == exam.id
                 ).delete(synchronize_session="fetch")
@@ -595,6 +733,7 @@ class SQLiteExamRepository(IExamRepository):
                             orm.AdditionalSrtChunkMeta,
                             {"words": _normalize_segment_words(segment)},
                         ),
+                        dirty=True,
                     )
                 )
 
@@ -787,6 +926,7 @@ class SQLiteExamRepository(IExamRepository):
             db_ctx.content = cast(orm.ExamContent, content)
             db_ctx.index = index
             db_ctx.additional_meta = cast(orm.AdditionalMeta, additional_meta)
+            db_ctx.dirty = True
             session.add(db_ctx)
             if db_ctx.context_type == "IMAGE_DIAGRAM":
                 image_filename = str(content.get("image_filename", "") or "")
@@ -834,6 +974,7 @@ class SQLiteExamRepository(IExamRepository):
                 db_q.additional_meta = orm.QuestionAdditionalMeta(
                     note=str(value.get("note", ""))
                 )
+                db_q.dirty = True
                 saved_questions.append(db_q)
 
             session.commit()
@@ -899,6 +1040,7 @@ class SQLiteExamRepository(IExamRepository):
                 "audio_end": audio_end,
                 "note": str(existing_meta.get("note", "")),
             }
+            db_ctx.dirty = True
             session.commit()
             return _context_from_orm(db_ctx)
         except Exception:
@@ -930,6 +1072,7 @@ class SQLiteExamRepository(IExamRepository):
                 if not answer:
                     continue
                 question.correct_answer = answer
+                question.dirty = True
                 updated_numbers.append(question_number)
             session.commit()
             return sorted(updated_numbers)
@@ -1007,6 +1150,7 @@ class SQLiteExamRepository(IExamRepository):
                         {"audio_start": 0.0, "audio_end": 0.0, "note": ""},
                     )
                     new_ctx.user_id = ctx_data.get("user_id")
+                    new_ctx.dirty = True
                     if new_ctx.context_type == "IMAGE_DIAGRAM":
                         media_filename = _save_imported_diagram_media(ctx_data)
                         if media_filename:
@@ -1042,6 +1186,7 @@ class SQLiteExamRepository(IExamRepository):
                             "note": "",
                         },
                         user_id=q_data.get("user_id"),
+                        dirty=True,
                     )
                     session.add(new_ctx)
                     session.flush()
@@ -1069,6 +1214,7 @@ class SQLiteExamRepository(IExamRepository):
                 db_q.correct_answer = q_data.get("correct_answer", "")
                 db_q.additional_meta = additional_meta
                 db_q.user_id = q_data.get("user_id")
+                db_q.dirty = True
 
             session.commit()
             return {

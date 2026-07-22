@@ -54,6 +54,13 @@
       </widget>
      </item>
      <item>
+      <widget class="QCheckBox" name="due_only_checkbox">
+       <property name="text">
+        <string>Due Today</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QLineEdit" name="search_input">
        <property name="minimumSize">
         <size>
