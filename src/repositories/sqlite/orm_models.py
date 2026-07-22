@@ -29,10 +29,8 @@ class Exam(Base):
         String, nullable=False, default=str(datetime.now(timezone.utc))
     )
     dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    srt_chunks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    srt_chunks: Mapped[List["ExamSrtChunk"]] = relationship(
-        "ExamSrtChunk", back_populates="exam", cascade="all, delete-orphan"
-    )
     contexts: Mapped[List["ExamContext"]] = relationship(
         "ExamContext", back_populates="exam", cascade="all, delete-orphan"
     )
@@ -49,24 +47,6 @@ class SrtWord(TypedDict):
 
 class AdditionalSrtChunkMeta(TypedDict):
     words: List[SrtWord]
-
-
-class ExamSrtChunk(Base):
-    __tablename__ = "exam_srt_chunks"
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
-    exam_id: Mapped[str] = mapped_column(ForeignKey("exams.id"), nullable=False)
-    index: Mapped[int] = mapped_column(Integer, nullable=False)
-    start_time: Mapped[float] = mapped_column(Float, nullable=False)
-    end_time: Mapped[float] = mapped_column(Float, nullable=False)
-    text: Mapped[str] = mapped_column(String, nullable=False)
-    hint: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    exam: Mapped["Exam"] = relationship("Exam", back_populates="srt_chunks")
-    user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
-    additional_meta: Mapped[AdditionalSrtChunkMeta] = mapped_column(
-        JSON,
-        default=lambda: {"words": []},
-    )
-    dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class AdditionalMeta(TypedDict):

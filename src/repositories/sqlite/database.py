@@ -1,5 +1,7 @@
 import importlib
+import json
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -18,6 +20,60 @@ def init_db() -> None:
     inspector = inspect(engine)
     now = str(datetime.now(timezone.utc)).replace("'", "''")
     with engine.begin() as connection:
+        exam_columns = {column["name"] for column in inspector.get_columns("exams")}
+        if "srt_chunks" not in exam_columns:
+            connection.execute(text("ALTER TABLE exams ADD COLUMN srt_chunks TEXT"))
+
+        if inspector.has_table("exam_srt_chunks"):
+            rows = (
+                connection.execute(
+                    text(
+                        "SELECT exam_id, id, \"index\", start_time, end_time, text, "
+                        "hint, user_id, additional_meta "
+                        "FROM exam_srt_chunks "
+                        "ORDER BY exam_id ASC, \"index\" ASC, start_time ASC"
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            chunks_by_exam: dict[str, list[dict[str, Any]]] = {}
+            for row in rows:
+                exam_id = str(row["exam_id"])
+                additional_meta = row["additional_meta"]
+                if isinstance(additional_meta, str):
+                    try:
+                        additional_meta = json.loads(additional_meta)
+                    except json.JSONDecodeError:
+                        additional_meta = {"words": []}
+                if not isinstance(additional_meta, dict):
+                    additional_meta = {"words": []}
+                chunks_by_exam.setdefault(exam_id, []).append(
+                    {
+                        "id": row["id"],
+                        "exam_id": exam_id,
+                        "index": row["index"],
+                        "start_time": row["start_time"],
+                        "end_time": row["end_time"],
+                        "text": row["text"],
+                        "hint": row["hint"],
+                        "user_id": row["user_id"],
+                        "additional_meta": additional_meta,
+                    }
+                )
+            for exam_id, chunks in chunks_by_exam.items():
+                connection.execute(
+                    text(
+                        "UPDATE exams SET srt_chunks = :srt_chunks "
+                        "WHERE id = :exam_id "
+                        "AND (srt_chunks IS NULL OR srt_chunks = '')"
+                    ),
+                    {
+                        "exam_id": exam_id,
+                        "srt_chunks": json.dumps(chunks, ensure_ascii=False),
+                    },
+                )
+
         vocabulary_columns = {
             column["name"] for column in inspector.get_columns("vocabulary")
         }

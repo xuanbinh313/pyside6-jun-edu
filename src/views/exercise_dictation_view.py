@@ -157,15 +157,12 @@ class ExerciseDictationView(QWidget):
         options_layout.setSpacing(16)
 
         self.show_answer_immediately_check = QCheckBox("Show answer immediately")
-        self.show_answer_immediately_check.setChecked(True)
         self.show_answer_immediately_check.toggled.connect(
             self._on_show_answer_immediately_changed
         )
         options_layout.addWidget(self.show_answer_immediately_check)
 
         self.show_full_answer_check = QCheckBox("Show full answer")
-        self.show_full_answer_check.setChecked(True)
-        # self.show_full_answer_check.setStyleSheet("color: #3c4043;")
         self.show_full_answer_check.toggled.connect(self._on_show_full_answer_changed)
         options_layout.addWidget(self.show_full_answer_check)
         options_layout.addStretch(1)

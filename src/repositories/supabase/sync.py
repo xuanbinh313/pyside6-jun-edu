@@ -1,4 +1,5 @@
 import datetime
+import json
 from asyncio.log import logger
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -16,7 +17,6 @@ from src.repositories.sqlite.orm_models import (
     ExamAttempt,
     ExamContext,
     ExamQuestion,
-    ExamSrtChunk,
     MediaFile,
     UserAnswer,
     UserQuestionTag,
@@ -30,7 +30,6 @@ from src.utils.r2_service import download_media_file, upload_media_file
 
 SYNC_MODELS = (
     Exam,
-    ExamSrtChunk,
     ExamContext,
     ExamQuestion,
     UserQuestionTag,
@@ -68,10 +67,40 @@ def _serialize_value(value: Any) -> Any:
 
 def _serialize_row(row: Any) -> dict[str, Any]:
     mapper = inspect(row.__class__)
-    return {
+    data = {
         column.key: _serialize_value(getattr(row, column.key))
         for column in mapper.columns
     }
+    if isinstance(row, Exam):
+        data["srt_chunks"] = _serialize_exam_srt_chunks(data.get("srt_chunks"))
+    return data
+
+
+def _serialize_exam_srt_chunks(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        if not value.strip():
+            return []
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(decoded, list):
+            return decoded
+    return []
+
+
+def _deserialize_exam_srt_chunks(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return json.dumps(value, ensure_ascii=False)
+    return ""
 
 
 def _deserialize_value(value: Any, column: Any) -> Any:
@@ -95,6 +124,8 @@ def _deserialize_row(model: type, row: dict[str, Any]) -> dict[str, Any]:
     }
     if model is Exam and not data.get("audio_name") and row.get("full_audio_url"):
         data["audio_name"] = _path_leaf(str(row.get("full_audio_url") or ""))
+    if model is Exam and "srt_chunks" in data:
+        data["srt_chunks"] = _deserialize_exam_srt_chunks(data["srt_chunks"])
     return data
 
 

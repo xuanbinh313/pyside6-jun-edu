@@ -228,9 +228,9 @@ class Exam(BaseModel):
     updated_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
-    srt_chunks: list[ExamSrtChunk] = []
-    contexts: list[ExamContext] = []
-    attempts: list[ExamAttempt] = []
+    srt_chunks: list[ExamSrtChunk] = Field(default_factory=list)
+    contexts: list[ExamContext] = Field(default_factory=list)
+    attempts: list[ExamAttempt] = Field(default_factory=list)
 
 
 # --- TẦNG CÂU HỎI (QUESTION) ---

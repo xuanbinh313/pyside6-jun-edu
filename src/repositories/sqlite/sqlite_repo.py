@@ -1,4 +1,5 @@
 ﻿import datetime
+import json
 import math
 from typing import Any, Optional, cast
 
@@ -6,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from src.models.exam import (
+    AdditionalSrtChunkMeta,
     ContextSchema,
     Exam,
     ExamAttempt,
@@ -14,6 +16,7 @@ from src.models.exam import (
     ExamSrtChunk,
     MediaFile,
     QuestionSchema,
+    SrtWord,
     UserAnswer,
     Vocabulary,
 )
@@ -34,11 +37,53 @@ def _mediafile_from_orm(db_mediafile: orm.MediaFile) -> MediaFile:
 
 
 def _exam_from_orm(db_exam: orm.Exam) -> Exam:
-    return Exam.model_validate(db_exam)
+    return Exam.model_validate(
+        {
+            "id": db_exam.id,
+            "title": db_exam.title,
+            "description": db_exam.description,
+            "audio_name": db_exam.audio_name,
+            "duration_minutes": db_exam.duration_minutes,
+            "is_published": db_exam.is_published,
+            "user_id": db_exam.user_id,
+            "created_at": db_exam.created_at,
+            "updated_at": db_exam.updated_at,
+            "srt_chunks": _chunks_from_json(db_exam.srt_chunks),
+        }
+    )
 
 
-def _chunk_from_orm(db_chunk: orm.ExamSrtChunk) -> ExamSrtChunk:
-    return ExamSrtChunk.model_validate(db_chunk)
+def _chunks_from_json(value: Optional[str]) -> list[ExamSrtChunk]:
+    if not value:
+        return []
+    try:
+        raw_chunks = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(raw_chunks, list):
+        return []
+
+    chunks: list[ExamSrtChunk] = []
+    for raw_chunk in raw_chunks:
+        if not isinstance(raw_chunk, dict):
+            continue
+        chunks.append(ExamSrtChunk.model_validate(raw_chunk))
+    return sorted(chunks, key=lambda chunk: (chunk.index, chunk.start_time))
+
+
+def _chunks_to_json(exam_id: str, chunks: list[ExamSrtChunk]) -> str:
+    payload: list[dict[str, Any]] = []
+    for chunk in chunks:
+        data = chunk.model_dump(mode="json")
+        data["exam_id"] = exam_id
+        payload.append(data)
+    payload.sort(
+        key=lambda chunk: (
+            int(chunk.get("index", 0) or 0),
+            float(chunk.get("start_time", 0.0) or 0.0),
+        )
+    )
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def _context_from_orm(db_context: orm.ExamContext) -> ExamContext:
@@ -215,9 +260,9 @@ def _save_imported_diagram_media(ctx_data: dict) -> str:
     return unique_filename
 
 
-def _normalize_segment_words(segment: dict[str, Any]) -> list[dict[str, object]]:
+def _normalize_segment_words(segment: dict[str, Any]) -> list[SrtWord]:
     raw_words = segment.get("words", [])
-    words: list[dict[str, object]] = []
+    words: list[SrtWord] = []
     if not isinstance(raw_words, list):
         return words
 
@@ -225,11 +270,11 @@ def _normalize_segment_words(segment: dict[str, Any]) -> list[dict[str, object]]
         if not isinstance(raw_word, dict):
             continue
         words.append(
-            {
-                "word": str(raw_word.get("word", "")),
-                "start": float(raw_word.get("start", 0.0)),
-                "end": float(raw_word.get("end", 0.0)),
-            }
+            SrtWord(
+                word=str(raw_word.get("word", "")),
+                start=float(raw_word.get("start", 0.0)),
+                end=float(raw_word.get("end", 0.0)),
+            )
         )
     return words
 
@@ -368,7 +413,6 @@ class SQLiteExamRepository(IExamRepository):
         try:
             db_exam = (
                 session.query(orm.Exam)
-                .options(joinedload(orm.Exam.srt_chunks))
                 .filter(orm.Exam.id == exam_id)
                 .first()
             )
@@ -376,10 +420,7 @@ class SQLiteExamRepository(IExamRepository):
                 return None, [], [], []
 
             exam = _exam_from_orm(db_exam)
-            chunks = sorted(
-                (_chunk_from_orm(chunk) for chunk in db_exam.srt_chunks),
-                key=lambda chunk: chunk.index,
-            )
+            chunks = _chunks_from_json(db_exam.srt_chunks)
             contexts = [
                 _context_from_orm(context)
                 for context in session.query(orm.ExamContext)
@@ -457,26 +498,12 @@ class SQLiteExamRepository(IExamRepository):
     def replace_srt_chunks(self, exam_id: str, chunks: list[ExamSrtChunk]) -> None:
         session = get_session()
         try:
-            session.query(orm.ExamSrtChunk).filter(
-                orm.ExamSrtChunk.exam_id == exam_id
-            ).delete()
-            for chunk in chunks:
-                session.add(
-                    orm.ExamSrtChunk(
-                        exam_id=exam_id,
-                        index=chunk.index,
-                        start_time=chunk.start_time,
-                        end_time=chunk.end_time,
-                        text=chunk.text,
-                        hint=chunk.hint,
-                        user_id=chunk.user_id,
-                        additional_meta=cast(
-                            orm.AdditionalSrtChunkMeta,
-                            chunk.additional_meta.model_dump(),
-                        ),
-                        dirty=True,
-                    )
-                )
+            db_exam = session.query(orm.Exam).filter(orm.Exam.id == exam_id).first()
+            if not db_exam:
+                raise ValueError("Exam not found in database.")
+            db_exam.srt_chunks = _chunks_to_json(exam_id, chunks)
+            db_exam.dirty = True
+            db_exam.updated_at = str(datetime.datetime.now(datetime.timezone.utc))
             session.commit()
         except Exception:
             session.rollback()
@@ -487,13 +514,10 @@ class SQLiteExamRepository(IExamRepository):
     def list_srt_chunks(self, exam_id: str) -> list[ExamSrtChunk]:
         session = get_session()
         try:
-            rows = (
-                session.query(orm.ExamSrtChunk)
-                .filter(orm.ExamSrtChunk.exam_id == exam_id)
-                .order_by(orm.ExamSrtChunk.index.asc())
-                .all()
-            )
-            return [_chunk_from_orm(chunk) for chunk in rows]
+            db_exam = session.query(orm.Exam).filter(orm.Exam.id == exam_id).first()
+            if not db_exam:
+                return []
+            return _chunks_from_json(db_exam.srt_chunks)
         finally:
             session.close()
 
@@ -530,13 +554,7 @@ class SQLiteExamRepository(IExamRepository):
                 .order_by(orm.ExamQuestion.question_number.asc())
                 .all()
             ]
-            chunks = [
-                _chunk_from_orm(chunk)
-                for chunk in session.query(orm.ExamSrtChunk)
-                .filter(orm.ExamSrtChunk.exam_id == exam_id)
-                .order_by(orm.ExamSrtChunk.index.asc(), orm.ExamSrtChunk.start_time.asc())
-                .all()
-            ]
+            chunks = _chunks_from_json(db_exam.srt_chunks)
             tag_rows = (
                 session.query(orm.UserQuestionTag.tag_name)
                 .join(
@@ -699,9 +717,6 @@ class SQLiteExamRepository(IExamRepository):
                     raise ValueError("Target exam not found.")
                 exam.audio_name = audio_name
                 exam.dirty = True
-                session.query(orm.ExamSrtChunk).filter(
-                    orm.ExamSrtChunk.exam_id == exam.id
-                ).delete(synchronize_session="fetch")
             else:
                 exam = orm.Exam(
                     title=title,
@@ -721,21 +736,22 @@ class SQLiteExamRepository(IExamRepository):
                 )
             )
 
-            for index, segment in enumerate(segments):
-                session.add(
-                    orm.ExamSrtChunk(
-                        exam_id=exam.id,
-                        index=index,
-                        start_time=float(segment.get("start", 0.0)),
-                        end_time=float(segment.get("end", 0.0)),
-                        text=str(segment.get("text", "")),
-                        additional_meta=cast(
-                            orm.AdditionalSrtChunkMeta,
-                            {"words": _normalize_segment_words(segment)},
-                        ),
-                        dirty=True,
-                    )
+            chunks = [
+                ExamSrtChunk(
+                    exam_id=str(exam.id),
+                    index=index,
+                    start_time=float(segment.get("start", 0.0)),
+                    end_time=float(segment.get("end", 0.0)),
+                    text=str(segment.get("text", "")),
+                    additional_meta=AdditionalSrtChunkMeta(
+                        words=_normalize_segment_words(segment)
+                    ),
                 )
+                for index, segment in enumerate(segments)
+            ]
+            exam.srt_chunks = _chunks_to_json(str(exam.id), chunks)
+            exam.updated_at = str(datetime.datetime.now(datetime.timezone.utc))
+            exam.dirty = True
 
             session.commit()
             return str(exam.id)
