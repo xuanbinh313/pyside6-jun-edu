@@ -56,6 +56,7 @@ def init_db() -> None:
                         "start_time": row["start_time"],
                         "end_time": row["end_time"],
                         "text": row["text"],
+                        "note": "",
                         "hint": row["hint"],
                         "user_id": row["user_id"],
                         "additional_meta": additional_meta,

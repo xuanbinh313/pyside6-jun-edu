@@ -26,6 +26,7 @@ class DictationChunk(Protocol):
     start_time: float
     end_time: float
     text: str
+    note: str
 
 
 class DictationInput(QTextEdit):
@@ -215,7 +216,35 @@ class ExerciseDictationView(QWidget):
         )
         self.show_answer_btn.clicked.connect(self._show_answer)
         self.show_answer_btn.hide()
-        layout.addWidget(self.show_answer_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        self.translate_btn = QPushButton("Translate")
+        self.translate_btn.setIcon(qta.icon("fa5s.language", color="#009688"))
+        self.translate_btn.setStyleSheet(
+            "QPushButton { color: #00796b; background: #ffffff; "
+            "border: 1px solid #b2dfdb; border-radius: 4px; padding: 7px 14px; }"
+            "QPushButton:hover { background: #e0f2f1; }"
+            "QPushButton:disabled { color: #5f6368; border-color: #dadce0; }"
+        )
+        self.translate_btn.clicked.connect(self._show_translation)
+        self.translate_btn.hide()
+
+        reveal_layout = QHBoxLayout()
+        reveal_layout.setContentsMargins(0, 0, 0, 0)
+        reveal_layout.setSpacing(8)
+        reveal_layout.addWidget(self.show_answer_btn)
+        reveal_layout.addWidget(self.translate_btn)
+        reveal_layout.addStretch(1)
+        layout.addLayout(reveal_layout)
+
+        self.translation_view = QTextEdit()
+        self.translation_view.setReadOnly(True)
+        self.translation_view.setMinimumHeight(90)
+        self.translation_view.setStyleSheet(
+            "QTextEdit { background: #f8fffe; border: 1px solid #b2dfdb; "
+            "border-radius: 6px; padding: 8px; color: #202124; }"
+        )
+        self.translation_view.hide()
+        layout.addWidget(self.translation_view)
 
         self.diff_view = QTextEdit()
         self.diff_view.setReadOnly(True)
@@ -232,6 +261,8 @@ class ExerciseDictationView(QWidget):
         self.typed_answer_label.setFont(app_font)
         self.diff_view.setFont(app_font)
         self.diff_view.document().setDefaultFont(app_font)
+        self.translation_view.setFont(app_font)
+        self.translation_view.document().setDefaultFont(app_font)
         self.title_label.setFont(app_font)
         self.time_label.setFont(app_font)
 
@@ -265,6 +296,8 @@ class ExerciseDictationView(QWidget):
                         self.show_full_answer_check.isChecked(),
                     )
                 )
+            if self._translation_revealed:
+                self._show_translation()
         super().changeEvent(event)
 
     def _load_audio(self) -> None:
@@ -304,13 +337,17 @@ class ExerciseDictationView(QWidget):
         )
         self.input_edit.clear()
         self.diff_view.clear()
+        self.translation_view.clear()
+        self.translation_view.hide()
         self.typed_answer_label.clear()
         self.status_label.clear()
         self.show_answer_btn.hide()
+        self.translate_btn.hide()
         self._last_expected_text = ""
         self._last_typed_text = ""
         self._has_checked_answer = False
         self._answer_revealed = False
+        self._translation_revealed = False
         self._update_play_button()
         self.input_edit.setFocus(Qt.FocusReason.OtherFocusReason)
 
@@ -358,6 +395,8 @@ class ExerciseDictationView(QWidget):
         self._last_typed_text = typed_text
         self._has_checked_answer = True
         self._answer_revealed = False
+        self._translation_revealed = False
+        self.translation_view.hide()
         is_correct = self._normalize_for_check(typed_text) == self._normalize_for_check(
             expected_text
         )
@@ -370,11 +409,14 @@ class ExerciseDictationView(QWidget):
         else:
             self.status_label.setText("Incorrect")
             self.status_label.setStyleSheet("font-weight: bold; color: #d93025;")
+        self._prepare_translation_button()
         if self.show_answer_immediately_check.isChecked():
             self._show_answer()
             return
         self.diff_view.clear()
         self.show_answer_btn.show()
+        self.translation_view.hide()
+        self._translation_revealed = False
 
     def _show_answer(self) -> None:
         self._answer_revealed = True
@@ -387,6 +429,35 @@ class ExerciseDictationView(QWidget):
             )
         )
 
+    def _prepare_translation_button(self) -> None:
+        note = self._current_chunk_note().strip()
+        self.translate_btn.setEnabled(bool(note))
+        self.translate_btn.setToolTip(
+            "Show Vietnamese translation"
+            if note
+            else "No Vietnamese note is available for this transcript"
+        )
+        self.translate_btn.show()
+
+    def _show_translation(self) -> None:
+        note = self._current_chunk_note().strip()
+        if not note:
+            return
+        self._translation_revealed = True
+        self.translate_btn.hide()
+        self.translation_view.setHtml(
+            "<div style='line-height: 1.7;'>"
+            f"{html.escape(note).replace(chr(10), '<br>')}"
+            "</div>"
+        )
+        self.translation_view.show()
+
+    def _current_chunk_note(self) -> str:
+        chunk = self._current_chunk()
+        if chunk is None:
+            return ""
+        return getattr(chunk, "note", "")
+
     def _on_show_answer_immediately_changed(self, checked: bool) -> None:
         if not self._has_checked_answer:
             return
@@ -396,6 +467,7 @@ class ExerciseDictationView(QWidget):
         self._answer_revealed = False
         self.diff_view.clear()
         self.show_answer_btn.show()
+        self._prepare_translation_button()
 
     def _on_show_full_answer_changed(self, checked: bool) -> None:
         if not self._has_checked_answer or not self._answer_revealed:

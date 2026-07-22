@@ -64,7 +64,7 @@ Creates `ExamTakeViewModel(exam_id)` + `ExamTakeView`, pushes it to stack slot 1
 
 ## Menu Bar
 
-Single "Menu" entry with these actions:
+The menu bar includes a "Menu" entry with these actions:
 
 | Action | Handler | Description |
 |---|---|---|
@@ -74,6 +74,13 @@ Single "Menu" entry with these actions:
 | "Sync to Local" | `sync_viewmodel.sync_to_local()` | Downloads Supabase data and R2 media into local SQLite/temp storage |
 | "Settings" | `show_settings_modal()` | `QInputDialog.getInt` to set `close_event_minutes` (1–1440) |
 | "Logout" | `auth_viewmodel.sign_out()` | Signs out and clears saved tokens while staying in the main app |
+
+It also includes a "Views" entry with these actions:
+
+| Action | Handler | Description |
+|---|---|---|
+| "Zoom In" | `zoom_in()` | Increases the application font zoom level |
+| "Zoom Out" | `zoom_out()` | Decreases the application font zoom level |
 
 `close_event_minutes` controls how many minutes the reminder countdown runs when the user closes the window.
 

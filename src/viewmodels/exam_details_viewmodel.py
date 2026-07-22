@@ -119,6 +119,7 @@ class ExamDetailsViewModel(QObject):
             start_time=chunk.start_time,
             end_time=chunk.end_time,
             text=chunk.text,
+            note=chunk.note,
             hint=getattr(chunk, "hint", None),
             user_id=chunk.user_id,
             additional_meta=chunk.additional_meta.model_copy(deep=True),
@@ -156,6 +157,7 @@ class ExamDetailsViewModel(QObject):
             split_time = chunk.start_time + ((chunk.end_time - chunk.start_time) * ratio)
 
         chunk.text = left_text
+        chunk.note = ""
         chunk.end_time = max(chunk.start_time, float(split_time))
         chunk.additional_meta.words = left_words
 
@@ -165,6 +167,7 @@ class ExamDetailsViewModel(QObject):
             start_time=chunk.end_time,
             end_time=original_end,
             text=right_text,
+            note="",
             hint=getattr(chunk, "hint", None),
             user_id=chunk.user_id,
             additional_meta={"words": right_words},
@@ -180,6 +183,9 @@ class ExamDetailsViewModel(QObject):
 
         next_chunk = self.srt_chunks[list_idx + 1]
         chunk.text = f"{chunk.text} {next_chunk.text}"
+        chunk.note = "\n".join(
+            note for note in (chunk.note.strip(), next_chunk.note.strip()) if note
+        )
         chunk.end_time = next_chunk.end_time
         chunk.additional_meta.words.extend(
             word.model_copy(deep=True) for word in next_chunk.additional_meta.words

@@ -27,6 +27,7 @@ from src.models.exam import ExamContext, ExamSrtChunk, SrtChunkMapping
 from src.utils.helpers import get_local_media_path
 from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from src.viewmodels.srt_mapping_agent_viewmodel import SrtMappingAgentViewModel
+from src.viewmodels.srt_translation_viewmodel import SrtTranslationViewModel
 from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
 
 
@@ -226,6 +227,7 @@ class ExamTranscriptWidget(QWidget):
         super().__init__(parent)
         self.viewmodel = viewmodel
         self._srt_mapping_vm = SrtMappingAgentViewModel(self)
+        self._srt_translation_vm = SrtTranslationViewModel(self)
 
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
@@ -277,9 +279,30 @@ class ExamTranscriptWidget(QWidget):
         self.auto_detect_audio_btn.clicked.connect(self._on_auto_detect_audio_clicked)
         self.ui.audio_controls.insertWidget(4, self.auto_detect_audio_btn)
 
+        self.translate_notes_btn = QPushButton("Translate to Vietnamese", self)
+        self.translate_notes_btn.setIcon(
+            qta.icon("fa5s.language", color="white")
+        )
+        self.translate_notes_btn.setIconSize(QSize(16, 16))
+        self.translate_notes_btn.setStyleSheet(
+            "QPushButton { background-color: #009688; color: white; "
+            "padding: 4px 12px; border-radius: 4px; font-weight: bold; }"
+            "QPushButton:disabled { background-color: #dadce0; color: #5f6368; }"
+            "QPushButton:hover:!disabled { background-color: #00796b; }"
+        )
+        self.translate_notes_btn.clicked.connect(self._on_translate_notes_clicked)
+        self.ui.audio_controls.insertWidget(5, self.translate_notes_btn)
+
         self._srt_mapping_vm.mapping_ready.connect(self._on_mapping_ready)
         self._srt_mapping_vm.progress_message.connect(self._show_mapping_progress)
         self._srt_mapping_vm.error_message.connect(self._show_mapping_error)
+        self._srt_translation_vm.translation_ready.connect(
+            self._on_translation_ready
+        )
+        self._srt_translation_vm.progress_message.connect(
+            self._show_translation_progress
+        )
+        self._srt_translation_vm.error_message.connect(self._show_translation_error)
 
         self.ui.save_btn.setIcon(qta.icon("fa5s.save", color="white"))
         self.ui.save_btn.setIconSize(QSize(16, 16))
@@ -295,7 +318,10 @@ class ExamTranscriptWidget(QWidget):
             3, QHeaderView.ResizeMode.Stretch
         )
         self.ui.table.horizontalHeader().setSectionResizeMode(
-            4, QHeaderView.ResizeMode.ResizeToContents
+            4, QHeaderView.ResizeMode.Stretch
+        )
+        self.ui.table.horizontalHeader().setSectionResizeMode(
+            5, QHeaderView.ResizeMode.ResizeToContents
         )
         self.ui.table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -404,7 +430,7 @@ class ExamTranscriptWidget(QWidget):
         self._current_highlighted_row = row
 
     def _set_row_background(self, row: int, brush: QBrush):
-        for column in (0, 3):
+        for column in (0, 3, 4):
             item = self.ui.table.item(row, column)
             if item:
                 item.setBackground(brush)
@@ -469,6 +495,9 @@ class ExamTranscriptWidget(QWidget):
         # Text
         text_item = QTableWidgetItem(chunk.text)
         self.ui.table.setItem(row, 3, text_item)
+
+        note_item = QTableWidgetItem(chunk.note)
+        self.ui.table.setItem(row, 4, note_item)
 
         # --- Add icons for each row action button. ---
         action_widget = QWidget()
@@ -550,7 +579,7 @@ class ExamTranscriptWidget(QWidget):
         delete_btn.clicked.connect(on_delete_clicked)
         action_layout.addWidget(delete_btn)
 
-        self.ui.table.setCellWidget(row, 4, action_widget)
+        self.ui.table.setCellWidget(row, 5, action_widget)
 
     def _mark_changed(self):
         if not self._has_changes:
@@ -586,6 +615,10 @@ class ExamTranscriptWidget(QWidget):
         text_item = self.ui.table.item(row, 3)
         if text_item is not None:
             text_item.setText(chunk.text)
+
+        note_item = self.ui.table.item(row, 4)
+        if note_item is not None:
+            note_item.setText(chunk.note)
 
     def _selected_chunks(self) -> list[ExamSrtChunk]:
         chunks: list[ExamSrtChunk] = []
@@ -706,6 +739,70 @@ class ExamTranscriptWidget(QWidget):
             f"Saved audio segments for {saved_count} context(s).",
         )
 
+    def _on_translate_notes_clicked(self) -> None:
+        if not getattr(self.viewmodel, "exam_id", None):
+            QMessageBox.warning(self, "No Exam", "Could not determine the exam.")
+            return
+
+        self.translate_notes_btn.setEnabled(False)
+        self._srt_translation_vm.start_translation(self.viewmodel.srt_chunks)
+
+    def _show_translation_progress(self, message: str) -> None:
+        self.ui.title_label.setText(f"Transcript Chunks - {message}")
+
+    def _show_translation_error(self, message: str) -> None:
+        self.translate_notes_btn.setEnabled(True)
+        self.ui.title_label.setText("Transcript Chunks")
+        QMessageBox.critical(self, "Translation Failed", message)
+
+    def _on_translation_ready(self, translations: dict[int, str]) -> None:
+        self.translate_notes_btn.setEnabled(True)
+        self.ui.title_label.setText("Transcript Chunks")
+        if not translations:
+            QMessageBox.information(
+                self,
+                "No Translations",
+                "No transcript translations were returned.",
+            )
+            return
+
+        updated_count = 0
+        chunk_by_index = {chunk.index: chunk for chunk in self.viewmodel.srt_chunks}
+        self.ui.table.blockSignals(True)
+        try:
+            for index, note in translations.items():
+                chunk = chunk_by_index.get(index)
+                if chunk is None:
+                    continue
+                chunk.note = note
+                row = self._row_for_chunk(chunk)
+                if row is not None:
+                    note_item = self.ui.table.item(row, 4)
+                    if note_item is not None:
+                        note_item.setText(note)
+                updated_count += 1
+        finally:
+            self.ui.table.blockSignals(False)
+
+        try:
+            self.viewmodel.save_chunks()
+        except Exception as exc:
+            self._mark_changed()
+            QMessageBox.critical(
+                self,
+                "Error Saving Translations",
+                f"Could not save translated notes:\n{exc}",
+            )
+            return
+
+        self._has_changes = False
+        self.ui.save_btn.setVisible(False)
+        QMessageBox.information(
+            self,
+            "Translations Saved",
+            f"Saved Vietnamese notes for {updated_count} chunk(s).",
+        )
+
     def _update_time(self, chunk: ExamSrtChunk, field: str, value: float):
         if field == "start":
             chunk.start_time = value
@@ -714,17 +811,21 @@ class ExamTranscriptWidget(QWidget):
         self._mark_changed()
 
     def _on_item_changed(self, item: QTableWidgetItem):
-        if item.column() == 3:
-            row = item.row()
-            idx_item = self.ui.table.item(row, 0)
-            if idx_item is None:
-                return
-            idx_str = idx_item.text()
-            idx = int(idx_str)
-            chunk = next((c for c in self.viewmodel.srt_chunks if c.index == idx), None)
-            if chunk:
+        if item.column() not in (3, 4):
+            return
+        row = item.row()
+        idx_item = self.ui.table.item(row, 0)
+        if idx_item is None:
+            return
+        idx_str = idx_item.text()
+        idx = int(idx_str)
+        chunk = next((c for c in self.viewmodel.srt_chunks if c.index == idx), None)
+        if chunk:
+            if item.column() == 3:
                 chunk.text = item.text()
-                self._mark_changed()
+            else:
+                chunk.note = item.text()
+            self._mark_changed()
 
     def _on_table_item_double_clicked(self, item: QTableWidgetItem) -> None:
         if item.column() != 3:

@@ -304,6 +304,17 @@ A lightweight ViewModel (no `QObject`, no Signals) used directly by `ExamTranscr
 
 ---
 
+## `SrtTranslationViewModel`
+
+**File:** [`src/viewmodels/srt_translation_viewmodel.py`](../src/viewmodels/srt_translation_viewmodel.py)
+
+Runs the Gemini-backed transcript translation worker used by
+`ExamTranscriptWidget`. It sends each SRT chunk's `index` and `text`, receives
+Vietnamese translations keyed by index, and emits them for the view to write
+into `ExamSrtChunk.note` before saving through `IExamRepository.replace_srt_chunks()`.
+
+---
+
 ## `ImportQuestionsViewModel`
 
 **File:** [`src/viewmodels/import_questions_viewmodel.py`](../src/viewmodels/import_questions_viewmodel.py)

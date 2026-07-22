@@ -119,7 +119,7 @@
    <item>
     <widget class="QTableWidget" name="table">
      <property name="columnCount">
-      <number>5</number>
+      <number>6</number>
      </property>
      <column>
       <property name="text">
@@ -139,6 +139,11 @@
      <column>
       <property name="text">
        <string>Text</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Note</string>
       </property>
      </column>
      <column>

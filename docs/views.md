@@ -147,6 +147,7 @@ Learner-facing transcript practice view embedded inside `ExamTakeView`. It recei
 | Checking | Correctness ignores case, punctuation, extra whitespace, and smart quote differences |
 | Feedback | `diff-match-patch` renders expected-vs-typed character differences with red struck deletions and blue insertions |
 | Answer options | Checkboxes control whether feedback appears immediately or behind a **Show Answer** button, and whether the correct answer text is fully shown or masked with `*` characters |
+| Translation | After submit, a **Translate** button reveals the current `ExamSrtChunk.note` Vietnamese note when available |
 
 ---
 
@@ -380,9 +381,10 @@ Named widgets from `.ui` file:
 | `play_pause_btn` | `QPushButton` | Global play/pause toggle |
 | `delay_spin` | `QSpinBox` | Loop delay in seconds before next loop iteration |
 | `auto_detect_audio_btn` | `QPushButton` | Runtime-added button that asks Gemini to map SRT chunks to context audio windows |
+| `translate_notes_btn` | `QPushButton` | Runtime-added button that translates chunk text into Vietnamese notes |
 | `add_to_question_btn` | `QPushButton` | Saves the selected transcript row span to a selected exam context; enabled only when rows are selected |
 | `save_btn` | `QPushButton` | Save changes — only visible when `_has_changes` is `True` |
-| `table` | `QTableWidget` | 5-column SRT chunk table with extended row selection |
+| `table` | `QTableWidget` | 6-column SRT chunk table with extended row selection |
 | `seek_slider` | `QSlider` | Audio seek bar (horizontal) |
 | `time_current_label` | `QLabel` | Current position (seconds, 3 decimal places) |
 | `time_total_label` | `QLabel` | Total duration (seconds, 3 decimal places) |
@@ -395,7 +397,8 @@ Named widgets from `.ui` file:
 | 1 | Start time | `TimeAdjustWidget` |
 | 2 | End time | `TimeAdjustWidget` |
 | 3 | Text | Yes (inline edit) |
-| 4 | Actions | Buttons (play, loop, duplicate, merge) |
+| 4 | Note | Yes (inline edit; stores Vietnamese translation notes) |
+| 5 | Actions | Buttons (play, loop, duplicate, merge) |
 
 #### Row Actions
 
@@ -441,7 +444,8 @@ Toggling loop on the same chunk cancels it (`looping_chunk_idx = None`).
 | `_update_play_pause_icon()` | Swaps icon/text based on `playbackState` |
 | `_on_save_clicked()` | Calls `viewmodel.save_chunks()`, clears change flag |
 | `_on_auto_detect_audio_clicked()` | Sends all chunks, contexts, and context question records to `SrtMappingAgentViewModel`; opens a preview table before saving detected audio windows |
+| `_on_translate_notes_clicked()` | Sends chunk indexes and text to `SrtTranslationViewModel`, writes returned Vietnamese notes into chunks, and saves them |
 | `_on_add_to_question_clicked()` | Opens an exam context picker and saves `audio_start` from the first selected row and `audio_end` from the last selected row |
-| `_on_item_changed(item)` | Syncs text column edits back to the chunk object |
+| `_on_item_changed(item)` | Syncs text and note column edits back to the chunk object |
 | `_duplicate_chunk(chunk)` | Delegates to ViewModel, inserts new row at correct position |
 | `_merge_chunk(chunk)` | Delegates to ViewModel, updates text/end in place, removes next row |

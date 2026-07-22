@@ -8,24 +8,20 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import QCoreApplication, QMetaObject, Qt
-from PySide6.QtWidgets import (
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QSizePolicy,
-    QSlider,
-    QSpacerItem,
-    QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
-
+from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
+    QMetaObject, QObject, QPoint, QRect,
+    QSize, QTime, QUrl, Qt)
+from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
+    QFont, QFontDatabase, QGradient, QIcon,
+    QImage, QKeySequence, QLinearGradient, QPainter,
+    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QHeaderView, QLabel,
+    QPushButton, QSizePolicy, QSlider, QSpacerItem,
+    QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QWidget)
 
 class Ui_ExamTranscriptWidget(object):
-    def setupUi(self, ExamTranscriptWidget:QWidget):
+    def setupUi(self, ExamTranscriptWidget):
         if not ExamTranscriptWidget.objectName():
             ExamTranscriptWidget.setObjectName(u"ExamTranscriptWidget")
         ExamTranscriptWidget.resize(600, 400)
@@ -99,8 +95,8 @@ class Ui_ExamTranscriptWidget(object):
         self.verticalLayout.addWidget(self.title_label)
 
         self.table = QTableWidget(ExamTranscriptWidget)
-        if (self.table.columnCount() < 5):
-            self.table.setColumnCount(5)
+        if (self.table.columnCount() < 6):
+            self.table.setColumnCount(6)
         __qtablewidgetitem = QTableWidgetItem()
         self.table.setHorizontalHeaderItem(0, __qtablewidgetitem)
         __qtablewidgetitem1 = QTableWidgetItem()
@@ -111,8 +107,10 @@ class Ui_ExamTranscriptWidget(object):
         self.table.setHorizontalHeaderItem(3, __qtablewidgetitem3)
         __qtablewidgetitem4 = QTableWidgetItem()
         self.table.setHorizontalHeaderItem(4, __qtablewidgetitem4)
+        __qtablewidgetitem5 = QTableWidgetItem()
+        self.table.setHorizontalHeaderItem(5, __qtablewidgetitem5)
         self.table.setObjectName(u"table")
-        self.table.setColumnCount(5)
+        self.table.setColumnCount(6)
 
         self.verticalLayout.addWidget(self.table)
 
@@ -122,7 +120,7 @@ class Ui_ExamTranscriptWidget(object):
         QMetaObject.connectSlotsByName(ExamTranscriptWidget)
     # setupUi
 
-    def retranslateUi(self, ExamTranscriptWidget:QWidget):
+    def retranslateUi(self, ExamTranscriptWidget):
         ExamTranscriptWidget.setWindowTitle(QCoreApplication.translate("ExamTranscriptWidget", u"Exam Transcript", None))
         self.play_pause_btn.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Play/Pause", None))
         self.delay_label.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Delay (s):", None))
@@ -140,6 +138,8 @@ class Ui_ExamTranscriptWidget(object):
         ___qtablewidgetitem3 = self.table.horizontalHeaderItem(3)
         ___qtablewidgetitem3.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Text", None))
         ___qtablewidgetitem4 = self.table.horizontalHeaderItem(4)
-        ___qtablewidgetitem4.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Actions", None))
+        ___qtablewidgetitem4.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Note", None))
+        ___qtablewidgetitem5 = self.table.horizontalHeaderItem(5)
+        ___qtablewidgetitem5.setText(QCoreApplication.translate("ExamTranscriptWidget", u"Actions", None))
     # retranslateUi
 

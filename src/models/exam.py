@@ -56,6 +56,7 @@ class ExamSrtChunk(BaseModel):
     start_time: float = 0.0
     end_time: float = 0.0
     text: str = ""
+    note: str = ""
     id: str = Field(default_factory=generate_uuid)
     exam_id: str = ""
     hint: Optional[str] = None

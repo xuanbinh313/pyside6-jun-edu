@@ -236,7 +236,11 @@ class MainWindow(QMainWindow):
             self.stacked_widget.removeWidget(widget)
             widget.deleteLater()
 
-    def setup_menu_bar(self):
+    def setup_menu_bar(self) -> None:
+        self.views_menu: QMenu = self.menuBar().addMenu("Views")
+        self.views_menu.addAction(self.zoom_in_action)
+        self.views_menu.addAction(self.zoom_out_action)
+
         self.vocabulary_action = QAction("Vocabulary List", self)
         self.vocabulary_action.triggered.connect(self.navigate_to_vocabulary)
         self.ui.menu_main.insertAction(self.ui.action_settings, self.vocabulary_action)

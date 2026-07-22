@@ -34,6 +34,11 @@ for external agent response contracts:
 
 `AdditionalMeta` stores context-level audio timing:
 
+`ExamSrtChunk.note` stores optional learner-facing Vietnamese notes for the
+chunk transcript text. SQLite keeps this field inside the JSON string stored in
+`exams.srt_chunks`; Supabase sync sends the same value inside the `jsonb`
+`srt_chunks` payload.
+
 | Key | Type |
 |---|---|
 | `audio_start` | `float` |

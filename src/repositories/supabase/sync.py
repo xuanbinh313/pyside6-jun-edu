@@ -11,6 +11,7 @@ from supabase import Client
 
 from src.config import SUPABASE_SCHEMA
 from src.models.exam import ContextContent
+from src.models.exam import ExamSrtChunk as ExamSrtChunkModel
 from src.repositories.sqlite.database import get_session
 from src.repositories.sqlite.orm_models import (
     Exam,
@@ -80,7 +81,7 @@ def _serialize_exam_srt_chunks(value: Any) -> list[Any]:
     if value is None:
         return []
     if isinstance(value, list):
-        return value
+        return _normalize_exam_srt_chunk_payload(value)
     if isinstance(value, str):
         if not value.strip():
             return []
@@ -89,7 +90,7 @@ def _serialize_exam_srt_chunks(value: Any) -> list[Any]:
         except json.JSONDecodeError:
             return []
         if isinstance(decoded, list):
-            return decoded
+            return _normalize_exam_srt_chunk_payload(decoded)
     return []
 
 
@@ -97,10 +98,20 @@ def _deserialize_exam_srt_chunks(value: Any) -> str:
     if value is None:
         return ""
     if isinstance(value, str):
-        return value
+        return json.dumps(_serialize_exam_srt_chunks(value), ensure_ascii=False)
     if isinstance(value, list):
-        return json.dumps(value, ensure_ascii=False)
+        return json.dumps(_normalize_exam_srt_chunk_payload(value), ensure_ascii=False)
     return ""
+
+
+def _normalize_exam_srt_chunk_payload(value: list[Any]) -> list[dict[str, Any]]:
+    chunks: list[ExamSrtChunkModel] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        chunks.append(ExamSrtChunkModel.model_validate(item))
+    chunks.sort(key=lambda chunk: (chunk.index, chunk.start_time))
+    return [chunk.model_dump(mode="json") for chunk in chunks]
 
 
 def _deserialize_value(value: Any, column: Any) -> Any:
