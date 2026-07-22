@@ -5,7 +5,7 @@ from typing import Optional
 
 import qtawesome as qta
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QColor, QFont, QPainter, QPixmap
+from PySide6.QtGui import QAction, QColor, QFont, QKeySequence, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QInputDialog,
@@ -94,6 +94,14 @@ class MainWindow(QMainWindow):
         self._show_startup_message("Setting up application shell...")
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+        self._default_font = QFont(QApplication.font())
+        self._default_font_point_size = self._default_font.pointSize()
+        if self._default_font_point_size <= 0:
+            self._default_font_point_size = int(round(self._default_font.pointSizeF()))
+        if self._default_font_point_size <= 0:
+            self._default_font_point_size = 10
+        self._zoom_level = 0
+        self._setup_zoom_shortcuts()
 
         self._show_startup_message("Preparing view models...")
         self.auth_viewmodel = AuthViewModel()
@@ -133,6 +141,55 @@ class MainWindow(QMainWindow):
             QColor("#334e68"),
         )
         QApplication.processEvents()
+
+    def _setup_zoom_shortcuts(self) -> None:
+        self.zoom_in_action = QAction("Zoom In", self)
+        self.zoom_in_action.setShortcuts(
+            [QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")]
+        )
+        self.zoom_in_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.zoom_in_action.triggered.connect(self.zoom_in)
+        self.addAction(self.zoom_in_action)
+
+        self.zoom_out_action = QAction("Zoom Out", self)
+        self.zoom_out_action.setShortcut(QKeySequence("Ctrl+-"))
+        self.zoom_out_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.zoom_out_action.triggered.connect(self.zoom_out)
+        self.addAction(self.zoom_out_action)
+
+        self.reset_zoom_action = QAction("Reset Zoom", self)
+        self.reset_zoom_action.setShortcut(QKeySequence("Ctrl+0"))
+        self.reset_zoom_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.reset_zoom_action.triggered.connect(self.reset_zoom)
+        self.addAction(self.reset_zoom_action)
+
+    def zoom_in(self) -> None:
+        self._set_zoom_level(self._zoom_level + 1)
+
+    def zoom_out(self) -> None:
+        self._set_zoom_level(self._zoom_level - 1)
+
+    def reset_zoom(self) -> None:
+        self._set_zoom_level(0)
+
+    def _set_zoom_level(self, zoom_level: int) -> None:
+        font_size = self._default_font_point_size + zoom_level
+        if font_size < 6 or font_size > 48:
+            return
+
+        self._zoom_level = zoom_level
+        font = QFont(self._default_font)
+        font.setPointSize(font_size)
+        QApplication.setFont(font)
+
+        if self._zoom_level > 0:
+            zoom_text = f"+{self._zoom_level}"
+        else:
+            zoom_text = str(self._zoom_level)
+        self.statusBar().showMessage(
+            f"Zoom level: {zoom_text} (Font size: {font_size}pt)",
+            3000,
+        )
 
     def navigate_to_details(self, exam_id: str):
         if exam_id == "EXTERNAL":

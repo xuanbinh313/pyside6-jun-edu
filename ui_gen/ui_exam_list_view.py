@@ -17,11 +17,12 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget
 )
 
 
 class Ui_ExamListView(object):
-    def setupUi(self, ExamListView):
+    def setupUi(self, ExamListView: QWidget):
         if not ExamListView.objectName():
             ExamListView.setObjectName(u"ExamListView")
         ExamListView.resize(800, 600)
@@ -78,7 +79,7 @@ class Ui_ExamListView(object):
         QMetaObject.connectSlotsByName(ExamListView)
     # setupUi
 
-    def retranslateUi(self, ExamListView):
+    def retranslateUi(self, ExamListView: QWidget):
         ExamListView.setWindowTitle(QCoreApplication.translate("ExamListView", u"Exam List", None))
         self.title_label.setText(QCoreApplication.translate("ExamListView", u"Exam List", None))
         self.search_input.setPlaceholderText(QCoreApplication.translate("ExamListView", u"Search exams...", None))

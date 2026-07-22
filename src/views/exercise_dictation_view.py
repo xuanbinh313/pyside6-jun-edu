@@ -3,15 +3,17 @@ import re
 from typing import Optional, Protocol, Sequence
 
 import qtawesome as qta
-from PySide6.QtCore import QSize, Qt, QUrl, Signal
+from PySide6.QtCore import QEvent, QSize, Qt, QUrl, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -70,6 +72,7 @@ class ExerciseDictationView(QWidget):
 
         self._build_ui()
         self._load_audio()
+        self._apply_zoom_font()
         self._render_current_chunk()
 
     def start(self) -> None:
@@ -102,7 +105,7 @@ class ExerciseDictationView(QWidget):
         header_layout = QHBoxLayout(header)
 
         self.title_label = QLabel("Dictation")
-        self.title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        self.title_label.setStyleSheet("font-weight: bold;")
         header_layout.addWidget(self.title_label, 1)
 
         self.prev_btn = QPushButton()
@@ -112,9 +115,19 @@ class ExerciseDictationView(QWidget):
         self.prev_btn.clicked.connect(self._previous_chunk)
         header_layout.addWidget(self.prev_btn)
 
-        self.position_label = QLabel("0 / 0")
-        self.position_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(self.position_label)
+        self.position_spin = QSpinBox()
+        self.position_spin.setMinimum(0)
+        self.position_spin.setMaximum(0)
+        self.position_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.position_spin.setFixedWidth(72)
+        self.position_spin.setKeyboardTracking(False)
+        self.position_spin.setToolTip("Jump to transcript number")
+        self.position_spin.valueChanged.connect(self._jump_to_chunk_number)
+        header_layout.addWidget(self.position_spin)
+
+        self.position_total_label = QLabel("/ 0")
+        self.position_total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_layout.addWidget(self.position_total_label)
 
         self.next_btn = QPushButton()
         self.next_btn.setIcon(qta.icon("fa5s.chevron-right", color="#3c4043"))
@@ -145,7 +158,6 @@ class ExerciseDictationView(QWidget):
 
         self.show_answer_immediately_check = QCheckBox("Show answer immediately")
         self.show_answer_immediately_check.setChecked(True)
-        # self.show_answer_immediately_check.setStyleSheet("color: #3c4043;")
         self.show_answer_immediately_check.toggled.connect(
             self._on_show_answer_immediately_changed
         )
@@ -159,9 +171,9 @@ class ExerciseDictationView(QWidget):
         options_layout.addStretch(1)
         layout.addLayout(options_layout)
 
-        prompt = QLabel("Type what you hear")
-        prompt.setStyleSheet("font-weight: bold; color: #202124;")
-        layout.addWidget(prompt)
+        self.prompt_label = QLabel("Type what you hear")
+        self.prompt_label.setStyleSheet("font-weight: bold; color: #202124;")
+        layout.addWidget(self.prompt_label)
 
         self.input_edit = DictationInput()
         self.input_edit.setAcceptRichText(False)
@@ -200,6 +212,38 @@ class ExerciseDictationView(QWidget):
         )
         layout.addWidget(self.diff_view, 1)
 
+    def _apply_zoom_font(self) -> None:
+        app_font = QApplication.font()
+        self.prompt_label.setFont(app_font)
+        self.typed_answer_label.setFont(app_font)
+        self.diff_view.setFont(app_font)
+        self.diff_view.document().setDefaultFont(app_font)
+        self.title_label.setFont(app_font)
+        self.time_label.setFont(app_font)
+
+    def changeEvent(self, event: QEvent) -> None:
+        if event.type() in (
+            QEvent.Type.ApplicationFontChange,
+            QEvent.Type.FontChange,
+        ):
+            self._apply_zoom_font()
+            if self._has_checked_answer:
+                self.typed_answer_label.setText(
+                    self._typed_answer_html(
+                        self._last_expected_text,
+                        self._last_typed_text,
+                    )
+                )
+            if self._answer_revealed:
+                self.diff_view.setHtml(
+                    self._answer_html(
+                        self._last_expected_text,
+                        self._last_typed_text,
+                        self.show_full_answer_check.isChecked(),
+                    )
+                )
+        super().changeEvent(event)
+
     def _load_audio(self) -> None:
         if not self._audio_name:
             return
@@ -210,7 +254,15 @@ class ExerciseDictationView(QWidget):
     def _render_current_chunk(self) -> None:
         chunk = self._current_chunk()
         count = len(self._chunks)
-        self.position_label.setText(f"{self._current_index + 1 if chunk else 0} / {count}")
+        self.position_spin.blockSignals(True)
+        self.position_spin.setMinimum(0)
+        self.position_spin.setMaximum(count)
+        if count > 0:
+            self.position_spin.setMinimum(1)
+        self.position_spin.setValue(self._current_index + 1 if chunk else 0)
+        self.position_spin.setEnabled(count > 0)
+        self.position_spin.blockSignals(False)
+        self.position_total_label.setText(f"/ {count}")
 
         if chunk is None:
             self.time_label.setText("No transcript chunks are available.")
@@ -258,6 +310,17 @@ class ExerciseDictationView(QWidget):
             return
         self.player.pause()
         self._current_index += 1
+        self._render_current_chunk()
+        self.play_current()
+
+    def _jump_to_chunk_number(self, value: int) -> None:
+        if value < 1 or value > len(self._chunks):
+            return
+        next_index = value - 1
+        if next_index == self._current_index:
+            return
+        self.player.pause()
+        self._current_index = next_index
         self._render_current_chunk()
         self.play_current()
 
@@ -356,8 +419,7 @@ class ExerciseDictationView(QWidget):
                 fragments.append(safe_text)
 
         return (
-            "<div style='font-family: Segoe UI, Arial, sans-serif; "
-            "font-size: 14px; line-height: 1.6;'>"
+            "<div style='line-height: 1.6;'>"
             "<span style='color:#5f6368;'>Your answer: </span>"
             + "".join(fragments)
             + "</div>"
@@ -400,8 +462,7 @@ class ExerciseDictationView(QWidget):
                 fragments.append(safe_text)
 
         return (
-            "<div style='font-family: Segoe UI, Arial, sans-serif; "
-            "font-size: 14px; line-height: 1.7;'>"
+            "<div style='line-height: 1.7;'>"
             + "".join(fragments)
             + "</div>"
         )
