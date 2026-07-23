@@ -470,6 +470,7 @@ class ExamTakeView(QWidget):
 
             radio = QRadioButton()
             radio.setProperty("display_index", option.display_index)
+            radio.setChecked(question.user_choice == option.canonical_letter)
             radio.toggled.connect(
                 lambda checked, qid=question.question_id, idx=option.display_index: (
                     self.viewmodel.submit_answer(qid, idx) if checked else None
