@@ -430,10 +430,15 @@ class ExamTranscriptWidget(QWidget):
         self._current_highlighted_row = row
 
     def _set_row_background(self, row: int, brush: QBrush):
-        for column in (0, 3, 4):
-            item = self.ui.table.item(row, column)
-            if item:
-                item.setBackground(brush)
+        signals_were_blocked = self.ui.table.signalsBlocked()
+        self.ui.table.blockSignals(True)
+        try:
+            for column in (0, 3, 4):
+                item = self.ui.table.item(row, column)
+                if item:
+                    item.setBackground(brush)
+        finally:
+            self.ui.table.blockSignals(signals_were_blocked)
 
     def _play_loop(self, loop_idx: int):
         if self.looping_chunk_idx != loop_idx:
@@ -821,10 +826,15 @@ class ExamTranscriptWidget(QWidget):
         idx = int(idx_str)
         chunk = next((c for c in self.viewmodel.srt_chunks if c.index == idx), None)
         if chunk:
+            new_value = item.text()
             if item.column() == 3:
-                chunk.text = item.text()
+                if chunk.text == new_value:
+                    return
+                chunk.text = new_value
             else:
-                chunk.note = item.text()
+                if chunk.note == new_value:
+                    return
+                chunk.note = new_value
             self._mark_changed()
 
     def _on_table_item_double_clicked(self, item: QTableWidgetItem) -> None:

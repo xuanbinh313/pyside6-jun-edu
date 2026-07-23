@@ -149,8 +149,8 @@ def _serialize_mediafile_row(row: MediaFile) -> dict[str, Any]:
 
 def _serialize_sync_row(row: Any, user_id: str) -> dict[str, Any]:
     data = _serialize_row(row)
+    data.pop("dirty", None)
     if isinstance(row, UserQuestionTag):
-        data.pop("dirty", None)
         data["user_id"] = user_id
     return data
 

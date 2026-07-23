@@ -17,9 +17,9 @@ Base = declarative_base()
 def init_db() -> None:
     importlib.import_module("src.repositories.sqlite.orm_models")
     Base.metadata.create_all(bind=engine)
-    inspector = inspect(engine)
     now = str(datetime.now(timezone.utc)).replace("'", "''")
     with engine.begin() as connection:
+        inspector = inspect(connection)
         exam_columns = {column["name"] for column in inspector.get_columns("exams")}
         if "srt_chunks" not in exam_columns:
             connection.execute(text("ALTER TABLE exams ADD COLUMN srt_chunks TEXT"))

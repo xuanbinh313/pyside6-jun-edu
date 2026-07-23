@@ -66,11 +66,15 @@ class QuestionSession:
 @dataclass
 class AttemptAnswerDetail:
     question_id: str
+    context_id: str
     question_number: int
     part: int
     category: str
     content: str
     context_text: str
+    context_tags: List[str]
+    context_note: str
+    question_note: str
     correct_answer: str
     correct_text: str
     user_choice: Optional[str]
@@ -300,6 +304,7 @@ class ExamTakeViewModel(QObject):
             self.error_message.emit("Attempt not found.")
             return None
 
+        question_tags = self._question_tags()
         answers = []
         for user_answer, question, context in rows:
             options = self._canonical_options(question.options)
@@ -313,11 +318,15 @@ class ExamTakeViewModel(QObject):
             answers.append(
                 AttemptAnswerDetail(
                     question_id=question.id,
+                    context_id=context.id,
                     question_number=question.question_number,
                     part=context.part or 1,
                     category=question.question_type or "Question",
                     content=question.content,
                     context_text=self._context_text(context),
+                    context_tags=sorted(question_tags.get(question.id, set())),
+                    context_note=self._context_note(context),
+                    question_note=self._question_note(question),
                     correct_answer=correct_answer,
                     correct_text=correct_text,
                     user_choice=user_choice,
@@ -469,3 +478,17 @@ class ExamTakeViewModel(QObject):
         if text:
             return str(text)
         return str(content or "")
+
+    def _context_note(self, context):
+        meta = context.additional_meta
+        if isinstance(meta, dict):
+            return str(meta.get("note", "") or "")
+        note = getattr(meta, "note", "")
+        return str(note or "")
+
+    def _question_note(self, question: ExamQuestion) -> str:
+        meta = question.additional_meta
+        if isinstance(meta, dict):
+            return str(meta.get("note", "") or "")
+        note = getattr(meta, "note", "")
+        return str(note or "")

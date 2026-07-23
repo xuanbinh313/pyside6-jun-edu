@@ -1,3 +1,7 @@
+from src.models.exam import ExamQuestion
+from src.viewmodels.exam_take_viewmodel import AttemptSummary
+from src.viewmodels.exam_take_viewmodel import AttemptAnalytics
+from src.viewmodels.exam_take_viewmodel import AttemptAnswerDetail
 import html
 from typing import Callable, Optional, cast
 
@@ -113,13 +117,13 @@ class ExamTakeView(QWidget):
         self.ui.stacked_widget.setCurrentWidget(self.overview_page)
 
         exam = self.viewmodel.exam
-        self.ui.title_label.setText(exam.title)
+        self.ui.title_label.setText(exam.title if exam else "")
         question_count = len(self.viewmodel.questions)
         self.ui.subtitle_label.setText(
-            f"{exam.duration_minutes} min | {len(self.viewmodel.parts)} parts | {question_count} questions"
+            f"{exam.duration_minutes if exam else 0} min | {len(self.viewmodel.parts)} parts | {question_count} questions"
         )
 
-        if exam.description:
+        if exam and exam.description:
             description = QLabel(exam.description)
             description.setWordWrap(True)
             description.setStyleSheet("color: #3c4043; font-size: 13px;")
@@ -192,7 +196,6 @@ class ExamTakeView(QWidget):
         self._part_checks = []
         for part in self.viewmodel.parts:
             check = QCheckBox(f"Part {part}")
-            check.setChecked(True)
             check.setProperty("part", part)
             self._part_checks.append(check)
             part_row.addWidget(check)
@@ -230,9 +233,10 @@ class ExamTakeView(QWidget):
         page = QWidget()
         layout = QVBoxLayout(page)
 
+        exam = self.viewmodel.exam
         summary = QLabel(
             f"Full exam: {len(self.viewmodel.questions)} questions, "
-            f"{self.viewmodel.exam.duration_minutes} minutes."
+            f"{exam.duration_minutes if exam else 0} minutes."
         )
         summary.setWordWrap(True)
         layout.addWidget(summary)
@@ -507,7 +511,7 @@ class ExamTakeView(QWidget):
 
         return card
 
-    def _context_title(self, ctx, questions):
+    def _context_title(self, ctx: Optional[ExamContext], questions: list[ExamQuestion]) -> str:
         first_question = questions[0] if questions else None
         part = getattr(ctx, "part", None) or getattr(first_question, "part", 1)
         if not questions:
@@ -576,7 +580,7 @@ class ExamTakeView(QWidget):
             self.player.pause()
             self.play_until = None
 
-    def _show_context_tag_menu(self, ctx, button):
+    def _show_context_tag_menu(self, ctx: ExamContext, button: QPushButton) -> None:
         popup = TagMenuDialog(ctx, self, viewmodel=self.viewmodel, context_id=ctx.id)
         global_pos = button.mapToGlobal(button.rect().bottomLeft())
         popup.move(global_pos)
@@ -614,8 +618,8 @@ class ExamTakeView(QWidget):
         done_btn.clicked.connect(self._render_overview)
         self.result_layout.addWidget(done_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
-    def _render_attempt_history(self, attempt):
-        analytics = self.viewmodel.load_attempt_analytics(attempt.id)
+    def _render_attempt_history(self, attempt_summary: AttemptSummary) -> None:
+        analytics = self.viewmodel.load_attempt_analytics(attempt_summary.id)
         if analytics is None:
             return
 
@@ -656,7 +660,7 @@ class ExamTakeView(QWidget):
         scroll.setWidget(container)
         self.history_layout.addWidget(scroll)
 
-    def _analytics_kpi_row(self, analytics):
+    def _analytics_kpi_row(self, analytics: AttemptAnalytics):
         row = QHBoxLayout()
         row.setSpacing(10)
         row.addWidget(
@@ -684,7 +688,7 @@ class ExamTakeView(QWidget):
         )
         return row
 
-    def _kpi_card(self, title, lines, background):
+    def _kpi_card(self, title: str, lines: list[str], background: str) -> QWidget:
         card = QFrame()
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setStyleSheet(
@@ -700,7 +704,7 @@ class ExamTakeView(QWidget):
             layout.addWidget(item)
         return card
 
-    def _counter_card(self, title, value, background, color):
+    def _counter_card(self, title: str, value: int, background: str, color: str):
         card = QFrame()
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setStyleSheet(
@@ -763,7 +767,7 @@ class ExamTakeView(QWidget):
         table.setFixedHeight(self._table_content_height(table))
         return table
 
-    def _question_badges(self, answers):
+    def _question_badges(self, answers: list[AttemptAnswerDetail]):
         list_widget = QListWidget()
         list_widget.setViewMode(QListView.ViewMode.IconMode)
         list_widget.setFlow(QListView.Flow.LeftToRight)
@@ -774,7 +778,6 @@ class ExamTakeView(QWidget):
         list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        list_widget.setToolTip(f"{len(answers)} question badge(s)")
         list_widget.setStyleSheet(
             "QListWidget { background: transparent; border: none; }"
             "QListWidget::item { background: transparent; border: none; }"
@@ -787,8 +790,9 @@ class ExamTakeView(QWidget):
             list_widget.addItem(item)
 
             badge = QPushButton(str(answer.question_number))
-            badge.setFixedSize(34, 24)
+            badge.setFixedSize(30, 24)
             badge.setStyleSheet(self._answer_badge_style(answer))
+            badge.setToolTip(self._answer_badge_tooltip(answer))
             badge.clicked.connect(
                 lambda checked=False, item=answer: self._show_answer_dialog(item)
             )
@@ -796,11 +800,21 @@ class ExamTakeView(QWidget):
 
         return list_widget
 
-    def _badge_list_height(self, answer_count):
+    def _badge_list_height(self, answer_count: int) -> int:
         if answer_count <= 0:
             return 34
         rows = ((answer_count - 1) // 8) + 1
         return rows * 32 + 6
+
+    def _answer_badge_text(self, answer: AttemptAnswerDetail) -> str:
+        tags = ", ".join(answer.context_tags) if answer.context_tags else "Untagged"
+        if len(tags) > 24:
+            tags = f"{tags[:21]}..."
+        return f"Q{answer.question_number} | {tags}"
+
+    def _answer_badge_tooltip(self, answer: AttemptAnswerDetail) -> str:
+        tags = ", ".join(answer.context_tags) if answer.context_tags else "Untagged"
+        return f"Question {answer.question_number}\nTags: {tags}"
 
     def _table_content_height(self, table):
         header_height = table.horizontalHeader().height()
@@ -808,7 +822,7 @@ class ExamTakeView(QWidget):
         frame_height = table.frameWidth() * 2
         return header_height + rows_height + frame_height + 4
 
-    def _answer_sheet(self, answers):
+    def _answer_sheet(self, answers: list[AttemptAnswerDetail]):
         sheet = QWidget()
         grid = QGridLayout(sheet)
         grid.setSpacing(8)
@@ -818,7 +832,7 @@ class ExamTakeView(QWidget):
             grid.addWidget(tile, index // columns, index % columns)
         return sheet
 
-    def _answer_tile(self, answer):
+    def _answer_tile(self, answer: AttemptAnswerDetail):
         tile = QFrame()
         tile.setFrameShape(QFrame.Shape.StyledPanel)
         tile.setStyleSheet("QFrame { background: #ffffff; border-radius: 6px; }")
@@ -841,7 +855,7 @@ class ExamTakeView(QWidget):
         layout.addWidget(details_btn)
         return tile
 
-    def _show_answer_dialog(self, answer):
+    def _show_answer_dialog(self, answer: AttemptAnswerDetail) -> None:
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Question {answer.question_number}")
         dialog.resize(760, 520)
@@ -857,10 +871,34 @@ class ExamTakeView(QWidget):
         )
         layout.addWidget(context)
 
+        note = QLabel(
+            f"Context note:\n{(answer.context_note or '').strip() or 'No context note.'}"
+        )
+        note.setWordWrap(True)
+        note.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        note.setStyleSheet(
+            "QLabel { border: 1px solid #dadce0; border-radius: 6px; "
+            "background-color: #f8f9fa; padding: 10px; color: #3c4043; }"
+        )
+        layout.addWidget(note)
+
         question = QLabel(f"Q{answer.question_number}. {answer.content}")
         question.setWordWrap(True)
         question.setStyleSheet("font-weight: bold; color: #202124;")
         layout.addWidget(question)
+
+        question_note_text = (answer.question_note or "").strip()
+        if question_note_text:
+            question_note = QLabel(f"Question note:\n{question_note_text}")
+            question_note.setWordWrap(True)
+            question_note.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            question_note.setStyleSheet(
+                "QLabel { border: 1px solid #dadce0; border-radius: 6px; "
+                "background-color: #eef7ff; padding: 10px; color: #174ea6; }"
+            )
+            layout.addWidget(question_note)
 
         user_choice = answer.user_choice or "not answered"
         details = QLabel(
@@ -870,12 +908,44 @@ class ExamTakeView(QWidget):
         details.setWordWrap(True)
         layout.addWidget(details)
 
+        footer = QHBoxLayout()
+        tag_btn = QPushButton("Tag / Untag")
+        tag_btn.setIcon(qta.icon("fa5s.tags", color="#1a73e8"))
+        tag_btn.clicked.connect(
+            lambda checked=False, item=answer, button=tag_btn, parent=dialog: (
+                self._show_answer_tag_menu(item, button, parent)
+            )
+        )
+        footer.addWidget(tag_btn)
+        footer.addStretch(1)
+
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(dialog.accept)
-        layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignRight)
+        footer.addWidget(close_btn)
+        layout.addLayout(footer)
         dialog.exec()
+        if self._current_analytics is not None:
+            self._render_attempt_history(self._current_analytics.summary)
 
-    def _retake_wrong_answers(self, analytics):
+    def _show_answer_tag_menu(self, answer: AttemptAnswerDetail, button: QPushButton, parent: QWidget) -> None:
+        ctx = self._context_for_answer(answer)
+        if ctx is None:
+            QMessageBox.warning(self, "Tags", "Context not found for this question.")
+            return
+
+        popup = TagMenuDialog(ctx, parent, viewmodel=self.viewmodel, context_id=ctx.id)
+        global_pos = button.mapToGlobal(button.rect().bottomLeft())
+        popup.move(global_pos)
+        popup.exec()
+        answer.context_tags = self.viewmodel.list_question_tags_for_context(ctx.id)
+
+    def _context_for_answer(self, answer: AttemptAnswerDetail) -> Optional[ExamContext]:
+        for ctx in self.viewmodel.contexts:
+            if ctx.id == answer.context_id:
+                return ctx
+        return None
+
+    def _retake_wrong_answers(self, analytics: AttemptAnalytics) -> None:
         wrong_ids = [
             answer.question_id for answer in analytics.answers if not answer.is_correct
         ]
@@ -886,7 +956,7 @@ class ExamTakeView(QWidget):
             return
         self.viewmodel.start_review_questions(wrong_ids)
 
-    def _result_card(self, question):
+    def _result_card(self, question: AttemptAnswerDetail) -> QWidget:
         card = QFrame()
         card.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(card)
@@ -920,7 +990,7 @@ class ExamTakeView(QWidget):
         ]
         self.viewmodel.start_test("practice", selected_parts, selected_tags)
 
-    def _skip_question(self, question_id, group):
+    def _skip_question(self, question_id: str, group: QButtonGroup) -> None:
         group.setExclusive(False)
         for button in group.buttons():
             button.setChecked(False)
@@ -963,32 +1033,35 @@ class ExamTakeView(QWidget):
             return
         self.go_back_callback()
 
-    def _show_error(self, message):
+    def _show_error(self, message: str) -> None:
         QMessageBox.warning(self, "Exam", message)
 
-    def _format_seconds(self, seconds):
+    def _format_seconds(self, seconds: float) -> str:
         minutes, secs = divmod(max(0, int(seconds)), 60)
         return f"{minutes:02d}:{secs:02d}"
 
-    def _format_hms(self, seconds):
+    def _format_hms(self, seconds: float) -> str:
         hours, remainder = divmod(max(0, int(seconds)), 3600)
         minutes, secs = divmod(remainder, 60)
         return f"{hours}:{minutes:02d}:{secs:02d}"
 
-    def _answer_badge_style(self, answer):
+    def _answer_badge_style(self, answer: AttemptAnswerDetail) -> str:
         if answer.is_correct:
             return (
                 "QPushButton { background-color: #28a745; color: white; "
-                "border: none; border-radius: 4px; font-weight: bold; }"
+                "border: none; border-radius: 4px; font-weight: bold; "
+                "font-size: 11px; padding: 4px; text-align: left; }"
             )
         if answer.is_unanswered:
             return (
                 "QPushButton { background-color: #f8f9fa; color: #6c757d; "
-                "border: 1px solid #6c757d; border-radius: 4px; font-weight: bold; }"
+                "border: 1px solid #6c757d; border-radius: 4px; font-weight: bold; "
+                "font-size: 11px; padding: 4px; text-align: left; }"
             )
         return (
             "QPushButton { background-color: #dc3545; color: white; "
-            "border: none; border-radius: 4px; font-weight: bold; }"
+            "border: none; border-radius: 4px; font-weight: bold; "
+            "font-size: 11px; padding: 4px; text-align: left; }"
         )
 
     def _primary_button_style(self):
