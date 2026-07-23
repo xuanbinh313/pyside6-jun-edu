@@ -1,6 +1,5 @@
 ﻿import datetime
 import json
-import random
 import time
 from dataclasses import dataclass
 from typing import List, Optional
@@ -350,16 +349,14 @@ class ExamTakeViewModel(QObject):
 
     def _build_question_session(self, question, context):
         raw_options = self._canonical_options(question.options)
-        indexed_options = list(enumerate(raw_options))
-        random.shuffle(indexed_options)
 
-        shuffled = []
-        for display_index, (canonical_index, option_text) in enumerate(indexed_options):
-            shuffled.append(
+        ordered_options = []
+        for display_index, option_text in enumerate(raw_options):
+            ordered_options.append(
                 ShuffledOption(
                     display_index=display_index,
                     display_letter=LETTERS[display_index],
-                    canonical_letter=LETTERS[canonical_index],
+                    canonical_letter=LETTERS[display_index],
                     text=str(option_text),
                 )
             )
@@ -377,7 +374,7 @@ class ExamTakeViewModel(QObject):
             content=question.content,
             correct_answer=correct_answer,
             correct_text=correct_text,
-            options=shuffled,
+            options=ordered_options,
             part=context.part or 1,
             context_id=context.id,
             context_type=context.context_type,

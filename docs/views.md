@@ -113,7 +113,7 @@ ExamTakeView(viewmodel: ExamTakeViewModel, go_back_callback: Callable[[], None])
 | ViewModel Signal | View Slot | Effect |
 |---|---|---|
 | `data_loaded` | `_render_overview()` | Shows exam metadata, history table, and mode tabs |
-| `test_started` | `_render_test()` | Renders shuffled question cards |
+| `test_started` | `_render_test()` | Renders question cards with options in saved order |
 | `result_ready` | `_render_result()` | Shows score and per-question canonical answer breakdown |
 | `error_message` | `_show_error(msg)` | Shows a warning dialog |
 
@@ -122,12 +122,12 @@ ExamTakeView(viewmodel: ExamTakeViewModel, go_back_callback: Callable[[], None])
 | Page | Description |
 |---|---|
 | Overview | Title, description, duration, part count, question count, previous attempts, Practice, Real Test, and Dictation tabs |
-| Test | Scrollable question cards with shuffled options; Practice mode includes per-question Skip |
+| Test | Scrollable question cards with options in saved order; Practice mode includes per-question Skip |
 | Result | Score/total plus per-question question text, user's canonical letter, correct canonical letter, and correct text |
 | Attempt Analytics | KPI cards, part/overall category breakdowns, answer-sheet tiles, question detail dialogs, and Retake Wrong Answers |
 | Dictation | Transcript-driven listening exercise with range playback, typed input, and character-level diff feedback |
 
-The View submits only the selected shuffled display index. `ExamTakeViewModel` maps it back to the canonical `A`-`D` answer before grading and persistence.
+The View submits the selected display index. `ExamTakeViewModel` keeps that index aligned with the saved `A`-`D` option order before grading and persistence.
 
 The previous-attempts table View action navigates to the Attempt Analytics page. Badge buttons and answer-sheet Details buttons open a modal with the context, question, user choice, and correct answer. Retake Wrong Answers starts a filtered practice session containing the attempt's incorrect or skipped questions.
 
