@@ -167,6 +167,21 @@ def _filter_sync_rows(session: Session, model: type, rows: list[Any]) -> list[An
     ]
 
 
+def _get_dirty_rows(session: Session, model: type) -> list[Any]:
+    dirty_column = getattr(model, "dirty")
+    rows = (
+        session.query(model)
+        .filter(dirty_column.in_((True, 1)))
+        .all()
+    )
+    return _filter_sync_rows(session, model, rows)
+
+
+def _mark_rows_clean(rows: list[Any]) -> None:
+    for row in rows:
+        row.dirty = False
+
+
 def _chunked(rows: list[dict[str, Any]], size: int) -> Iterable[list[dict[str, Any]]]:
     for index in range(0, len(rows), size):
         yield rows[index : index + size]
@@ -384,7 +399,9 @@ def _sync_remote_table_to_sqlite(
         batch_size=batch_size,
     )
     for row in rows:
-        session.merge(model(**_deserialize_row(model, row)))
+        data = _deserialize_row(model, row)
+        data["dirty"] = False
+        session.merge(model(**data))
     session.commit()
     return TableSyncResult(table_name=table_name, row_count=len(rows))
 
@@ -408,8 +425,7 @@ def sync_sqlite_to_supabase(batch_size: int = 500) -> list[TableSyncResult]:
         )
         for model in SYNC_MODELS:
             table_name = model.__tablename__
-            local_rows = session.query(model).all()
-            local_rows = _filter_sync_rows(session, model, local_rows)
+            local_rows = _get_dirty_rows(session, model)
             if _has_user_id_column(model):
                 _apply_current_user_id(local_rows, user_id)
             rows = [_serialize_sync_row(row, user_id) for row in local_rows]
@@ -419,6 +435,7 @@ def sync_sqlite_to_supabase(batch_size: int = 500) -> list[TableSyncResult]:
                 rows=rows,
                 batch_size=batch_size,
             )
+            _mark_rows_clean(local_rows)
             session.commit()
             results.append(TableSyncResult(table_name=table_name, row_count=len(rows)))
         return results
