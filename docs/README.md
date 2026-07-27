@@ -5,6 +5,7 @@ repository boundary between ViewModels and database implementations:
 
 - `src/models/`: pure Python dataclasses shared by repositories, ViewModels, and Views.
 - `src/repositories/`: repository interfaces plus SQLite/Supabase implementations.
+- `src/core/plugins/`: plugin discovery, UI contribution registry, and worker process management.
 - `src/viewmodels/`: application state, repository calls, background tasks, and QtCore signals.
 - `src/views/`: hand-written Qt widgets/windows. Put signal wiring, slots, validation, and styling here.
 - `ui/`: Qt Designer `.ui` source files.
@@ -38,6 +39,9 @@ python cmd/generate_config.py --env .env --out src/config.py
 
 The app reads `src.config` at runtime. One-file builds run this generation step
 before PyInstaller, so the executable does not need `.env` in `dist/`.
+The build scripts also build plugin worker executables, validate plugin
+dependencies, and stage enabled plugin folders into `dist/plugins` after
+PyInstaller finishes.
 
 ## Agent Checklist
 
@@ -51,6 +55,17 @@ before PyInstaller, so the executable does not need `.env` in `dist/`.
 8. Use `blockSignals(True)` around programmatic UI updates that would otherwise retrigger slots.
 9. Use `src.utils.qt.clear_layout()` when clearing dynamic Qt layouts.
 10. Follow `pyrightconfig.json` for strict Pyright typing rules when adding or changing Python code.
+
+## Plugins
+
+Optional features live under `plugins/<plugin-id>/` with a `plugin.json` manifest
+and a lightweight in-process `plugin.py` adapter. `MainWindow` loads enabled
+plugins at startup through `PluginManager`; plugins register menu/toolbar
+actions and lazy stack pages through `UIRegistry`, and can expose callable
+functions such as OCR text extraction. Heavy OCR or agent dependencies must stay
+inside plugin worker executables such as `workers/ocr-worker.exe` and
+`workers/agent-worker.exe`; the app calls them through JSON-lines IPC managed by
+`WorkerManager`. `JunEdu.exe` should not bundle plugin dependencies.
 
 ## Regenerating UI
 

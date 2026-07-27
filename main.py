@@ -16,6 +16,7 @@ if __name__ == "__main__":
     splash.show()
     app.processEvents()
     widget = MainWindow(splash=splash)
+    app.aboutToQuit.connect(widget.shutdown_plugins)
     widget.show()
     splash.finish(widget)
     sys.exit(app.exec())

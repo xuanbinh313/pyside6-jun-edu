@@ -1,7 +1,8 @@
 ﻿# Add current directory to path if needed, but normally running from jun-edu is fine.
 import os
 import sys
-from typing import Optional
+from pathlib import Path
+from typing import Any, Dict, Mapping, Optional, Tuple, cast
 
 import qtawesome as qta
 from PySide6.QtCore import Qt
@@ -14,10 +15,14 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSplashScreen,
     QSystemTrayIcon,
+    QToolBar,
+    QWidget,
 )
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
+from src.core.plugins import PluginManager, UIRegistry
+from src.core.plugins.ui_registry import UIActionContribution
 from src.repositories.sqlite.database import init_db
 from src.viewmodels.auth_viewmodel import AuthViewModel
 from src.viewmodels.exam_add_external_viewmodel import ExamAddExternalViewModel
@@ -34,6 +39,12 @@ from src.views.exam_list_view import ExamListView
 from src.views.exam_take_view import ExamTakeView
 from src.views.vocabulary_list_view import VocabularyListView
 from ui_gen.ui_main_window import Ui_MainWindow
+
+
+def _application_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]
 
 
 def create_startup_splash() -> QSplashScreen:
@@ -110,6 +121,13 @@ class MainWindow(QMainWindow):
         self.auth_dialog: Optional[AuthView] = None
 
         self.stacked_widget = self.ui.stacked_widget
+        self.plugin_ui_registry = UIRegistry(self)
+        self.plugin_manager = PluginManager(
+            _application_root() / "plugins",
+            self.plugin_ui_registry,
+        )
+        self._plugin_actions: Dict[Tuple[str, str], QAction] = {}
+        self._plugin_pages: Dict[Tuple[str, str], QWidget] = {}
 
         self._show_startup_message("Loading exam list...")
         self.list_viewmodel = ExamListViewModel()
@@ -124,11 +142,14 @@ class MainWindow(QMainWindow):
         self.close_event_minutes = 10
         self._show_startup_message("Configuring menus...")
         self.setup_menu_bar()
+        self._setup_plugin_ui_connections()
 
         self._show_startup_message("Configuring system tray...")
         self.setup_system_tray()
         self._show_startup_message("Connecting app signals...")
         self.setup_mvvm_connections()
+        self._show_startup_message("Loading plugins...")
+        self.plugin_manager.discover_and_load()
         self.auth_viewmodel.check_saved_session()
         self._show_startup_message("Ready")
 
@@ -223,23 +244,48 @@ class MainWindow(QMainWindow):
 
     def navigate_to_vocabulary(self) -> None:
         self._remove_secondary_views()
-        self.vocabulary_viewmodel = VocabularyListViewModel()
+        self.vocabulary_viewmodel = VocabularyListViewModel(
+            agent_content_provider=self._agent_content_from_plugin
+        )
         self.vocabulary_view = VocabularyListView(
             self.vocabulary_viewmodel, self.navigate_to_list
         )
         self.stacked_widget.addWidget(self.vocabulary_view)
         self.stacked_widget.setCurrentWidget(self.vocabulary_view)
 
-    def _remove_secondary_views(self) -> None:
-        while self.stacked_widget.count() > 1:
-            widget = self.stacked_widget.widget(1)
+    def _agent_content_from_plugin(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            result = self.plugin_ui_registry.call_function(
+                "agent", "generate_content", payload
+            )
+        except KeyError as exc:
+            raise ValueError("The Agent plugin is missing or disabled.") from exc
+        if not isinstance(result, dict):
+            raise ValueError("The Agent plugin returned an invalid response.")
+        return {
+            str(key): value
+            for key, value in cast(Mapping[str, Any], result).items()
+        }
+
+    def _remove_secondary_views(self, except_widget: Optional[QWidget] = None) -> None:
+        for index in range(self.stacked_widget.count() - 1, 0, -1):
+            widget = self.stacked_widget.widget(index)
+            if except_widget is not None and widget is except_widget:
+                continue
             self.stacked_widget.removeWidget(widget)
+            self._forget_plugin_page_widget(widget)
             widget.deleteLater()
 
     def setup_menu_bar(self) -> None:
         self.views_menu: QMenu = self.menuBar().addMenu("Views")
         self.views_menu.addAction(self.zoom_in_action)
         self.views_menu.addAction(self.zoom_out_action)
+        self.plugins_menu: QMenu = self.menuBar().addMenu("Plugins")
+        self.plugins_menu.menuAction().setVisible(False)
+        self.plugins_toolbar: QToolBar = self.addToolBar("Plugins")
+        self.plugins_toolbar.setObjectName("plugins_toolbar")
+        self.plugins_toolbar.setVisible(False)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
 
         self.vocabulary_action = QAction("Vocabulary List", self)
         self.vocabulary_action.triggered.connect(self.navigate_to_vocabulary)
@@ -262,6 +308,85 @@ class MainWindow(QMainWindow):
         self.ui.menu_main.addAction(self.logout_action)
         self.ui.action_settings.triggered.connect(self.show_settings_modal)
         self._update_auth_actions()
+
+    def _setup_plugin_ui_connections(self) -> None:
+        self.plugin_ui_registry.action_registered.connect(
+            self._on_plugin_action_registered
+        )
+        self.plugin_ui_registry.plugin_unregistered.connect(
+            self._on_plugin_unregistered
+        )
+        self.plugin_ui_registry.page_requested.connect(self._show_plugin_page)
+
+    def _on_plugin_action_registered(self, contribution: object) -> None:
+        if not isinstance(contribution, UIActionContribution):
+            return
+
+        action = QAction(contribution.icon, contribution.title, self)
+        action.triggered.connect(contribution.callback)
+        key = (contribution.plugin_id, contribution.action_id)
+        self._plugin_actions[key] = action
+
+        location = contribution.location.lower()
+        if "toolbar" in location:
+            self.plugins_toolbar.addAction(action)
+            self.plugins_toolbar.setVisible(True)
+        if "menu" in location or (
+            "toolbar" not in location and "context" not in location
+        ):
+            self.plugins_menu.addAction(action)
+            self.plugins_menu.menuAction().setVisible(True)
+        if "context" in location:
+            self.addAction(action)
+
+    def _on_plugin_unregistered(self, plugin_id: str) -> None:
+        for key, action in list(self._plugin_actions.items()):
+            if key[0] != plugin_id:
+                continue
+            self.plugins_menu.removeAction(action)
+            self.plugins_toolbar.removeAction(action)
+            self.removeAction(action)
+            action.deleteLater()
+            del self._plugin_actions[key]
+
+        self.plugins_menu.menuAction().setVisible(bool(self.plugins_menu.actions()))
+        self.plugins_toolbar.setVisible(bool(self.plugins_toolbar.actions()))
+
+        for key, widget in list(self._plugin_pages.items()):
+            if key[0] != plugin_id:
+                continue
+            self.stacked_widget.removeWidget(widget)
+            widget.deleteLater()
+            del self._plugin_pages[key]
+
+    def _show_plugin_page(self, plugin_id: str, page_id: str) -> None:
+        key = (plugin_id, page_id)
+        widget = self._plugin_pages.get(key)
+        if widget is None:
+            try:
+                contribution = self.plugin_ui_registry.get_page(plugin_id, page_id)
+                widget = contribution.widget_factory()
+            except Exception as exc:
+                QMessageBox.critical(
+                    self,
+                    "Plugin Page Failed",
+                    f"Could not open plugin page '{page_id}'.\n\n{exc}",
+                )
+                return
+            self._plugin_pages[key] = widget
+
+        self._remove_secondary_views(except_widget=widget)
+        if self.stacked_widget.indexOf(widget) < 0:
+            self.stacked_widget.addWidget(widget)
+        self.stacked_widget.setCurrentWidget(widget)
+
+    def _forget_plugin_page_widget(self, widget: QWidget) -> None:
+        for key, plugin_widget in list(self._plugin_pages.items()):
+            if plugin_widget is widget:
+                del self._plugin_pages[key]
+
+    def shutdown_plugins(self) -> None:
+        self.plugin_manager.shutdown()
 
     def _on_sync_started(self):
         self.sync_action.setEnabled(False)
@@ -490,6 +615,7 @@ if __name__ == "__main__":
     splash.show()
     app.processEvents()
     widget = MainWindow(splash=splash)
+    app.aboutToQuit.connect(widget.shutdown_plugins)
     widget.show()
     splash.finish(widget)
     sys.exit(app.exec())

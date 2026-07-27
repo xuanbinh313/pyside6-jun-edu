@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
-from google.genai import types
 from pydantic import BaseModel, Field
 from PySide6.QtCore import QObject, QThread, Signal
 from src.config import GEMINI_API_KEY, GEMINI_MODEL
@@ -27,9 +26,15 @@ class VocabularyTranslateWorker(QThread):
     finished = Signal(dict)
     error = Signal(str)
 
-    def __init__(self, vocabulary: list[Vocabulary], parent: QObject | None = None) -> None:
+    def __init__(
+        self,
+        vocabulary: list[Vocabulary],
+        agent_content_provider: Callable[[dict[str, Any]], dict[str, Any]],
+        parent: QObject | None = None,
+    ) -> None:
         super().__init__(parent)
         self.vocabulary = vocabulary
+        self.agent_content_provider = agent_content_provider
 
     def run(self) -> None:
         try:
@@ -44,25 +49,20 @@ class VocabularyTranslateWorker(QThread):
         if not api_key:
             raise ValueError("GEMINI_API_KEY is missing from application config.")
 
-        try:
-            from google import genai
-        except ImportError as exc:
-            raise ImportError("google-genai is not installed.") from exc
-
         self.progress.emit("Preparing vocabulary translation request...")
-        client = genai.Client(api_key=api_key)
         self.progress.emit("Sending vocabulary to Gemini...")
-        response = client.models.generate_content(
-            model=model_name,
-            contents=self._build_prompt(),
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=VocabularyTranslationResponse,
-                temperature=0.1,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            ),
+        response_payload = self.agent_content_provider(
+            {
+                "api_key": api_key,
+                "model_name": model_name,
+                "prompt_text": self._build_prompt(),
+                "file_paths": [],
+                "response_schema": VocabularyTranslationResponse,
+                "temperature": 0.1,
+                "thinking_budget": 0,
+            }
         )
-        text = self._response_text(response)
+        text = str(response_payload.get("text") or "").strip()
         if not text:
             raise ValueError("Gemini returned an empty vocabulary translation response.")
         parsed = VocabularyTranslationResponse.model_validate_json(text)
@@ -100,26 +100,6 @@ INPUT:
 {json.dumps(rows, ensure_ascii=False, indent=2)}
 """.strip()
 
-    def _response_text(self, response: Any) -> str:
-        text = self._response_text_from_parts(response)
-        if text:
-            return text
-        response_text = getattr(response, "text", "")
-        if response_text:
-            return str(response_text).strip()
-        return ""
-
-    def _response_text_from_parts(self, response: Any) -> str:
-        candidates = getattr(response, "candidates", None) or []
-        chunks: list[str] = []
-        for candidate in candidates:
-            content = getattr(candidate, "content", None)
-            for part in getattr(content, "parts", []) or []:
-                part_text = getattr(part, "text", "")
-                if part_text:
-                    chunks.append(str(part_text))
-        return "\n".join(chunks).strip()
-
 
 class VocabularyListViewModel(QObject):
     data_changed = Signal()
@@ -128,9 +108,15 @@ class VocabularyListViewModel(QObject):
     translation_progress = Signal(str)
     translation_finished = Signal(int)
 
-    def __init__(self, repo: IExamRepository | None = None) -> None:
+    def __init__(
+        self,
+        repo: IExamRepository | None = None,
+        agent_content_provider: Callable[[dict[str, Any]], dict[str, Any]]
+        | None = None,
+    ) -> None:
         super().__init__()
         self.repo: IExamRepository = repo or SQLiteExamRepository()
+        self.agent_content_provider = agent_content_provider
         self.vocabulary: list[Vocabulary] = []
         self._all_vocabulary: list[Vocabulary] = []
         self._search_query = ""
@@ -185,10 +171,15 @@ class VocabularyListViewModel(QObject):
         if not targets:
             self.translation_finished.emit(0)
             return
+        if self.agent_content_provider is None:
+            self.error_occurred.emit("The Agent plugin is missing or disabled.")
+            return
 
         self.is_translating = True
         self.translation_started.emit(len(targets))
-        self._translate_worker = VocabularyTranslateWorker(targets, self)
+        self._translate_worker = VocabularyTranslateWorker(
+            targets, self.agent_content_provider, self
+        )
         self._translate_worker.progress.connect(self.translation_progress.emit)
         self._translate_worker.finished.connect(self._on_translation_finished)
         self._translate_worker.error.connect(self._on_translation_error)

@@ -1,0 +1,9 @@
+{
+  "id": "agent",
+  "name": "AI Agent",
+  "version": "0.1.0",
+  "api_version": "1",
+  "entry": "plugin.py",
+  "enabled": true,
+  "execution": "in_process"
+}

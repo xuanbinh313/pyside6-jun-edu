@@ -1,10 +1,8 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
-from google.genai import types
-from pydantic import BaseModel
 from PySide6.QtCore import QObject, QThread, Signal
 from src.config import (
     GEMINI_API_KEY,
@@ -31,12 +29,14 @@ class SrtMappingAgentWorker(QThread):
         chunks: list[ExamSrtChunk],
         contexts: list[ExamContext],
         questions_by_context: dict[str, list[ExamQuestion]],
+        agent_content_provider: Callable[[dict[str, Any]], dict[str, Any]],
         parent: Optional[QObject] = None,
     ) -> None:
         super().__init__(parent)
         self.chunks = chunks
         self.contexts = contexts
         self.questions_by_context = questions_by_context
+        self.agent_content_provider = agent_content_provider
 
     def run(self) -> None:
         try:
@@ -59,28 +59,23 @@ class SrtMappingAgentWorker(QThread):
                 "GOOGLE_CLOUD_LOCATION is missing from application config."
             )
 
-        try:
-            from google import genai
-        except ImportError as exc:
-            raise ImportError("google-genai is not installed.") from exc
-
         self.progress.emit("Preparing SRT audio mapping request...")
-        client = genai.Client(api_key=api_key)
         prompt = self._build_prompt()
         self.progress.emit("Sending SRT chunks to Gemini...")
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=SrtMappingResponseSchema,
-                temperature=0.1,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            ),
+        response_payload = self.agent_content_provider(
+            {
+                "api_key": api_key,
+                "model_name": model_name,
+                "prompt_text": prompt,
+                "file_paths": [],
+                "response_schema": SrtMappingResponseSchema,
+                "temperature": 0.1,
+                "thinking_budget": 0,
+            }
         )
-        dump_path = self._save_agent_response_file(response)
+        dump_path = self._save_agent_response_file(response_payload)
         self.progress.emit(f"Saved SRT mapping response: {dump_path}")
-        text = self._response_text(response)
+        text = str(response_payload.get("text") or "").strip()
         if not text:
             raise ValueError("Gemini returned an empty SRT mapping response.")
         parsed = SrtMappingResponseSchema.model_validate_json(text)
@@ -193,27 +188,7 @@ RULES:
         text = value.replace("\r", " ").replace("\n", " ")
         return " ".join(text.split())[:limit]
 
-    def _response_text(self, response: Any) -> str:
-        text = self._response_text_from_parts(response)
-        if text:
-            return text
-        response_text = getattr(response, "text", "")
-        if response_text:
-            return str(response_text).strip()
-        return ""
-
-    def _response_text_from_parts(self, response: Any) -> str:
-        candidates = getattr(response, "candidates", None) or []
-        chunks: list[str] = []
-        for candidate in candidates:
-            content = getattr(candidate, "content", None)
-            for part in getattr(content, "parts", []) or []:
-                part_text = getattr(part, "text", "")
-                if part_text:
-                    chunks.append(str(part_text))
-        return "\n".join(chunks).strip()
-
-    def _save_agent_response_file(self, response: Any) -> str:
+    def _save_agent_response_file(self, response_payload: dict[str, Any]) -> str:
         response_dir = (
             Path(__file__).resolve().parents[2] / ".codex" / "srt_mapping_responses"
         )
@@ -222,35 +197,14 @@ RULES:
         path = response_dir / f"{timestamp}_srt_mapping.json"
         payload = {
             "saved_at": datetime.now().isoformat(timespec="seconds"),
-            "response_text": self._response_text_from_parts(response),
-            "candidates": self._dump_response_candidates(response),
-            "response": self._json_safe(response),
+            "response_text": str(response_payload.get("response_text") or ""),
+            "candidates": response_payload.get("candidates", []),
+            "response": response_payload.get("response", {}),
         }
         path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         return str(path)
-
-    def _dump_response_candidates(self, response: Any) -> list[Any]:
-        candidates = getattr(response, "candidates", None) or []
-        return [self._json_safe(candidate) for candidate in candidates]
-
-    def _json_safe(self, value: Any) -> Any:
-        if value is None or isinstance(value, (str, int, float, bool)):
-            return value
-        if isinstance(value, bytes):
-            return value.hex()
-        if isinstance(value, (list, tuple)):
-            return [self._json_safe(item) for item in value]
-        if isinstance(value, dict):
-            return {str(key): self._json_safe(item) for key, item in value.items()}
-        if isinstance(value, BaseModel):
-            return self._json_safe(value.model_dump())
-        if hasattr(value, "model_dump"):
-            return self._json_safe(value.model_dump())
-        if hasattr(value, "to_json_dict"):
-            return self._json_safe(value.to_json_dict())
-        return repr(value)
 
 
 class SrtMappingAgentViewModel(QObject):
@@ -258,10 +212,17 @@ class SrtMappingAgentViewModel(QObject):
     progress_message = Signal(str)
     error_message = Signal(str)
 
-    def __init__(self, parent: Optional[QObject] = None) -> None:
+    def __init__(
+        self,
+        parent: Optional[QObject] = None,
+        agent_content_provider: Optional[
+            Callable[[dict[str, Any]], dict[str, Any]]
+        ] = None,
+    ) -> None:
         super().__init__(parent)
         self.is_loading = False
         self._worker: Optional[SrtMappingAgentWorker] = None
+        self.agent_content_provider = agent_content_provider
 
     def start_mapping(
         self,
@@ -277,9 +238,18 @@ class SrtMappingAgentViewModel(QObject):
         if not contexts:
             self.error_message.emit("No exam contexts are available.")
             return
+        if self.agent_content_provider is None:
+            self.error_message.emit("The Agent plugin is missing or disabled.")
+            return
 
         self.is_loading = True
-        self._worker = SrtMappingAgentWorker(chunks, contexts, questions_by_context, self)
+        self._worker = SrtMappingAgentWorker(
+            chunks,
+            contexts,
+            questions_by_context,
+            self.agent_content_provider,
+            self,
+        )
         self._worker.progress.connect(self.progress_message.emit)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)

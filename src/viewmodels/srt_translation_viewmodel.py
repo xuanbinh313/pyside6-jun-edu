@@ -1,7 +1,6 @@
 import json
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
-from google.genai import types
 from pydantic import BaseModel, Field
 from PySide6.QtCore import QObject, QThread, Signal
 from src.config import GEMINI_API_KEY, GEMINI_MODEL
@@ -25,10 +24,12 @@ class SrtTranslationWorker(QThread):
     def __init__(
         self,
         chunks: list[ExamSrtChunk],
+        agent_content_provider: Callable[[dict[str, Any]], dict[str, Any]],
         parent: Optional[QObject] = None,
     ) -> None:
         super().__init__(parent)
         self.chunks = chunks
+        self.agent_content_provider = agent_content_provider
 
     def run(self) -> None:
         try:
@@ -43,28 +44,23 @@ class SrtTranslationWorker(QThread):
         if not api_key:
             raise ValueError("GEMINI_API_KEY is missing from application config.")
 
-        try:
-            from google import genai
-        except ImportError as exc:
-            raise ImportError("google-genai is not installed.") from exc
-
         self.progress.emit("Preparing transcript translation request...")
-        client = genai.Client(api_key=api_key)
         self.progress.emit("Sending transcript chunks to Gemini...")
-        response = client.models.generate_content(
-            model=model_name,
-            contents=self._build_prompt(),
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=SrtTranslationResponse,
-                temperature=0.1,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            ),
+        response_payload = self.agent_content_provider(
+            {
+                "api_key": api_key,
+                "model_name": model_name,
+                "prompt_text": self._build_prompt(),
+                "file_paths": [],
+                "response_schema": SrtTranslationResponse,
+                "temperature": 0.1,
+                "thinking_budget": 0,
+            }
         )
-        text = self._response_text(response)
+        text = str(response_payload.get("text") or "").strip()
         if not text:
             raise ValueError("Gemini returned an empty transcript translation response.")
-        parsed = self._parse_translation_response(response, text)
+        parsed = self._parse_translation_response(text)
         requested_indexes = {chunk.index for chunk in self.chunks}
         parsed_translations = [
             translation
@@ -108,35 +104,7 @@ INPUT:
 {json.dumps(rows, ensure_ascii=False, indent=2)}
 """.strip()
 
-    def _response_text(self, response: Any) -> str:
-        text = self._response_text_from_parts(response)
-        if text:
-            return text
-        response_text = getattr(response, "text", "")
-        if response_text:
-            return str(response_text).strip()
-        return ""
-
-    def _response_text_from_parts(self, response: Any) -> str:
-        candidates = getattr(response, "candidates", None) or []
-        chunks: list[str] = []
-        for candidate in candidates:
-            content = getattr(candidate, "content", None)
-            for part in getattr(content, "parts", []) or []:
-                part_text = getattr(part, "text", "")
-                if part_text:
-                    chunks.append(str(part_text))
-        return "\n".join(chunks).strip()
-
-    def _parse_translation_response(
-        self, response: Any, text: str
-    ) -> SrtTranslationResponse:
-        parsed_response = getattr(response, "parsed", None)
-        if isinstance(parsed_response, SrtTranslationResponse):
-            return parsed_response
-        if isinstance(parsed_response, dict):
-            return SrtTranslationResponse.model_validate(parsed_response)
-
+    def _parse_translation_response(self, text: str) -> SrtTranslationResponse:
         for candidate in self._translation_json_candidates(text):
             try:
                 return SrtTranslationResponse.model_validate_json(candidate)
@@ -169,10 +137,17 @@ class SrtTranslationViewModel(QObject):
     progress_message = Signal(str)
     error_message = Signal(str)
 
-    def __init__(self, parent: Optional[QObject] = None) -> None:
+    def __init__(
+        self,
+        parent: Optional[QObject] = None,
+        agent_content_provider: Optional[
+            Callable[[dict[str, Any]], dict[str, Any]]
+        ] = None,
+    ) -> None:
         super().__init__(parent)
         self.is_loading = False
         self._worker: Optional[SrtTranslationWorker] = None
+        self.agent_content_provider = agent_content_provider
 
     def start_translation(self, chunks: list[ExamSrtChunk]) -> None:
         if self.is_loading:
@@ -181,9 +156,14 @@ class SrtTranslationViewModel(QObject):
         if not targets:
             self.error_message.emit("No transcript text is available.")
             return
+        if self.agent_content_provider is None:
+            self.error_message.emit("The Agent plugin is missing or disabled.")
+            return
 
         self.is_loading = True
-        self._worker = SrtTranslationWorker(targets, self)
+        self._worker = SrtTranslationWorker(
+            targets, self.agent_content_provider, self
+        )
         self._worker.progress.connect(self.progress_message.emit)
         self._worker.result_ready.connect(self._on_finished)
         self._worker.error.connect(self._on_error)

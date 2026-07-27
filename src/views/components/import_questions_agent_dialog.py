@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Mapping, Optional, Protocol, cast
 
 import qtawesome as qta
 from PySide6.QtCore import Qt
@@ -32,6 +32,13 @@ from src.viewmodels.import_questions_agent_viewmodel import (
 from src.views.components.add_exam_question_dialog import ImageDropArea
 from src.views.components.pdf_page_selector_dialog import PdfPageSelectorDialog
 from src.views.components.prompt_input_dialog import PromptInputDialog
+
+
+class PluginFunctionRegistry(Protocol):
+    def call_function(
+        self, plugin_id: str, function_id: str, payload: Mapping[str, Any]
+    ) -> Any:
+        ...
 
 
 class OcrReviewDialog(QDialog):
@@ -360,7 +367,11 @@ class ImportQuestionsAgentDialog(QDialog):
         viewmodel: Optional[ImportQuestionsAgentViewModel] = None,
     ):
         super().__init__(parent)
-        self.viewmodel = viewmodel or ImportQuestionsAgentViewModel(parent=self)
+        self.viewmodel = viewmodel or ImportQuestionsAgentViewModel(
+            agent_content_provider=self._agent_content_from_plugin,
+            ocr_text_provider=self._ocr_text_from_plugin,
+            parent=self,
+        )
         self._part_widgets: dict[int, dict[str, object]] = {}
         self._answer_widgets: dict[str, dict[str, object]] = {}
         self._overall_widgets: dict[str, dict[str, dict[str, object]]] = {}
@@ -379,6 +390,37 @@ class ImportQuestionsAgentDialog(QDialog):
         self._build_ui()
         self._connect_signals()
         self._refresh_ui()
+
+    def _plugin_registry(self) -> Optional[PluginFunctionRegistry]:
+        current = self.parent()
+        while current is not None:
+            registry = getattr(current, "plugin_ui_registry", None)
+            if registry is not None:
+                return cast(PluginFunctionRegistry, registry)
+            current = current.parent()
+        return None
+
+    def _ocr_text_from_plugin(self, payload: dict[str, Any]) -> str:
+        registry = self._plugin_registry()
+        if registry is None:
+            raise ValueError("Plugin services are not available from this window.")
+        try:
+            result = registry.call_function("ocr", "extract_task_text", payload)
+        except KeyError as exc:
+            raise ValueError("The OCR plugin is missing or disabled.") from exc
+        return str(result)
+
+    def _agent_content_from_plugin(self, payload: dict[str, Any]) -> dict[str, Any]:
+        registry = self._plugin_registry()
+        if registry is None:
+            raise ValueError("Plugin services are not available from this window.")
+        try:
+            result = registry.call_function("agent", "generate_content", payload)
+        except KeyError as exc:
+            raise ValueError("The Agent plugin is missing or disabled.") from exc
+        if not isinstance(result, dict):
+            raise ValueError("The Agent plugin returned an invalid response.")
+        return cast(dict[str, Any], result)
 
     @property
     def result_contexts(self) -> list[dict]:

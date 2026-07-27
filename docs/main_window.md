@@ -37,6 +37,7 @@ Inside `MainWindow.__init__`:
 4. Menu bar configured
 5. System tray configured
 6. MVVM signal bindings applied
+7. Plugin registry connections applied and enabled plugins loaded from `plugins/`
 
 ---
 
@@ -74,6 +75,10 @@ The menu bar includes a "Menu" entry with these actions:
 | "Sync to Local" | `sync_viewmodel.sync_to_local()` | Downloads Supabase data and R2 media into local SQLite/temp storage |
 | "Settings" | `show_settings_modal()` | `QInputDialog.getInt` to set `close_event_minutes` (1–1440) |
 | "Logout" | `auth_viewmodel.sign_out()` | Signs out and clears saved tokens while staying in the main app |
+
+Plugins can add actions to the "Plugins" menu and plugin toolbar at runtime.
+These actions are registered through `UIRegistry`; failed or disabled plugins do
+not contribute actions.
 
 It also includes a "Views" entry with these actions:
 
@@ -130,3 +135,10 @@ Connected to `ReminderViewModel.show_study_window` signal. Called when the count
 | `ReminderViewModel.show_study_window` | `MainWindow.wakeup_and_focus_app` |
 
 All other bindings (ViewModel → View) are set up inside the View constructors.
+
+## Plugin Pages
+
+Plugin pages are registered as factories and created only when requested. Opening
+a plugin page clears the transient slot(s) above the exam list, then shows the
+plugin widget in the main `QStackedWidget`. Plugin cleanup runs from
+`QApplication.aboutToQuit` through `MainWindow.shutdown_plugins()`.

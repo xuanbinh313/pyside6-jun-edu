@@ -1,85 +1,114 @@
-# Implementation Plan - Refactor `srt_chunks` to `Exam` Table Column
+# Implementation Plan - JunEdu Plugin Architecture & Dynamic UI Integration
 
-Refactor the `srt_chunks` storage model so that transcript chunks are stored directly in a column on the `Exam` table (`Text`/JSON-string in SQLite, `jsonb` in Supabase) rather than maintaining a separate `exam_srt_chunks` child table. Additionally, update the Supabase sync service to exclude `exam_srt_chunks` from synced models and handle the `srt_chunks` JSON serialization/deserialization for `Exam` sync operations.
+This document outlines the design and step-by-step technical implementation plan for adding a lightweight, dynamic Plugin System to JunEdu according to [requirement.md](file:///d:/my-project/workspace-anki/jun-edu/requirement.md).
+
+## Problem & Objectives
+
+- **Goal**: Keep the JunEdu core application lightweight and decoupled from optional heavy features (such as OCR via PaddleOCR and AI Agent via local LLMs/Torch).
+- **Dynamic UI**: Plugins register their own toolbar buttons, menu entries, context menu items, and stack pages. If a plugin is missing or disabled, its UI contributions must not appear in JunEdu.
+- **Out-of-Process Workers**: Heavy ML packages (PaddleOCR, PyTorch, etc.) are executed in external worker executables (`ocr-worker.exe`, `agent-worker.exe`) communicating over standard line-delimited JSON IPC (`stdin`/`stdout`).
+- **Isolation & Robustness**: Plugin failures, missing files, or crashes must be gracefully isolated so JunEdu core starts and runs without interruption.
+
+---
 
 ## User Review Required
 
+> [!IMPORTANT]
+> **Dependency & Environment Isolation**:
+> Optional dependencies like `paddleocr`, `paddle`, `torch` must be completely removed from the main application's environment imports and `JunEdu.spec` bundle requirements. Heavy workers will run as separate executables communicating via JSON-lines IPC.
+
 > [!NOTE]
-> - **SQLite Schema Migration**: An `ALTER TABLE exams ADD COLUMN srt_chunks TEXT` migration will be automatically executed in `init_db()` for existing local databases so existing SQLite databases upgrade gracefully.
-> - **Supabase Schema**: In Supabase PostgreSQL, the `exams` table `srt_chunks` column is assumed to be `jsonb`. The sync service will handle converting between Python objects / JSON strings in SQLite and JSONB arrays in Supabase.
-> - **Clean MVVM Separation**: Hand-written views and viewmodels already access `srt_chunks` via domain models (`Exam.srt_chunks` / `IExamRepository` methods `replace_srt_chunks` and `list_srt_chunks`). They will continue to work seamlessly without breaking signature changes.
+> **Dynamic Navigation**:
+> Main toolbar buttons / navigation actions registered by plugins will dynamically add tabs/pages to `MainWindow`'s `QStackedWidget` without hardcoding any plugin checks inside `main_window.py`.
 
-## Open Questions
-
-None. The requirements are clear and well-aligned with the existing architecture.
+---
 
 ## Proposed Changes
 
+### 1. Core Plugin Infrastructure (`src/core/plugins/`)
+
+#### [NEW] [plugin_manifest.py](file:///d:/my-project/workspace-anki/jun-edu/src/core/plugins/plugin_manifest.py)
+- Data model (`PluginManifest`) for parsing `plugin.json`.
+- Validates required fields (`id`, `name`, `version`, `api_version`, `entry`, `enabled`, `execution`).
+- Ensures valid plugin ID formatting and security checks against directory traversal (`../`).
+
+#### [NEW] [plugin_base.py](file:///d:/my-project/workspace-anki/jun-edu/src/core/plugins/plugin_base.py)
+- Defines abstract base class `JunEduPlugin`:
+  - `plugin_id: str`
+  - `initialize(context: PluginContext) -> None`
+  - `shutdown() -> None`
+- Defines plugin factory contract (`create_plugin() -> JunEduPlugin`).
+
+#### [NEW] [plugin_context.py](file:///d:/my-project/workspace-anki/jun-edu/src/core/plugins/plugin_context.py)
+- `PluginContext` provided to plugins during initialization:
+  - `ui: UIRegistry`
+  - `logger: logging.Logger`
+  - `workers: WorkerManager`
+  - `get_resource_path(relative_path: str) -> str`
+
+#### [NEW] [ui_registry.py](file:///d:/my-project/workspace-anki/jun-edu/src/core/plugins/ui_registry.py)
+- `UIRegistry` manages dynamic UI contributions:
+  - `register_action(plugin_id, action_id, title, location, callback, icon=None)`
+  - `register_page(plugin_id, page_id, title, widget_factory)`
+  - `unregister_plugin(plugin_id)` for lifecycle cleanup.
+- Signals and slots for attaching actions/pages to PySide6 widgets in `MainWindow`.
+
+#### [NEW] [plugin_worker.py](file:///d:/my-project/workspace-anki/jun-edu/src/core/plugins/plugin_worker.py) & [worker_manager.py](file:///d:/my-project/workspace-anki/jun-edu/src/core/plugins/worker_manager.py)
+- `PluginWorker`: Manages subprocess execution (`subprocess.Popen`) for external worker executables (`in_process` vs `process`).
+- JSON-lines IPC protocol implementation (`send_request`, response parsing, non-blocking asynchronous I/O via Qt background threads).
+- `WorkerManager`: Factory and lifecycle manager for lazy worker startup and graceful termination on application exit.
+
+#### [NEW] [exceptions.py](file:///d:/my-project/workspace-anki/jun-edu/src/core/plugins/exceptions.py)
+- Custom exceptions: `PluginError`, `PluginManifestError`, `PluginIncompatibleError`, `WorkerError`.
+
+#### [NEW] [plugin_manager.py](file:///d:/my-project/workspace-anki/jun-edu/src/core/plugins/plugin_manager.py)
+- Main entry point for plugin discovery, loading, lifecycle, and error isolation:
+  - Scans `plugins/` directory.
+  - Loads and validates manifests (`plugin.json`).
+  - Checks API compatibility (`PLUGIN_API_VERSION = "1"`).
+  - Instantiates plugins safely in isolated `try...except` blocks.
+  - Handles plugin cleanup on shutdown.
+
 ---
 
-### Database Schema & Models
+### 2. Main Application & UI Integration
 
-#### [MODIFY] [orm_models.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/repositories/sqlite/orm_models.py)
-- Add `srt_chunks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)` to `orm.Exam`.
-- Remove `orm.ExamSrtChunk` model and the `srt_chunks` relationship on `orm.Exam`.
+#### [MODIFY] [main_window.py](file:///d:/my-project/workspace-anki/jun-edu/src/views/main_window.py)
+- Instantiate `UIRegistry` and `PluginManager`.
+- Connect `UIRegistry` signals to dynamically populate menu bar, toolbar, and `stacked_widget`.
+- Call `PluginManager.discover_and_load(context)` during startup sequence.
 
-#### [MODIFY] [database.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/repositories/sqlite/database.py)
-- Add dynamic SQLite migration check in `init_db()`:
-  - Check if `srt_chunks` column exists in `exams` table; if not, run `ALTER TABLE exams ADD COLUMN srt_chunks TEXT`.
+#### [MODIFY] [main.py](file:///d:/my-project/workspace-anki/jun-edu/main.py)
+- Wire `PluginManager.shutdown()` during application cleanup (`QApplication.aboutToQuit`).
 
-#### [MODIFY] [exam.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/models/exam.py)
-- Ensure `Exam` Pydantic model's `srt_chunks: list[ExamSrtChunk] = Field(default_factory=list)` remains intact and serializes/deserializes correctly when mapped from ORM data.
-
----
-
-### Repository Layer
-
-#### [MODIFY] [sqlite_repo.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/repositories/sqlite/sqlite_repo.py)
-- Update `_exam_from_orm`: parse `db_exam.srt_chunks` JSON string into `list[ExamSrtChunk]` and assign to `Exam.srt_chunks`.
-- Update `get_exam_details(exam_id)`: load `srt_chunks` directly from `db_exam.srt_chunks` instead of querying `orm.ExamSrtChunk`.
-- Update `get_exam_take_data(exam_id, user_id)`: read `srt_chunks` from `db_exam.srt_chunks` instead of querying `orm.ExamSrtChunk`.
-- Update `replace_srt_chunks(exam_id, chunks)`: serialize `chunks` to a JSON string, save into `db_exam.srt_chunks`, and set `db_exam.dirty = True`.
-- Update `list_srt_chunks(exam_id)`: parse `db_exam.srt_chunks` JSON string and return `list[ExamSrtChunk]`.
-- Update `save_external_aligned_exam(...)`: store aligned segments as JSON string directly into `exam.srt_chunks` instead of inserting `orm.ExamSrtChunk` records.
+#### [MODIFY] [JunEdu.spec](file:///d:/my-project/workspace-anki/jun-edu/JunEdu.spec)
+- Exclude heavy dependencies (`paddle`, `paddleocr`, `torch`, `torchvision`, etc.) from core PyInstaller build.
 
 ---
 
-### Supabase Sync Service
+### 3. Example Plugins (`plugins/`)
 
-#### [MODIFY] [sync.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/repositories/supabase/sync.py)
-- Remove `ExamSrtChunk` from `SYNC_MODELS` so the `exam_srt_chunks` table is no longer synced.
-- Update `_serialize_row`: when serializing `Exam` model for Supabase push, convert `srt_chunks` JSON string or `list` into native Python `list` payload so Supabase REST API writes `jsonb`.
-- Update `_deserialize_row`: when deserializing `Exam` row pulled from Supabase, convert `srt_chunks` list payload into a JSON string for SQLite storage.
+#### [NEW] [plugins/ocr/plugin.json](file:///d:/my-project/workspace-anki/jun-edu/plugins/ocr/plugin.json) & [plugins/ocr/plugin.py](file:///d:/my-project/workspace-anki/jun-edu/plugins/ocr/plugin.py)
+- OCR plugin implementation registering an OCR toolbar action / page.
+- Uses lazy worker startup for `ocr-worker.exe`.
 
----
-
-### Codebase Audit (Widgets, Views & ViewModels)
-
-#### [MODIFY] [exam_details_viewmodel.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/viewmodels/exam_details_viewmodel.py)
-#### [MODIFY] [exam_transcript_viewmodel.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/viewmodels/exam_transcript_viewmodel.py)
-#### [MODIFY] [select_transcript_viewmodel.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/viewmodels/select_transcript_viewmodel.py)
-#### [MODIFY] [exam_take_viewmodel.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/viewmodels/exam_take_viewmodel.py)
-#### [MODIFY] [exam_take_view.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/views/exam_take_view.py)
-#### [MODIFY] [exam_form_widget.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/views/components/exam_form_widget.py)
-#### [MODIFY] [exam_transcript_widget.py](file:///d:/Works/jun-edu-workspace/pyside6-jun-edu/src/views/components/exam_transcript_widget.py)
-- Audit all calls to ensure compatibility with `Exam.srt_chunks` list representation.
-- Verify `replace_srt_chunks` and `list_srt_chunks` calls work seamlessly without expecting `exam_srt_chunks` table ORM entities.
+#### [NEW] [plugins/agent/plugin.json](file:///d:/my-project/workspace-anki/jun-edu/plugins/agent/plugin.json) & [plugins/agent/plugin.py](file:///d:/my-project/workspace-anki/jun-edu/plugins/agent/plugin.py)
+- Agent plugin implementation registering Agent action/page.
 
 ---
 
 ## Verification Plan
 
-### Automated Tests & Syntax Check
-- Run Python syntax validation script across `src/` directory:
-  ```powershell
-  .\.venv\Scripts\python.exe -B -c "import pathlib; [compile(path.read_text(encoding='utf-8-sig'), str(path), 'exec') for root in ('src',) for path in pathlib.Path(root).rglob('*.py')]; print('syntax ok')"
-  ```
-- Run Pyright typing check:
-  ```powershell
-  .\.venv\Scripts\python.exe -m pyright
-  ```
+### Automated Tests
+- `pytest` or `unittest` suite testing:
+  - Manifest parsing and validation rules.
+  - API version compatibility checking.
+  - Discovery of plugins in temporary test directories.
+  - IPC JSON line encoder/decoder logic and error handling.
+  - `UIRegistry` action and page registration and cleanup.
 
 ### Manual Verification
-- Test loading, editing, saving SRT chunks in Exam details and transcript editing widgets.
-- Test exam take view flow for dictation/transcript loading.
-- Test sync service push/pull logic to ensure `Exam.srt_chunks` syncs correctly with Supabase `jsonb`.
+1. **No Plugins Case**: Launch app with an empty `plugins/` directory -> verifies core UI opens without errors or placeholder buttons.
+2. **OCR Plugin Present Case**: Place `plugins/ocr` manifest & code -> launch app -> verify OCR menu/toolbar entry appears.
+3. **Lazy Worker Test**: Verify `ocr-worker.exe` is not running on launch, but starts when OCR functionality is first triggered.
+4. **Error Isolation Test**: Introduce a syntax error in `plugins/ocr/plugin.py` -> verify JunEdu logs error and starts cleanly without crashing.

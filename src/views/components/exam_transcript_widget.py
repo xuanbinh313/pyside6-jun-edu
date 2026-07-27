@@ -1,5 +1,5 @@
 # Import the icon management library.
-from typing import Callable, Optional
+from typing import Any, Callable, Mapping, Optional, Protocol, cast
 
 import qtawesome as qta
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
@@ -29,6 +29,13 @@ from src.viewmodels.exam_details_viewmodel import ExamDetailsViewModel
 from src.viewmodels.srt_mapping_agent_viewmodel import SrtMappingAgentViewModel
 from src.viewmodels.srt_translation_viewmodel import SrtTranslationViewModel
 from ui_gen.ui_exam_transcript_widget import Ui_ExamTranscriptWidget
+
+
+class PluginFunctionRegistry(Protocol):
+    def call_function(
+        self, plugin_id: str, function_id: str, payload: Mapping[str, Any]
+    ) -> Any:
+        ...
 
 
 class SelectExamContextDialog(QDialog):
@@ -226,8 +233,14 @@ class ExamTranscriptWidget(QWidget):
     ):
         super().__init__(parent)
         self.viewmodel = viewmodel
-        self._srt_mapping_vm = SrtMappingAgentViewModel(self)
-        self._srt_translation_vm = SrtTranslationViewModel(self)
+        self._srt_mapping_vm = SrtMappingAgentViewModel(
+            self,
+            agent_content_provider=self._agent_content_from_plugin,
+        )
+        self._srt_translation_vm = SrtTranslationViewModel(
+            self,
+            agent_content_provider=self._agent_content_from_plugin,
+        )
 
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
@@ -248,6 +261,27 @@ class ExamTranscriptWidget(QWidget):
         self._split_cursor_position: int = 0
 
         self.setup_ui()
+
+    def _plugin_registry(self) -> Optional[PluginFunctionRegistry]:
+        current = self.parent()
+        while current is not None:
+            registry = getattr(current, "plugin_ui_registry", None)
+            if registry is not None:
+                return cast(PluginFunctionRegistry, registry)
+            current = current.parent()
+        return None
+
+    def _agent_content_from_plugin(self, payload: dict[str, Any]) -> dict[str, Any]:
+        registry = self._plugin_registry()
+        if registry is None:
+            raise ValueError("Plugin services are not available from this window.")
+        try:
+            result = registry.call_function("agent", "generate_content", payload)
+        except KeyError as exc:
+            raise ValueError("The Agent plugin is missing or disabled.") from exc
+        if not isinstance(result, dict):
+            raise ValueError("The Agent plugin returned an invalid response.")
+        return cast(dict[str, Any], result)
 
     def setup_ui(self):
         self.ui = Ui_ExamTranscriptWidget()

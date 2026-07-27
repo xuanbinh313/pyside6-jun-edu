@@ -4,7 +4,6 @@ import sys
 
 sys.setrecursionlimit(10000)
 
-
 a = Analysis(
     ["main.py"],
     pathex=["."],
@@ -20,6 +19,11 @@ a = Analysis(
         "torch",
         "torchvision",
         "torchaudio",
+        "paddle",
+        "paddleocr",
+        "paddlepaddle",
+        "paddlepaddle-gpu",
+        "google.genai",
         "pytest",
         "unittest",
         "tkinter",

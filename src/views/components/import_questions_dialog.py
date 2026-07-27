@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Protocol, cast
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -17,6 +17,14 @@ from PySide6.QtWidgets import (
 )
 from src.viewmodels.import_questions_viewmodel import ImportQuestionsViewModel
 from ui_gen.ui_import_questions_dialog import Ui_ImportQuestionsDialog
+
+
+class PluginPageRegistry(Protocol):
+    def get_page(self, plugin_id: str, page_id: str) -> object:
+        ...
+
+    def request_page(self, plugin_id: str, page_id: str) -> None:
+        ...
 
 
 class ImportQuestionsDialog(QDialog):
@@ -214,6 +222,7 @@ RULES:
         self.json_edit = self.ui.json_edit
         self.prompt_texts = self.viewmodel.prompt_texts
         self._setup_prompt_list()
+        self._setup_plugin_actions()
         self._setup_image_picker()
         self._setup_answer_key_input()
 
@@ -247,6 +256,66 @@ RULES:
         self.ui.copy_btn.clicked.connect(self._copy_prompt)
         self.ui.cancel_btn.clicked.connect(self.reject)
         self.ui.import_btn.clicked.connect(self._on_import)
+
+    def _setup_plugin_actions(self) -> None:
+        action_row = QHBoxLayout()
+        self.open_agent_plugin_btn = QPushButton("Open Agent Plugin", self)
+        self.open_agent_plugin_btn.setToolTip(
+            "Open the plugin-provided agent import workspace"
+        )
+        self.open_agent_plugin_btn.setStyleSheet(
+            "padding: 6px 12px; border: 1px solid #dadce0; border-radius: 4px;"
+        )
+        self.open_ocr_plugin_btn = QPushButton("Open OCR Plugin", self)
+        self.open_ocr_plugin_btn.setToolTip("Open the plugin-provided OCR workspace")
+        self.open_ocr_plugin_btn.setStyleSheet(
+            "padding: 6px 12px; border: 1px solid #dadce0; border-radius: 4px;"
+        )
+        action_row.addWidget(self.open_agent_plugin_btn)
+        action_row.addWidget(self.open_ocr_plugin_btn)
+        action_row.addStretch(1)
+        self.ui.main_layout.insertLayout(3, action_row)
+
+        self.open_agent_plugin_btn.clicked.connect(
+            lambda: self._open_plugin_page("agent", "dashboard", "Agent")
+        )
+        self.open_ocr_plugin_btn.clicked.connect(
+            lambda: self._open_plugin_page("ocr", "dashboard", "OCR")
+        )
+
+    def _plugin_registry(self) -> Optional[PluginPageRegistry]:
+        current = self.parent()
+        while current is not None:
+            registry = getattr(current, "plugin_ui_registry", None)
+            if registry is not None:
+                return cast(PluginPageRegistry, registry)
+            current = current.parent()
+        return None
+
+    def _open_plugin_page(
+        self, plugin_id: str, page_id: str, plugin_title: str
+    ) -> None:
+        registry = self._plugin_registry()
+        if registry is None:
+            QMessageBox.warning(
+                self,
+                f"{plugin_title} Plugin Unavailable",
+                "Plugin services are not available from this window.",
+            )
+            return
+
+        try:
+            registry.get_page(plugin_id, page_id)
+        except KeyError:
+            QMessageBox.warning(
+                self,
+                f"{plugin_title} Plugin Unavailable",
+                f"The {plugin_title} plugin is missing or disabled.",
+            )
+            return
+
+        registry.request_page(plugin_id, page_id)
+        self.reject()
 
     def _build_prompt_texts(self) -> dict[str, str]:
         return self.viewmodel.prompt_texts

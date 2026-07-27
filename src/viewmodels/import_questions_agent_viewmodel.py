@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import ast
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from google.genai import Client, types
 from pydantic import BaseModel, Field
 from PySide6.QtCore import QObject, QThread, Signal
 from src.config import (
@@ -20,8 +18,6 @@ from src.models.exam import ImportAgentTask, ToeicPartResponseSchema
 from src.repositories.sqlite.import_agent_task_repo import ImportAgentTaskRepository
 from src.utils.helpers import get_local_media_dir
 from src.viewmodels.import_questions_viewmodel import ImportQuestionsViewModel
-
-os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "0")
 
 
 class AgentPartPayload(BaseModel):
@@ -116,11 +112,13 @@ class ImportQuestionsAgentWorker(QThread):
         self,
         task_id: str,
         parser: ImportQuestionsViewModel,
+        agent_content_provider: Callable[[dict[str, Any]], dict[str, Any]],
         task_repo: ImportAgentTaskRepository | None = None,
     ):
         super().__init__()
         self.task_id = task_id
         self.parser = parser
+        self.agent_content_provider = agent_content_provider
         self.task_repo = task_repo or ImportAgentTaskRepository()
         self.payload = AgentImportPayload()
         self.ocr_text = ""
@@ -154,11 +152,11 @@ class ImportQuestionsAgentWorker(QThread):
 
     def _run_agent(self) -> AgentImportResult:
         api_key = GEMINI_API_KEY.strip()
-        project = GOOGLE_CLOUD_PROJECT.strip()
-        location = GOOGLE_CLOUD_LOCATION.strip()
         model_name = GEMINI_MODEL.strip() or "gemini-2.5-flash"
         if not api_key:
             raise ValueError("GEMINI_API_KEY is missing from application config.")
+        project = GOOGLE_CLOUD_PROJECT.strip()
+        location = GOOGLE_CLOUD_LOCATION.strip()
         if not project:
             raise ValueError("GOOGLE_CLOUD_PROJECT is missing from application config.")
         if not location:
@@ -166,20 +164,15 @@ class ImportQuestionsAgentWorker(QThread):
                 "GOOGLE_CLOUD_LOCATION is missing from application config."
             )
 
-        try:
-            from google import genai
-        except ImportError as exc:
-            raise ImportError("google-genai is not installed.") from exc
-
-        client = genai.Client(api_key=api_key)
-
         result = AgentImportResult()
         tmp_dir = get_local_media_dir()
         for part_payload in self.payload.parts:
             if not self._has_part_input(part_payload):
                 continue
             self.progress.emit(f"Preparing Part {part_payload.part} files...")
-            part_result = self._generate_part(client, model_name, part_payload, tmp_dir)
+            part_result = self._generate_part(
+                api_key, model_name, part_payload, tmp_dir
+            )
             contexts, questions = self._parse_agent_response(part_result.response_text)
             self._normalize_contexts_for_part(
                 part_payload,
@@ -305,9 +298,9 @@ class ImportQuestionsAgentWorker(QThread):
         }
 
     def _generate_part(
-        self, client: Client, model_name: str, payload: AgentPartPayload, tmp_dir: Path
+        self, api_key: str, model_name: str, payload: AgentPartPayload, tmp_dir: Path
     ) -> AgentPartResult:
-        files = []
+        file_paths: list[str] = []
         part1_image_paths: list[Path] = []
         using_ocr_text = bool(self.ocr_text)
         prompt_text = _build_part_prompt_text(
@@ -336,7 +329,7 @@ class ImportQuestionsAgentWorker(QThread):
                 payload.question_pages,
                 tmp_dir / f"part_{payload.part}_questions.pdf",
             )
-            files.append(client.files.upload(file=path))
+            file_paths.append(str(path))
             prompt_text += "\n\nQuestion pages are attached as a PDF."
 
         if (
@@ -349,7 +342,7 @@ class ImportQuestionsAgentWorker(QThread):
                 payload.transcript_pages,
                 tmp_dir / f"part_{payload.part}_transcript.pdf",
             )
-            files.append(client.files.upload(file=path))
+            file_paths.append(str(path))
             prompt_text += "\n\nTranscript pages are attached as a PDF."
             if payload.part in (3, 4):
                 prompt_text += (
@@ -359,27 +352,29 @@ class ImportQuestionsAgentWorker(QThread):
 
         answer_sheet_path = self._answer_sheet_path_for_part(payload.part)
         if answer_sheet_path:
-            files.append(client.files.upload(file=answer_sheet_path))
+            file_paths.append(answer_sheet_path)
             prompt_text += (
                 "\nAnswer sheet image is attached. Use it to set correct_answer "
                 "for this part and to support the Vietnamese explanation notes."
             )
 
         self.progress.emit(f"Sending Part {payload.part} to Gemini...")
-        print(f"len(files)={len(files)}")
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[prompt_text, *files],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=ToeicPartResponseSchema,
-                temperature=0.1,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            ),
+        response_payload = self.agent_content_provider(
+            {
+                "api_key": api_key,
+                "model_name": model_name,
+                "prompt_text": prompt_text,
+                "file_paths": file_paths,
+                "response_schema": ToeicPartResponseSchema,
+                "temperature": 0.1,
+                "thinking_budget": 0,
+            }
         )
-        dump_path = self._save_agent_response_file(response, f"part_{payload.part}")
+        dump_path = self._save_agent_response_file(
+            response_payload, f"part_{payload.part}"
+        )
         self.progress.emit(f"Saved agent response: {dump_path}")
-        text = self._response_text(response)
+        text = str(response_payload.get("text") or "").strip()
         if not text:
             raise ValueError(
                 f"Gemini returned an empty response for Part {payload.part}."
@@ -726,27 +721,9 @@ class ImportQuestionsAgentWorker(QThread):
             for index, context_id in enumerate(context_order[: len(image_paths)])
         }
 
-    def _response_text(self, response) -> str:
-        text = self._response_text_from_parts(response)
-        if text:
-            return text
-        text = getattr(response, "text", "")
-        if text:
-            return str(text).strip()
-        return ""
-
-    def _response_text_from_parts(self, response) -> str:
-        candidates = getattr(response, "candidates", None) or []
-        chunks: list[str] = []
-        for candidate in candidates:
-            content = getattr(candidate, "content", None)
-            for part in getattr(content, "parts", []) or []:
-                part_text = getattr(part, "text", "")
-                if part_text:
-                    chunks.append(str(part_text))
-        return "\n".join(chunks).strip()
-
-    def _save_agent_response_file(self, response, label: str) -> str:
+    def _save_agent_response_file(
+        self, response_payload: dict[str, Any], label: str
+    ) -> str:
         response_dir = self._agent_response_dir()
         response_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -761,9 +738,9 @@ class ImportQuestionsAgentWorker(QThread):
             "task_id": self.task_id,
             "label": label,
             "saved_at": datetime.now().isoformat(timespec="seconds"),
-            "response_text": self._response_text_from_parts(response),
-            "candidates": self._dump_response_candidates(response),
-            "response": self._json_safe(response),
+            "response_text": str(response_payload.get("response_text") or ""),
+            "candidates": response_payload.get("candidates", []),
+            "response": response_payload.get("response", {}),
         }
         path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -772,61 +749,6 @@ class ImportQuestionsAgentWorker(QThread):
 
     def _agent_response_dir(self) -> Path:
         return Path(__file__).resolve().parents[2] / ".codex" / "import_agent_responses"
-
-    def _dump_response_candidates(self, response) -> list[dict]:
-        candidates = getattr(response, "candidates", None) or []
-        dumped_candidates: list[dict] = []
-        for candidate in candidates:
-            content = getattr(candidate, "content", None)
-            dumped_parts = [
-                self._dump_response_part(part)
-                for part in getattr(content, "parts", []) or []
-            ]
-            dumped_candidates.append(
-                {
-                    "finish_reason": self._json_safe(
-                        getattr(candidate, "finish_reason", None)
-                    ),
-                    "content_role": getattr(content, "role", None),
-                    "parts": dumped_parts,
-                }
-            )
-        return dumped_candidates
-
-    def _dump_response_part(self, part) -> dict:
-        fields = (
-            "text",
-            "thought",
-            "thought_signature",
-            "inline_data",
-            "file_data",
-            "function_call",
-            "function_response",
-            "executable_code",
-            "code_execution_result",
-        )
-        return {
-            field: self._json_safe(getattr(part, field))
-            for field in fields
-            if hasattr(part, field) and getattr(part, field) is not None
-        }
-
-    def _json_safe(self, value):
-        if value is None or isinstance(value, (str, int, float, bool)):
-            return value
-        if isinstance(value, bytes):
-            return value.hex()
-        if isinstance(value, (list, tuple)):
-            return [self._json_safe(item) for item in value]
-        if isinstance(value, dict):
-            return {str(key): self._json_safe(item) for key, item in value.items()}
-        if isinstance(value, BaseModel):
-            return self._json_safe(value.model_dump())
-        if hasattr(value, "model_dump"):
-            return self._json_safe(value.model_dump())
-        if hasattr(value, "to_json_dict"):
-            return self._json_safe(value.to_json_dict())
-        return repr(value)
 
 
 class ImportQuestionsAgentViewModel(QObject):
@@ -1051,11 +973,15 @@ STRICT PART 4 RULES:
         self,
         parser: ImportQuestionsViewModel | None = None,
         task_repo: ImportAgentTaskRepository | None = None,
+        agent_content_provider: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        ocr_text_provider: Callable[[dict[str, Any]], str] | None = None,
         parent=None,
     ):
         super().__init__(parent)
         self.parser = parser or ImportQuestionsViewModel(self)
         self.task_repo = task_repo or ImportAgentTaskRepository()
+        self.agent_content_provider = agent_content_provider
+        self.ocr_text_provider = ocr_text_provider
         self.part_payloads: dict[int, AgentPartPayload] = {
             part: AgentPartPayload(part=part, prompt=self._default_part_prompt(part))
             for part in self.TOEIC_PARTS
@@ -1222,7 +1148,20 @@ STRICT PART 4 RULES:
         self.state_changed.emit()
         self.tasks_changed.emit()
 
-        self._worker = ImportQuestionsAgentWorker(task_id, self.parser, self.task_repo)
+        if self.agent_content_provider is None:
+            self.is_loading = False
+            self.current_task_id = None
+            self.error_message.emit("The Agent plugin is missing or disabled.")
+            self.state_changed.emit()
+            self.tasks_changed.emit()
+            return False
+
+        self._worker = ImportQuestionsAgentWorker(
+            task_id,
+            self.parser,
+            self.agent_content_provider,
+            self.task_repo,
+        )
         self._worker.progress.connect(self.progress_message.emit)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
@@ -1330,18 +1269,14 @@ STRICT PART 4 RULES:
         if task.ocr.strip():
             return task.ocr
         payload = AgentImportPayload.model_validate(task.payload)
-        sections: list[str] = []
-        tmp_dir = get_local_media_dir()
-        for part_payload in payload.parts:
-            part_text = self._extract_ocr_text_for_part(part_payload, tmp_dir)
-            if part_text.strip():
-                sections.append(
-                    f"TOEIC Part {part_payload.part} PaddleOCR text:\n"
-                    f"{part_text.strip()}"
-                )
-        if not sections:
-            raise ValueError("PaddleOCR did not extract text from this request.")
-        return "\n\n".join(sections)
+        if self.ocr_text_provider is None:
+            raise ValueError("The OCR plugin is missing or disabled.")
+        return self.ocr_text_provider(
+            {
+                "parts": [part_payload.model_dump() for part_payload in payload.parts],
+                "tmp_dir": str(get_local_media_dir()),
+            }
+        )
 
     def ocr_prompt_for_task(self, task_id: str, ocr_text: str) -> str:
         task = self.task_repo.get_task(task_id)
@@ -1374,134 +1309,6 @@ STRICT PART 4 RULES:
         if not self.save_task_ocr_text(task_id, ocr_text):
             return
         self.retry_agent_task(task_id)
-
-    def _extract_ocr_text_for_part(
-        self, payload: AgentPartPayload, tmp_dir: Path
-    ) -> str:
-        lane_texts: list[str] = []
-        if payload.part != 2 and payload.question_pdf_path and payload.question_pages:
-            question_text = self._extract_ocr_text_from_pdf_pages(
-                payload.question_pdf_path,
-                payload.question_pages,
-                tmp_dir / f"ocr_part_{payload.part}_questions",
-            )
-            if question_text.strip():
-                lane_texts.append(f"Question pages:\n{question_text.strip()}")
-        if payload.transcript_pdf_path and payload.transcript_pages:
-            transcript_text = self._extract_ocr_text_from_pdf_pages(
-                payload.transcript_pdf_path,
-                payload.transcript_pages,
-                tmp_dir / f"ocr_part_{payload.part}_transcripts",
-            )
-            if transcript_text.strip():
-                lane_texts.append(f"Transcript pages:\n{transcript_text.strip()}")
-        return "\n\n".join(lane_texts)
-
-    def _extract_ocr_text_from_pdf_pages(
-        self, pdf_path: str, page_indices: list[int], output_dir: Path
-    ) -> str:
-        try:
-            import fitz
-        except ImportError as exc:
-            raise ImportError(
-                "PyMuPDF is required to render PDF pages for PaddleOCR."
-            ) from exc
-        os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "0")
-        try:
-            from paddleocr import PaddleOCR
-        except ImportError as exc:
-            raise ImportError(
-                "PaddleOCR is required for OCR review. Install paddleocr first."
-            ) from exc
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-        ocr = self._create_paddle_ocr(PaddleOCR)
-        page_texts: list[str] = []
-        with fitz.open(str(pdf_path)) as document:
-            for page_index in sorted(set(page_indices)):
-                if page_index < 0 or page_index >= len(document):
-                    raise ValueError(
-                        f"Page {page_index + 1} is outside {Path(pdf_path).name}."
-                    )
-                page = document[page_index]
-                image_path = output_dir / f"page_{page_index + 1}.png"
-                pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-                pixmap.save(str(image_path))
-                lines = self._ocr_image_text(ocr, image_path)
-                if lines:
-                    page_texts.append(
-                        f"Page {page_index + 1}:\n" + "\n".join(lines)
-                    )
-        return "\n\n".join(page_texts)
-
-    def _ocr_image_text(self, ocr: Any, image_path: Path) -> list[str]:
-        try:
-            result = ocr.predict(str(image_path))
-        except AttributeError:
-            try:
-                result = ocr.ocr(str(image_path), cls=True)
-            except TypeError:
-                result = ocr.ocr(str(image_path))
-        lines: list[str] = []
-        self._collect_ocr_lines(result, lines)
-        return lines
-
-    def _create_paddle_ocr(self, paddle_ocr_class: Any) -> Any:
-        os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "0")
-        last_error: Exception | None = None
-        for kwargs in (
-            {
-                "lang": "en",
-                "use_doc_orientation_classify": False,
-                "use_doc_unwarping": False,
-                "use_textline_orientation": False,
-            },
-            {"lang": "en", "use_textline_orientation": True},
-            {"lang": "en"},
-            {"use_angle_cls": True, "lang": "en"},
-            {},
-        ):
-            try:
-                return paddle_ocr_class(**kwargs)
-            except Exception as exc:
-                last_error = exc
-                continue
-        raise RuntimeError(
-            "Could not initialize PaddleOCR. Check that paddleocr and its "
-            "runtime dependency paddlepaddle are installed correctly."
-        ) from last_error
-
-    def _collect_ocr_lines(self, value: Any, lines: list[str]) -> None:
-        if value is None:
-            return
-        if isinstance(value, dict):
-            for key in ("text", "rec_text", "transcription"):
-                text = value.get(key)
-                if isinstance(text, str) and text.strip():
-                    lines.append(text.strip())
-            rec_texts = value.get("rec_texts")
-            if isinstance(rec_texts, list):
-                lines.extend(
-                    text.strip()
-                    for text in rec_texts
-                    if isinstance(text, str) and text.strip()
-                )
-            for key, nested in value.items():
-                if key == "rec_texts":
-                    continue
-                self._collect_ocr_lines(nested, lines)
-            return
-        if isinstance(value, (list, tuple)):
-            if value and all(isinstance(item, str) for item in value):
-                lines.extend(item.strip() for item in value if item.strip())
-                return
-            if len(value) >= 2 and isinstance(value[1], (list, tuple)):
-                text_candidate = value[1][0] if value[1] else ""
-                if isinstance(text_candidate, str) and text_candidate.strip():
-                    lines.append(text_candidate.strip())
-                    return
-            for nested in value:
-                self._collect_ocr_lines(nested, lines)
 
     def retry_agent_task(self, task_id: str) -> None:
         self.retry_agent_tasks([task_id])

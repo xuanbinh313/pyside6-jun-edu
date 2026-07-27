@@ -26,6 +26,8 @@ jun-edu/
 |   |-- ui_exam_list_view.py
 |   `-- ...
 `-- src/
+    |-- core/
+    |   `-- plugins/
     |-- models/
     |   `-- exam.py
     |-- repositories/
@@ -70,6 +72,7 @@ jun-edu/
 |---|---|---|
 | Models | Pure dataclasses and framework-agnostic entities | SQLAlchemy, PySide6, sessions |
 | Repositories | Data access interfaces, SQLite ORM, Supabase mapping | Widget/UI concerns |
+| Core plugins | Manifest parsing, plugin lifecycle, UI contribution registry, worker process lifecycle | Heavy optional ML imports in the main app process |
 | ViewModels | State, validation, repository calls, background work, QtCore signals | `PySide6.QtWidgets`, SQLAlchemy sessions |
 | Views | Generated UI setup, signal-slot wiring, user interaction, widget styling | Database/session logic |
 | `ui_gen` | Generated `Ui_*` classes | Manual edits |
@@ -119,6 +122,21 @@ restores the signed-in menu state in the background.
 - Slot 0 is always `ExamListView`.
 - Slot 1 is either `ExamDetailsView` or `ExamAddExternalView`.
 - Returning to the list refreshes exams and removes slot 1.
+- Enabled plugins can contribute menu/toolbar actions and lazy stack pages
+  through `UIRegistry`; missing, disabled, or failed plugins do not add UI.
+
+## Plugins
+
+Plugins are discovered from the root `plugins/` directory. Each plugin directory
+contains a `plugin.json` manifest with `id`, `name`, `version`, `api_version`,
+`entry`, `enabled`, and `execution` fields. In-process entries export
+`create_plugin()` and return a lightweight `JunEduPlugin` adapter. Plugins can
+register UI contributions and callable functions through `UIRegistry`; app code
+calls those functions instead of importing optional dependencies directly. Heavy
+OCR or AI dependencies must stay outside the core app and outside `JunEdu.exe`;
+they belong in worker executables such as `workers/ocr-worker.exe` or
+`workers/agent-worker.exe`, which plugin adapters call lazily through
+`WorkerManager`.
 
 ## Robust Qt Practices
 
