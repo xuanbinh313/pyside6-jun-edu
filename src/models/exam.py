@@ -277,15 +277,24 @@ class ToeicPartResponseSchema(BaseModel):
 class SrtChunkMapping(BaseModel):
     """One exam context mapped to a detected SRT chunk window."""
 
-    context_id: str
-    start_chunk_index: int
-    end_chunk_index: int
+    context_id: str = Field(description="Existing context_id from the context table.")
+    start_chunk_index: int = Field(
+        description="Inclusive starting SRT chunk index. Use this exact field name."
+    )
+    end_chunk_index: int = Field(
+        description="Inclusive ending SRT chunk index. Use this exact field name."
+    )
 
 
 class SrtMappingResponseSchema(BaseModel):
     """Structured output returned by the SRT mapping agent."""
 
-    mappings: List[SrtChunkMapping]
+    mappings: List[SrtChunkMapping] = Field(
+        description=(
+            "Array of SRT audio mappings. Return this top-level object shape, "
+            "not a top-level array."
+        )
+    )
 
 class MediaFile(BaseModel):
     model_config = ConfigDict(from_attributes=True)

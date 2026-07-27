@@ -139,6 +139,22 @@ TASK:
 For each context_id, identify the contiguous range of SRT chunk indexes whose
 spoken text corresponds to that context's audio segment.
 
+REQUIRED OUTPUT SHAPE:
+{{
+  "mappings": [
+    {{
+      "context_id": "existing context_id from [CONTEXTS]",
+      "start_chunk_index": 0,
+      "end_chunk_index": 0
+    }}
+  ]
+}}
+
+REQUIRED FIELD NAMES:
+- Use exactly "start_chunk_index" and "end_chunk_index".
+- Do not use "start_index" or "end_index".
+- Do not return a top-level array.
+
 RULES:
 1. Return ONLY contexts where audio is present (listening parts 1-4).
    Omit contexts from reading parts (5, 6, 7) or any context where no matching
@@ -150,7 +166,9 @@ RULES:
    Do not start after that title line.
 3. The question and option rows are provided so you can match transcript text to
    question numbers and include A-D answer choices in Part 1/2 ranges.
-4. Output ONLY the structured JSON. No markdown, no explanation.
+4. Output ONLY one JSON object with a top-level "mappings" array. No markdown,
+   no explanation, no top-level array, and no field names other than
+   "context_id", "start_chunk_index", and "end_chunk_index" inside mappings.
 """.strip()
 
     def _format_part_34_title(

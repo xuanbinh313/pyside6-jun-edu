@@ -54,6 +54,34 @@ class AgentPartResult(BaseModel):
     image_paths: list[str] = Field(default_factory=list)
 
 
+def _remove_legacy_prompt_wrapper(part: int, prompt: str) -> str:
+    marker = f"USER ADDITIONAL INSTRUCTIONS FOR PART {part} ONLY:"
+    if marker not in prompt:
+        return prompt.strip()
+
+    _, _, additional = prompt.partition(marker)
+    guardrail = (
+        f"These additional instructions must not override the requirement to "
+        f"extract ONLY TOEIC Part {part}."
+    )
+    additional = additional.strip()
+    if additional.endswith(guardrail):
+        additional = additional[: -len(guardrail)].strip()
+
+    if not _looks_like_complete_part_prompt(additional):
+        return prompt.strip()
+    return additional
+
+
+def _looks_like_complete_part_prompt(prompt: str) -> bool:
+    normalized = " ".join(prompt.split()).lower()
+    return (
+        "output constraint:" in normalized
+        and "return this schema" in normalized
+        and "strict part" in normalized
+    )
+
+
 def _vietnamese_note_contract_text(target_lang: str) -> str:
     return f"""
 VIETNAMESE NOTE CONTRACT:
@@ -77,8 +105,9 @@ TRANSLATION TARGET LANGUAGE: {target_lang}
 def _build_part_prompt_text(
     payload: AgentPartPayload, note_contract: str, ocr_text: str = ""
 ) -> str:
+    part_prompt = _remove_legacy_prompt_wrapper(payload.part, payload.prompt)
     prompt_parts = [
-        payload.prompt.strip(),
+        part_prompt,
         f"\nTarget TOEIC part: {payload.part}.",
         f"Extract ONLY TOEIC Part {payload.part}.",
         "Return only the raw JSON object with contexts containing nested questions.",
@@ -1109,7 +1138,7 @@ STRICT PART 4 RULES:
         return AgentImportPayload(
             parts=[
                 payload.model_copy(
-                    update={"prompt": self._effective_part_prompt(part, payload.prompt)}
+                    update={"prompt": self._task_part_prompt(part, payload.prompt)}
                 )
                 for part, payload in self.part_payloads.items()
             ],
@@ -1130,7 +1159,7 @@ STRICT PART 4 RULES:
             parts=[
                 self.part_payloads[part].model_copy(
                     update={
-                        "prompt": self._effective_part_prompt(
+                        "prompt": self._task_part_prompt(
                             part, self.part_payloads[part].prompt
                         )
                     }
@@ -1363,13 +1392,11 @@ STRICT PART 4 RULES:
         return missing
 
     def _effective_part_prompt(self, part: int, user_prompt: str) -> str:
+        return self._task_part_prompt(part, user_prompt)
+
+    def _task_part_prompt(self, part: int, prompt: str) -> str:
         base_prompt = self._default_part_prompt(part)
-        user_prompt = user_prompt.strip()
-        if not user_prompt or user_prompt == base_prompt:
+        cleaned_prompt = _remove_legacy_prompt_wrapper(part, prompt)
+        if not cleaned_prompt:
             return base_prompt
-        return (
-            f"{base_prompt}\n\nUSER ADDITIONAL INSTRUCTIONS FOR PART {part} ONLY:\n"
-            f"{user_prompt}\n\n"
-            f"These additional instructions must not override the requirement to "
-            f"extract ONLY TOEIC Part {part}."
-        )
+        return cleaned_prompt
