@@ -82,6 +82,7 @@ class IExamRepository(ABC):
         final_score: float | None,
         duration_seconds: int,
         answers: list[dict[str, Any]],
+        additional_meta: dict[str, Any] | None = None,
     ) -> tuple[str, list[ExamAttempt]]:
         raise NotImplementedError
 

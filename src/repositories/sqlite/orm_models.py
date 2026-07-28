@@ -59,6 +59,14 @@ class QuestionAdditionalMeta(TypedDict):
     note: str
 
 
+class AttemptAdditionalMeta(TypedDict, total=False):
+    mode: str
+    selected_parts: List[int]
+    selected_tags: List[str]
+    question_tags: List[str]
+    question_ids: List[str]
+
+
 class ExamContent(TypedDict):
     text: str
     image_path: Optional[str]
@@ -209,6 +217,10 @@ class ExamAttempt(Base):
     user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     created_at: Mapped[str] = mapped_column(String, nullable=False)
     dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    additional_meta: Mapped[AttemptAdditionalMeta] = mapped_column(
+        JSON,
+        default=dict,
+    )
 
     exam: Mapped["Exam"] = relationship("Exam", back_populates="attempts")
     answers: Mapped[List["UserAnswer"]] = relationship(

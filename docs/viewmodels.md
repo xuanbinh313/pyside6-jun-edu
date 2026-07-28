@@ -161,7 +161,7 @@ Manages the learner-facing exam flow: exam summary, previous attempts, practice 
 | `contexts` | `List[ExamContext]` | Exam contexts ordered by part/index |
 | `questions` | `List[ExamQuestion]` | Exam questions ordered by question number |
 | `srt_chunks` | `List[ExamSrtChunk]` | Transcript chunks ordered by index/start time for dictation |
-| `attempts` | `List[AttemptSummary]` | Previous attempts |
+| `attempts` | `List[AttemptSummary]` | Previous attempts, including saved selected parts and question tags from attempt metadata |
 | `active_questions` | `List[QuestionSession]` | Current test questions with shuffled option mapping |
 
 ### Answer Mapping
@@ -170,7 +170,7 @@ Manages the learner-facing exam flow: exam summary, previous attempts, practice 
 
 ### Persistence
 
-`complete_test()` delegates to `IExamRepository.save_exam_attempt()` to create one attempt plus one answer per active question in a repository transaction. Unanswered questions are stored with `user_choice=None` and `is_correct=False`.
+`complete_test()` delegates to `IExamRepository.save_exam_attempt()` to create one attempt plus one answer per active question in a repository transaction. Unanswered questions are stored with `user_choice=None` and `is_correct=False`. Attempt `additional_meta` stores the mode, selected parts, selected tags, active question tags, and active question IDs so previous attempts can show the filters used.
 
 ### Attempt Analytics
 

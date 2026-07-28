@@ -121,7 +121,7 @@ ExamTakeView(viewmodel: ExamTakeViewModel, go_back_callback: Callable[[], None])
 
 | Page | Description |
 |---|---|
-| Overview | Title, description, duration, part count, question count, previous attempts, Practice, Real Test, and Dictation tabs |
+| Overview | Title, description, duration, part count, question count, previous attempts with selected parts/question tags, Practice, Real Test, and Dictation tabs |
 | Test | Scrollable question cards with options in saved order; Practice mode includes per-question Skip |
 | Result | Score/total plus per-question question text, user's canonical letter, correct canonical letter, and correct text |
 | Attempt Analytics | KPI cards, part/overall category breakdowns, answer-sheet tiles, question detail dialogs, and Retake Wrong Answers |
@@ -130,6 +130,8 @@ ExamTakeView(viewmodel: ExamTakeViewModel, go_back_callback: Callable[[], None])
 The View submits the selected display index. `ExamTakeViewModel` keeps that index aligned with the saved `A`-`D` option order before grading and persistence.
 
 The previous-attempts table View action navigates to the Attempt Analytics page. Badge buttons and answer-sheet Details buttons open a modal with the context, question, user choice, and correct answer. Retake Wrong Answers starts a filtered practice session containing the attempt's incorrect or skipped questions.
+
+Overview widgets are split into [`src/views/components/exam_take_overview_widgets.py`](../src/views/components/exam_take_overview_widgets.py): `AttemptHistoryWidget` renders previous attempts, and `ExamTakeModeTabs` owns the Practice/Real Test/Dictation start controls.
 
 ---
 

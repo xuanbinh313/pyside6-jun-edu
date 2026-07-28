@@ -555,19 +555,18 @@ class SQLiteExamRepository(IExamRepository):
                 .all()
             ]
             chunks = _chunks_from_json(db_exam.srt_chunks)
-            tag_rows = (
+            tag_query = (
                 session.query(orm.UserQuestionTag.tag_name)
                 .join(
                     orm.ExamContext,
                     orm.UserQuestionTag.context_id == orm.ExamContext.id,
                 )
-                .filter(
-                    orm.UserQuestionTag.user_id == user_id,
-                    orm.ExamContext.exam_id == exam_id,
-                )
-                .distinct()
-                .order_by(orm.UserQuestionTag.tag_name.asc())
-                .all()
+                .filter(orm.ExamContext.exam_id == exam_id)
+            )
+            if user_id is not None:
+                tag_query = tag_query.filter(orm.UserQuestionTag.user_id == user_id)
+            tag_rows = (
+                tag_query.distinct().order_by(orm.UserQuestionTag.tag_name.asc()).all()
             )
             attempts = self._list_attempts(session, exam_id, user_id)
             exam = _exam_from_orm(db_exam)
@@ -589,19 +588,18 @@ class SQLiteExamRepository(IExamRepository):
     ) -> dict[str, set[str]]:
         session = get_session()
         try:
-            rows = (
+            query = (
                 session.query(orm.ExamQuestion.id, orm.UserQuestionTag.tag_name)
                 .join(orm.ExamContext, orm.ExamQuestion.context_id == orm.ExamContext.id)
                 .join(
                     orm.UserQuestionTag,
                     orm.UserQuestionTag.context_id == orm.ExamContext.id,
                 )
-                .filter(
-                    orm.UserQuestionTag.user_id == user_id,
-                    orm.ExamContext.exam_id == exam_id,
-                )
-                .all()
+                .filter(orm.ExamContext.exam_id == exam_id)
             )
+            if user_id is not None:
+                query = query.filter(orm.UserQuestionTag.user_id == user_id)
+            rows = query.all()
             result: dict[str, set[str]] = {}
             for question_id, tag_name in rows:
                 result.setdefault(str(question_id), set()).add(str(tag_name))
@@ -619,6 +617,7 @@ class SQLiteExamRepository(IExamRepository):
         final_score: Optional[float],
         duration_seconds: int,
         answers: list[dict[str, Any]],
+        additional_meta: Optional[dict[str, Any]] = None,
     ) -> tuple[str, list[ExamAttempt]]:
         session = get_session()
         try:
@@ -631,6 +630,7 @@ class SQLiteExamRepository(IExamRepository):
                 duration_seconds=duration_seconds,
                 created_at=str(datetime.datetime.now(datetime.timezone.utc)),
                 dirty=True,
+                additional_meta=additional_meta or {},
             )
             session.add(attempt)
             session.flush()
@@ -661,15 +661,13 @@ class SQLiteExamRepository(IExamRepository):
     ) -> tuple[Optional[ExamAttempt], list[tuple[UserAnswer, ExamQuestion, ExamContext]]]:
         session = get_session()
         try:
-            attempt = (
-                session.query(orm.ExamAttempt)
-                .filter(
-                    orm.ExamAttempt.id == attempt_id,
-                    orm.ExamAttempt.exam_id == exam_id,
-                    orm.ExamAttempt.user_id == user_id,
-                )
-                .first()
+            query = session.query(orm.ExamAttempt).filter(
+                orm.ExamAttempt.id == attempt_id,
+                orm.ExamAttempt.exam_id == exam_id,
             )
+            if user_id is not None:
+                query = query.filter(orm.ExamAttempt.user_id == user_id)
+            attempt = query.first()
             if not attempt:
                 return None, []
 
@@ -764,16 +762,45 @@ class SQLiteExamRepository(IExamRepository):
     def _list_attempts(
         self, session: Any, exam_id: str, user_id: Optional[str]
     ) -> list[ExamAttempt]:
-        rows = (
-            session.query(orm.ExamAttempt)
-            .filter(
-                orm.ExamAttempt.user_id == user_id,
-                orm.ExamAttempt.exam_id == exam_id,
-            )
-            .order_by(orm.ExamAttempt.created_at.desc())
+        query = session.query(orm.ExamAttempt).filter(
+            orm.ExamAttempt.exam_id == exam_id
+        )
+        if user_id is not None:
+            query = query.filter(orm.ExamAttempt.user_id == user_id)
+        rows = query.order_by(orm.ExamAttempt.created_at.desc()).all()
+        return [self._attempt_from_orm_with_derived_meta(session, row) for row in rows]
+
+    def _attempt_from_orm_with_derived_meta(
+        self, session: Any, row: orm.ExamAttempt
+    ) -> ExamAttempt:
+        attempt = _attempt_from_orm(row)
+        meta = dict(attempt.additional_meta or {})
+        if "selected_parts" in meta and "question_tags" in meta:
+            return attempt
+
+        part_rows = (
+            session.query(orm.ExamContext.part)
+            .join(orm.ExamQuestion, orm.ExamQuestion.context_id == orm.ExamContext.id)
+            .join(orm.UserAnswer, orm.UserAnswer.question_id == orm.ExamQuestion.id)
+            .filter(orm.UserAnswer.attempt_id == attempt.id)
+            .distinct()
             .all()
         )
-        return [_attempt_from_orm(row) for row in rows]
+        tag_rows = (
+            session.query(orm.UserQuestionTag.tag_name)
+            .join(
+                orm.ExamQuestion,
+                orm.ExamQuestion.context_id == orm.UserQuestionTag.context_id,
+            )
+            .join(orm.UserAnswer, orm.UserAnswer.question_id == orm.ExamQuestion.id)
+            .filter(orm.UserAnswer.attempt_id == attempt.id)
+            .distinct()
+            .all()
+        )
+        meta.setdefault("selected_parts", sorted({int(row[0] or 1) for row in part_rows}))
+        meta.setdefault("question_tags", sorted({str(row[0]) for row in tag_rows}))
+        attempt.additional_meta = meta
+        return attempt
 
     def list_question_tags(self) -> list[str]:
         session = get_session()

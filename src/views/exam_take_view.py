@@ -1,7 +1,3 @@
-from src.models.exam import ExamQuestion
-from src.viewmodels.exam_take_viewmodel import AttemptSummary
-from src.viewmodels.exam_take_viewmodel import AttemptAnalytics
-from src.viewmodels.exam_take_viewmodel import AttemptAnswerDetail
 import html
 from typing import Callable, Optional, cast
 
@@ -10,7 +6,6 @@ from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QDialog,
     QFrame,
     QGridLayout,
@@ -30,14 +25,23 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from src.models.exam import ExamContext
+from src.models.exam import ExamContext, ExamQuestion
 from src.utils.helpers import get_local_media_path
 from src.utils.qt import clear_layout
-from src.viewmodels.exam_take_viewmodel import ExamTakeViewModel
+from src.viewmodels.exam_take_viewmodel import (
+    AttemptAnalytics,
+    AttemptAnswerDetail,
+    AttemptSummary,
+    ExamTakeViewModel,
+)
 from src.views.components.exam_context_html import context_content_html
 from src.views.components.exam_context_section import (
     ExamContextSection,
     context_audio_range,
+)
+from src.views.components.exam_take_overview_widgets import (
+    AttemptHistoryWidget,
+    ExamTakeModeTabs,
 )
 from src.views.components.option_question_item import OptionVocabularyTextBrowser
 from src.views.components.tag_menu_dialog import TagMenuDialog
@@ -55,8 +59,6 @@ class ExamTakeView(QWidget):
         super().__init__(parent)
         self.viewmodel: ExamTakeViewModel = viewmodel
         self.go_back_callback: Callable[[], None] = go_back_callback
-        self._part_checks: list[QCheckBox] = []
-        self._tag_checks: list[QCheckBox] = []
         self._answer_groups: dict[str, QButtonGroup] = {}
         self._current_analytics = None
         self._dictation_view: Optional[ExerciseDictationView] = None
@@ -129,158 +131,19 @@ class ExamTakeView(QWidget):
             description.setStyleSheet("color: #3c4043; font-size: 13px;")
             self.overview_layout.addWidget(description)
 
-        self.overview_layout.addWidget(self._history_table())
-        self.overview_layout.addWidget(self._mode_tabs())
+        self.overview_layout.addWidget(
+            AttemptHistoryWidget(self.viewmodel.attempts, self._render_attempt_history, self)
+        )
+        self.overview_layout.addWidget(
+            ExamTakeModeTabs(
+                self.viewmodel,
+                self._start_practice,
+                lambda: self.viewmodel.start_test("real"),
+                self._start_dictation,
+                self,
+            )
+        )
         self.overview_layout.addStretch(1)
-
-    def _history_table(self):
-        box = QFrame()
-        box.setFrameShape(QFrame.Shape.StyledPanel)
-        layout = QVBoxLayout(box)
-
-        title = QLabel("Previous Attempts")
-        title.setStyleSheet("font-size: 15px; font-weight: bold; color: #202124;")
-        layout.addWidget(title)
-
-        table = QTableWidget()
-        table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(
-            ["Date", "Duration", "Score", "Accuracy", "View"]
-        )
-        table.setRowCount(len(self.viewmodel.attempts))
-        table.verticalHeader().setVisible(False)
-        table.setAlternatingRowColors(True)
-
-        for row, attempt in enumerate(self.viewmodel.attempts):
-            table.setItem(
-                row, 0, QTableWidgetItem(attempt.created_at.strftime("%Y-%m-%d %H:%M"))
-            )
-            table.setItem(
-                row, 1, QTableWidgetItem(self._format_seconds(attempt.duration_seconds))
-            )
-            table.setItem(
-                row,
-                2,
-                QTableWidgetItem(f"{attempt.total_correct}/{attempt.total_questions}"),
-            )
-            table.setItem(row, 3, QTableWidgetItem(f"{attempt.accuracy:.1f}%"))
-            view_btn = QPushButton()
-            view_btn.setIcon(qta.icon("fa5s.eye", color="#1a73e8"))
-            view_btn.setToolTip("View attempt summary")
-            view_btn.clicked.connect(
-                lambda checked=False, item=attempt: self._render_attempt_history(item)
-            )
-            table.setCellWidget(row, 4, view_btn)
-
-        table.resizeColumnsToContents()
-        layout.addWidget(table)
-        return box
-
-    def _mode_tabs(self):
-        tabs = QTabWidget()
-        tabs.addTab(self._practice_tab(), "Practice")
-        tabs.addTab(self._real_test_tab(), "Real Test")
-        tabs.addTab(self._dictation_tab(), "Dictation")
-        return tabs
-
-    def _practice_tab(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setSpacing(10)
-
-        part_label = QLabel("Parts")
-        part_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(part_label)
-
-        part_row = QHBoxLayout()
-        self._part_checks = []
-        for part in self.viewmodel.parts:
-            check = QCheckBox(f"Part {part}")
-            check.setProperty("part", part)
-            self._part_checks.append(check)
-            part_row.addWidget(check)
-        part_row.addStretch(1)
-        layout.addLayout(part_row)
-
-        tag_label = QLabel("Question Tags")
-        tag_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(tag_label)
-
-        tag_row = QHBoxLayout()
-        self._tag_checks = []
-        if self.viewmodel.tags:
-            for tag in self.viewmodel.tags:
-                check = QCheckBox(tag)
-                check.setProperty("tag", tag)
-                self._tag_checks.append(check)
-                tag_row.addWidget(check)
-        else:
-            empty = QLabel("No tags yet")
-            empty.setStyleSheet("color: #5f6368;")
-            tag_row.addWidget(empty)
-        tag_row.addStretch(1)
-        layout.addLayout(tag_row)
-
-        start_btn = QPushButton("Start Practice")
-        start_btn.setIcon(qta.icon("fa5s.play", color="white"))
-        start_btn.setStyleSheet(self._primary_button_style())
-        start_btn.clicked.connect(self._start_practice)
-        layout.addWidget(start_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.addStretch(1)
-        return page
-
-    def _real_test_tab(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-
-        exam = self.viewmodel.exam
-        summary = QLabel(
-            f"Full exam: {len(self.viewmodel.questions)} questions, "
-            f"{exam.duration_minutes if exam else 0} minutes."
-        )
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        start_btn = QPushButton("Start Real Test")
-        start_btn.setIcon(qta.icon("fa5s.stopwatch", color="white"))
-        start_btn.setStyleSheet(self._primary_button_style())
-        start_btn.clicked.connect(lambda: self.viewmodel.start_test("real"))
-        layout.addWidget(start_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.addStretch(1)
-        return page
-
-    def _dictation_tab(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setSpacing(10)
-
-        chunk_count = len(self.viewmodel.srt_chunks)
-        audio_ready = bool(self.viewmodel.exam and self.viewmodel.exam.audio_name)
-        summary = QLabel(
-            f"{chunk_count} transcript chunk(s) available for listening practice."
-        )
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        if not chunk_count:
-            warning = QLabel("Attach or import a transcript before starting dictation.")
-            warning.setWordWrap(True)
-            warning.setStyleSheet("color: #d93025; font-weight: bold;")
-            layout.addWidget(warning)
-        if not audio_ready:
-            warning = QLabel("This exam has no audio file, so playback is unavailable.")
-            warning.setWordWrap(True)
-            warning.setStyleSheet("color: #d93025; font-weight: bold;")
-            layout.addWidget(warning)
-
-        start_btn = QPushButton("Start Dictation")
-        start_btn.setIcon(qta.icon("fa5s.headphones", color="white"))
-        start_btn.setStyleSheet(self._primary_button_style())
-        start_btn.setEnabled(bool(chunk_count and audio_ready))
-        start_btn.clicked.connect(self._start_dictation)
-        layout.addWidget(start_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.addStretch(1)
-        return page
 
     def _start_dictation(self):
         clear_layout(self.dictation_layout)
@@ -982,13 +845,7 @@ class ExamTakeView(QWidget):
         layout.addWidget(details)
         return card
 
-    def _start_practice(self):
-        selected_parts = [
-            check.property("part") for check in self._part_checks if check.isChecked()
-        ]
-        selected_tags = [
-            check.property("tag") for check in self._tag_checks if check.isChecked()
-        ]
+    def _start_practice(self, selected_parts: list[int], selected_tags: list[str]) -> None:
         self.viewmodel.start_test("practice", selected_parts, selected_tags)
 
     def _skip_question(self, question_id: str, group: QButtonGroup) -> None:

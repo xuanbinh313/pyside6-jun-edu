@@ -22,7 +22,7 @@ for external agent response contracts:
 | `ExamContext` | Shared context for one or more questions, including context-level `additional_meta`. |
 | `ExamQuestion` | Question stem, options, answer, and question-level note metadata. |
 | `UserQuestionTag` | Per-user tag assigned to an exam context. |
-| `ExamAttempt` | Completed learner attempt summary. |
+| `ExamAttempt` | Completed learner attempt summary, including `additional_meta` JSON for attempt filters. |
 | `UserAnswer` | Per-question answer for an attempt. |
 | `Vocabulary` | A selected vocabulary phrase with meaning, learning status, optional source context, and creation time. |
 | `ImportAgentTask` | Persisted Gemini import-agent request payload, reviewed OCR text, status, attempts, error, and result for retry tracking. |
@@ -50,6 +50,16 @@ chunk transcript text. SQLite keeps this field inside the JSON string stored in
 | Key | Type |
 |---|---|
 | `note` | `str` |
+
+`ExamAttempt.additional_meta` stores learner attempt context used by the take view history table:
+
+| Key | Type |
+|---|---|
+| `mode` | `str` |
+| `selected_parts` | `list[int]` |
+| `selected_tags` | `list[str]` |
+| `question_tags` | `list[str]` |
+| `question_ids` | `list[str]` |
 
 `src/models/exam.py` must not import SQLAlchemy or PySide6. Pydantic schemas in
 this file are API contracts only; repositories still map database rows to the

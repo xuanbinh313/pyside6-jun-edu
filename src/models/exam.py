@@ -192,7 +192,21 @@ class ExamAttempt(BaseModel):
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
     dirty: bool = False
+    additional_meta: dict[str, Any] = Field(default_factory=dict)
     answers: list[UserAnswer] = []
+
+    @field_validator("additional_meta", mode="before")
+    @classmethod
+    def normalize_additional_meta(cls, value: Any) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                return {}
+            return decoded if isinstance(decoded, dict) else {}
+        return value if isinstance(value, dict) else {}
 
 
 class ImportAgentTask(BaseModel):

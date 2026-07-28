@@ -2,7 +2,7 @@
 import json
 import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from PySide6.QtCore import QObject, Signal
 from src.models.exam import (
@@ -18,6 +18,25 @@ from src.repositories.sqlite.sqlite_repo import SQLiteExamRepository
 LETTERS = ["A", "B", "C", "D"]
 
 
+def _int_list(value: Any) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    result: list[int] = []
+    for item in value:
+        try:
+            result.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return sorted(set(result))
+
+
+def _str_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result = [str(item) for item in value if str(item).strip()]
+    return sorted(set(result))
+
+
 @dataclass
 class AttemptSummary:
     id: str
@@ -26,12 +45,21 @@ class AttemptSummary:
     total_correct: int
     total_questions: int
     final_score: Optional[float]
+    additional_meta: dict[str, Any]
 
     @property
     def accuracy(self) -> float:
         if self.total_questions <= 0:
             return 0.0
         return self.total_correct / self.total_questions * 100.0
+
+    @property
+    def selected_parts(self) -> list[int]:
+        return _int_list(self.additional_meta.get("selected_parts"))
+
+    @property
+    def question_tags(self) -> list[str]:
+        return _str_list(self.additional_meta.get("question_tags"))
 
 
 @dataclass
@@ -163,6 +191,7 @@ class ExamTakeViewModel(QObject):
         self.completed_attempt_id: Optional[str] = None
         self.total_correct: int = 0
         self.final_score: Optional[float] = None
+        self._attempt_additional_meta: dict[str, Any] = {}
 
     def load_exam(self):
         (
@@ -190,8 +219,10 @@ class ExamTakeViewModel(QObject):
         question_ids=None,
     ):
         self.mode = mode
-        selected_parts = set(selected_parts or [])
-        selected_tags = set(selected_tags or [])
+        selected_part_values = _int_list(selected_parts)
+        selected_tag_values = _str_list(selected_tags)
+        selected_parts = set(selected_part_values)
+        selected_tags = set(selected_tag_values)
         question_ids = set(question_ids or [])
         question_tags = self._question_tags()
         context_map = {ctx.id: ctx for ctx in self.contexts}
@@ -224,6 +255,14 @@ class ExamTakeViewModel(QObject):
         self.completed_attempt_id = None
         self.total_correct = 0
         self.final_score = None
+        self._attempt_additional_meta = self._build_attempt_additional_meta(
+            mode=mode,
+            selected_parts=selected_part_values,
+            selected_tags=selected_tag_values,
+            selected_questions=selected_questions,
+            question_tags=question_tags,
+            context_map=context_map,
+        )
         self.test_started.emit()
 
     def start_review_questions(self, question_ids: list[str]):
@@ -273,6 +312,7 @@ class ExamTakeViewModel(QObject):
                     }
                     for question in self.active_questions
                 ],
+                additional_meta=self._attempt_additional_meta,
             )
             self.completed_attempt_id = attempt_id
             self.attempts = self._attempt_summaries(attempts)
@@ -456,7 +496,40 @@ class ExamTakeViewModel(QObject):
             total_correct=attempt.total_correct,
             total_questions=attempt.total_questions,
             final_score=attempt.final_score,
+            additional_meta=attempt.additional_meta or {},
         )
+
+    def _build_attempt_additional_meta(
+        self,
+        *,
+        mode: str,
+        selected_parts: list[int],
+        selected_tags: list[str],
+        selected_questions: List[ExamQuestion],
+        question_tags: dict[str, set[str]],
+        context_map: dict[str, ExamContext],
+    ) -> dict[str, Any]:
+        active_parts = sorted(
+            {
+                context_map[question.context_id].part or 1
+                for question in selected_questions
+                if question.context_id in context_map
+            }
+        )
+        active_tags = sorted(
+            {
+                tag
+                for question in selected_questions
+                for tag in question_tags.get(question.id, set())
+            }
+        )
+        return {
+            "mode": str(mode),
+            "selected_parts": selected_parts or active_parts,
+            "selected_tags": selected_tags,
+            "question_tags": active_tags,
+            "question_ids": [question.id for question in selected_questions],
+        }
 
     def _context_text(self, context):
         content = context.content

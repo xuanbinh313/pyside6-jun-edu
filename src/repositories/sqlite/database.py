@@ -24,6 +24,18 @@ def init_db() -> None:
         if "srt_chunks" not in exam_columns:
             connection.execute(text("ALTER TABLE exams ADD COLUMN srt_chunks TEXT"))
 
+        if inspector.has_table("exam_attempts"):
+            attempt_columns = {
+                column["name"] for column in inspector.get_columns("exam_attempts")
+            }
+            if "additional_meta" not in attempt_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE exam_attempts "
+                        "ADD COLUMN additional_meta JSON NOT NULL DEFAULT '{}'"
+                    )
+                )
+
         if inspector.has_table("exam_srt_chunks"):
             rows = (
                 connection.execute(
