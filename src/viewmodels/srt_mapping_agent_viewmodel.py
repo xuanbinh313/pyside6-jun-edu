@@ -127,10 +127,9 @@ spoken immediately before the conversation/talk/announcement, for example
 [CONTEXTS]
 {chr(10).join(context_rows)}
 
-Below is the question table. For TOEIC Part 1 and Part 2, the audio segment must
-include the complete spoken prompt for the question AND all spoken answer choices
-A, B, C, and D for that question. Use the option text to keep the end boundary
-after the final spoken choice, not immediately after the question prompt.
+Below is the question table.
+- For TOEIC Part 1 and Part 2, the audio segment must include the complete spoken prompt for the question AND all spoken answer choices A, B, C, and D for that question. Use the option text to keep the end boundary after the final spoken choice.
+- For TOEIC Part 3 and Part 4, this table provides the question text and options for all questions associated with each context. Note that the spoken audio track includes both the conversation/talk AND the subsequent spoken question prompts (and options if spoken).
 
 [QUESTIONS AND OPTIONS]
 {chr(10).join(question_rows)}
@@ -159,13 +158,13 @@ RULES:
 1. Return ONLY contexts where audio is present (listening parts 1-4).
    Omit contexts from reading parts (5, 6, 7) or any context where no matching
    audio is detectable. Do NOT include them in the output at all.
-2. For Part 3/4 groups, the context audio segment must include the spoken
-   title/preamble chunk when it exists in SRT. Start at the chunk containing
-   "Questions X-Y refer to..." or "Question X through Y refer to...", then keep
-   the whole conversation/talk/announcement through the last related line.
-   Do not start after that title line.
+2. For Part 3/4 groups, each context audio segment MUST cover the entire audio time span of that context:
+   - Start: chunk containing the spoken title/preamble line when present (e.g., "Questions X-Y refer to...").
+   - Content: the full conversation, talk, or announcement audio.
+   - End: MUST include all following spoken questions (e.g., "Number X...", "Question X...") and spoken answer options in the audio transcript for that context.
+   Ensure end_chunk_index extends to the end of the final spoken question/option audio for that context, not stopping right after the conversation ends.
 3. The question and option rows are provided so you can match transcript text to
-   question numbers and include A-D answer choices in Part 1/2 ranges.
+   question numbers and ensure both the context audio and all its question/option audio are included in the range.
 4. Output ONLY one JSON object with a top-level "mappings" array. No markdown,
    no explanation, no top-level array, and no field names other than
    "context_id", "start_chunk_index", and "end_chunk_index" inside mappings.
