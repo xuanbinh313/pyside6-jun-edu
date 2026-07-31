@@ -1,10 +1,12 @@
+from typing import Optional
+from PySide6.QtWidgets import QWidget
 from PySide6.QtWidgets import QDialog, QMessageBox
 from src.viewmodels.auth_viewmodel import AuthViewModel
 from ui_gen.ui_auth_view import Ui_AuthView
 
 
 class AuthView(QDialog):
-    def __init__(self, viewmodel: AuthViewModel, parent=None):
+    def __init__(self, viewmodel: AuthViewModel, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.viewmodel = viewmodel
 

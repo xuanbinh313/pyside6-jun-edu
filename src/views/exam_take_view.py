@@ -387,7 +387,7 @@ class ExamTakeView(QWidget):
             question_label = f"Questions {question_numbers[0]}-{question_numbers[-1]}"
         if ctx is None:
             return f"Part {part} | {question_label}"
-        type_label = str(ctx.context_type or "Context").replace("_", " ").title()
+        type_label = (ctx.context_type or "Context").replace("_", " ").title()
         return f"Part {part} | Context {ctx.index} | {question_label} | {type_label}"
 
     def _play_context(self, ctx):
