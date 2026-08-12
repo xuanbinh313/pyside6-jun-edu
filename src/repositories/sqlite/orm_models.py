@@ -92,6 +92,7 @@ class Part(TypedDict):
 class Payload(TypedDict):
     answer_sheet: AnswerSheet
     parts: List[Part]
+    model_name: str
 
 
 class ExamContext(Base):

@@ -41,6 +41,7 @@ class AgentImportPayload(BaseModel):
     answer_sheet: AgentAnswerSheetPayload = Field(
         default_factory=AgentAnswerSheetPayload
     )
+    model_name: str = ""
 
 
 class AgentImportResult(BaseModel):
@@ -181,7 +182,11 @@ class ImportQuestionsAgentWorker(QThread):
 
     def _run_agent(self) -> AgentImportResult:
         api_key = GEMINI_API_KEY.strip()
-        model_name = GEMINI_MODEL.strip() or "gemini-2.5-flash"
+        model_name = (
+            str(self.payload.model_name or "").strip()
+            or GEMINI_MODEL.strip()
+            or "gemini-2.5-flash"
+        )
         if not api_key:
             raise ValueError("GEMINI_API_KEY is missing from application config.")
         project = GOOGLE_CLOUD_PROJECT.strip()
@@ -291,8 +296,8 @@ class ImportQuestionsAgentWorker(QThread):
             if isinstance(unwrapped, str):
                 text = unwrapped.strip()
         data = json.loads(text)
-        if isinstance(data, str):
-            data = json.loads(data)
+        if isinstance(data, list):
+            data = {"contexts": data}
         if not isinstance(data, dict):
             raise ValueError("Agent response must be a JSON object.")
         return data
@@ -872,11 +877,12 @@ Return this schema:
 }
 
 STRICT PART 2 RULES:
-1. Every context_type must be STANDALONE and 1 context only has 1 question.
-2. questions.content: Put the spoken Question/Statement here (e.g., "Where is the meeting room?").
-3. questions.options: Put the 3 spoken response choices (A, B, C) here,Stripped of prefixes like (A), B., C) and keep original order.
-4. Never leave questions.additional_meta.note empty, even when correct_answer is unknown.
-5. only take all questions from 11 to 40.
+1. Every context_type must be STANDALONE
+2. MUST each context only has exactly 1 question, never 2 questions in 1 context.
+3. questions.content: Put the spoken Question/Statement here (e.g., "Where is the meeting room?").
+4. questions.options: Put the 3 spoken response choices (A, B, C) here,Stripped of prefixes like (A), B., C) and keep original order.
+5. Never leave questions.additional_meta.note empty, even when correct_answer is unknown.
+6. only take all questions from 11 to 40.
 """.replace("{TARGET_LANG}", TARGET_LANG),
         3: """
 Analyze ONLY TOEIC Listening Part 3 (Conversations).
@@ -1321,6 +1327,67 @@ STRICT PART 4 RULES:
                 _build_part_prompt_text(part_payload, note_contract, ocr_text)
             )
         return "\n\n".join(prompts)
+
+    def task_prompt_and_model(self, task_id: str) -> tuple[str, str]:
+        task = self.task_repo.get_task(task_id)
+        if task is None:
+            raise ValueError("The import agent request no longer exists.")
+        payload = AgentImportPayload.model_validate(task.payload)
+        prompt = ""
+        for part_payload in payload.parts:
+            if self._has_part_input_payload(part_payload):
+                prompt = part_payload.prompt
+                break
+        if not prompt and payload.parts:
+            prompt = payload.parts[0].prompt
+        model_name = (
+            str(payload.model_name or "").strip()
+            or GEMINI_MODEL.strip()
+            or "gemini-2.5-flash"
+        )
+        return prompt, model_name
+
+    def save_task_prompt_and_model(
+        self,
+        task_id: str,
+        ocr_text: str,
+        custom_prompt: str,
+        model_name: str,
+    ) -> bool:
+        task = self.task_repo.get_task(task_id)
+        if task is None:
+            self.error_message.emit("The import agent request no longer exists.")
+            return False
+        payload_dict = dict(task.payload or {})
+        payload = AgentImportPayload.model_validate(payload_dict)
+        payload.model_name = model_name.strip()
+        custom_prompt_text = custom_prompt.strip()
+        for part_payload in payload.parts:
+            if self._has_part_input_payload(part_payload):
+                part_payload.prompt = custom_prompt_text
+        updated_payload = payload.model_dump()
+        updated_task = self.task_repo.update_payload(task_id, updated_payload)
+        if updated_task is None:
+            self.error_message.emit("Could not update a running or missing request.")
+            return False
+        ocr_value = ocr_text.strip() or task.ocr
+        if ocr_value:
+            self.task_repo.update_ocr(task_id, ocr_value)
+        self.tasks_changed.emit()
+        return True
+
+    def save_task_prompt_model_and_retry(
+        self,
+        task_id: str,
+        ocr_text: str,
+        custom_prompt: str,
+        model_name: str,
+    ) -> None:
+        if not self.save_task_prompt_and_model(
+            task_id, ocr_text, custom_prompt, model_name
+        ):
+            return
+        self.retry_agent_task(task_id)
 
     def save_task_ocr_text(self, task_id: str, ocr_text: str) -> bool:
         task = self.task_repo.get_task(task_id)

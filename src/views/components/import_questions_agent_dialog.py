@@ -7,6 +7,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from src.config import GEMINI_MODEL
 from src.utils.helpers import get_local_media_dir
 from src.viewmodels.import_questions_agent_viewmodel import (
     ImportQuestionsAgentViewModel,
@@ -50,7 +52,8 @@ class OcrReviewDialog(QDialog):
     ):
         super().__init__(parent)
         self._prompt_factory = prompt_factory
-        self.setWindowTitle("Review PaddleOCR Text")
+        self._user_edited_prompt = False
+        self.setWindowTitle("Review PaddleOCR Text & Prompt")
         self.resize(860, 680)
 
         layout = QVBoxLayout(self)
@@ -63,15 +66,38 @@ class OcrReviewDialog(QDialog):
 
         self.text_edit = QTextEdit(self)
         self.text_edit.setPlainText(text)
-        self.text_edit.setMinimumHeight(300)
+        self.text_edit.setMinimumHeight(240)
         layout.addWidget(self.text_edit, 1)
 
+        prompt_row = QHBoxLayout()
         prompt_label = QLabel("Prompt sent to agent", self)
         prompt_label.setStyleSheet("color: #5f6368;")
-        layout.addWidget(prompt_label)
+        prompt_row.addWidget(prompt_label)
+        prompt_row.addStretch(1)
+
+        model_label = QLabel("Model:", self)
+        model_label.setStyleSheet("color: #5f6368;")
+        prompt_row.addWidget(model_label)
+
+        self.model_combo = QComboBox(self)
+        self.model_combo.setEditable(True)
+        default_model = GEMINI_MODEL.strip() or "gemini-2.5-flash"
+        available_models = [
+            default_model,
+            "gemini-3.1-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+        ]
+        seen_models = []
+        for m in available_models:
+            if m not in seen_models:
+                seen_models.append(m)
+                self.model_combo.addItem(m)
+        self.model_combo.setCurrentText(default_model)
+        prompt_row.addWidget(self.model_combo)
+        layout.addLayout(prompt_row)
 
         self.prompt_edit = QTextEdit(self)
-        self.prompt_edit.setReadOnly(True)
         self.prompt_edit.setMinimumHeight(220)
         layout.addWidget(self.prompt_edit, 1)
 
@@ -91,11 +117,23 @@ class OcrReviewDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
         layout.addWidget(self.button_box)
         self.send_after_save = False
+
+        self.prompt_edit.textChanged.connect(self._on_prompt_user_edited)
         self.text_edit.textChanged.connect(self._refresh_prompt)
         self._refresh_prompt()
 
     def ocr_text(self) -> str:
         return self.text_edit.toPlainText()
+
+    def custom_prompt(self) -> str:
+        return self.prompt_edit.toPlainText()
+
+    def selected_model(self) -> str:
+        return self.model_combo.currentText().strip()
+
+    def _on_prompt_user_edited(self) -> None:
+        if self.prompt_edit.hasFocus():
+            self._user_edited_prompt = True
 
     def _save_only(self) -> None:
         self.send_after_save = False
@@ -106,11 +144,95 @@ class OcrReviewDialog(QDialog):
         super().accept()
 
     def _refresh_prompt(self) -> None:
+        if self._user_edited_prompt:
+            return
         try:
             prompt = self._prompt_factory(self.ocr_text())
         except Exception as exc:
             prompt = str(exc)
+        self.prompt_edit.blockSignals(True)
         self.prompt_edit.setPlainText(prompt)
+        self.prompt_edit.blockSignals(False)
+
+
+class AgentRequestEditDialog(QDialog):
+    def __init__(
+        self,
+        prompt: str,
+        model_name: str,
+        parent: Optional[QWidget] = None,
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Edit Agent Request")
+        self.resize(760, 560)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        model_row = QHBoxLayout()
+        model_label = QLabel("Model:", self)
+        model_label.setStyleSheet("color: #5f6368;")
+        model_row.addWidget(model_label)
+
+        self.model_combo = QComboBox(self)
+        self.model_combo.setEditable(True)
+        default_model = GEMINI_MODEL.strip() or "gemini-2.5-flash"
+        available_models = [
+            model_name.strip() or default_model,
+            default_model,
+            "gemini-3.1-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+        ]
+        seen_models: list[str] = []
+        for available_model in available_models:
+            if available_model and available_model not in seen_models:
+                seen_models.append(available_model)
+                self.model_combo.addItem(available_model)
+        self.model_combo.setCurrentText(model_name.strip() or default_model)
+        model_row.addWidget(self.model_combo, 1)
+        layout.addLayout(model_row)
+
+        prompt_label = QLabel("Prompt", self)
+        prompt_label.setStyleSheet("color: #5f6368;")
+        layout.addWidget(prompt_label)
+
+        self.prompt_edit = QTextEdit(self)
+        self.prompt_edit.setPlainText(prompt)
+        self.prompt_edit.setMinimumHeight(380)
+        layout.addWidget(self.prompt_edit, 1)
+
+        self.button_box = QDialogButtonBox(self)
+        self.save_btn = self.button_box.addButton(
+            "Save", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.retry_btn = self.button_box.addButton(
+            "Save and Retry", QDialogButtonBox.ButtonRole.AcceptRole
+        )
+        self.cancel_btn = self.button_box.addButton(
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        self.retry_btn.setIcon(qta.icon("fa5s.redo", color="#1a73e8"))
+        self.save_btn.clicked.connect(self._save_only)
+        self.retry_btn.clicked.connect(self.accept)
+        self.cancel_btn.clicked.connect(self.reject)
+        layout.addWidget(self.button_box)
+        self.retry_after_save = False
+
+    def prompt_text(self) -> str:
+        return self.prompt_edit.toPlainText()
+
+    def selected_model(self) -> str:
+        return self.model_combo.currentText().strip()
+
+    def _save_only(self) -> None:
+        self.retry_after_save = False
+        self.done(QDialog.DialogCode.Accepted)
+
+    def accept(self) -> None:
+        self.retry_after_save = True
+        super().accept()
 
 
 class AgentRequestStatusDialog(QDialog):
@@ -129,11 +251,12 @@ class AgentRequestStatusDialog(QDialog):
         layout.setSpacing(8)
 
         self.table = QTableWidget(self)
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(9)
         self.table.setHorizontalHeaderLabels(
             [
                 "Retry",
                 "OCR",
+                "Edit",
                 "Created",
                 "Status",
                 "Attempts",
@@ -146,7 +269,7 @@ class AgentRequestStatusDialog(QDialog):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
-        self.table.setColumnHidden(7, True)
+        self.table.setColumnHidden(8, True)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -154,7 +277,8 @@ class AgentRequestStatusDialog(QDialog):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
@@ -219,6 +343,15 @@ class AgentRequestStatusDialog(QDialog):
                 lambda checked=False, task_id=task.id: self._review_ocr(task_id)
             )
             self.table.setCellWidget(row, 1, ocr_btn)
+            edit_btn = QPushButton("Edit", self.table)
+            edit_btn.setIcon(qta.icon("fa5s.edit", color="#1a73e8"))
+            edit_btn.setEnabled(
+                task.status != "running" and not self.viewmodel.is_loading
+            )
+            edit_btn.clicked.connect(
+                lambda checked=False, task_id=task.id: self._edit_task(task_id)
+            )
+            self.table.setCellWidget(row, 2, edit_btn)
             values = [
                 created,
                 task.status,
@@ -230,7 +363,7 @@ class AgentRequestStatusDialog(QDialog):
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, task.id)
-                self.table.setItem(row, column + 2, item)
+                self.table.setItem(row, column + 3, item)
             if task.id == selected_id:
                 selected_row = row
 
@@ -245,12 +378,12 @@ class AgentRequestStatusDialog(QDialog):
         row = self.table.currentRow()
         if row < 0:
             return ""
-        item = self.table.item(row, 7)
+        item = self.table.item(row, 8)
         return str(item.data(Qt.ItemDataRole.UserRole) or "") if item else ""
 
     def _selected_status(self) -> str:
         row = self.table.currentRow()
-        item = self.table.item(row, 3) if row >= 0 else None
+        item = self.table.item(row, 4) if row >= 0 else None
         return item.text() if item else ""
 
     def _refresh_buttons(self) -> None:
@@ -265,8 +398,8 @@ class AgentRequestStatusDialog(QDialog):
         task_ids: list[str] = []
         for row in range(self.table.rowCount()):
             check_item = self.table.item(row, 0)
-            status_item = self.table.item(row, 3)
-            id_item = self.table.item(row, 7)
+            status_item = self.table.item(row, 4)
+            id_item = self.table.item(row, 8)
             if (
                 check_item is None
                 or status_item is None
@@ -282,7 +415,7 @@ class AgentRequestStatusDialog(QDialog):
         self.table.blockSignals(True)
         for row in range(self.table.rowCount()):
             check_item = self.table.item(row, 0)
-            status_item = self.table.item(row, 3)
+            status_item = self.table.item(row, 4)
             if check_item is None or status_item is None:
                 continue
             check_item.setCheckState(
@@ -298,6 +431,36 @@ class AgentRequestStatusDialog(QDialog):
         if not task_ids:
             return
         self.viewmodel.retry_agent_tasks(task_ids)
+        self.refresh()
+
+    def _edit_task(self, task_id: str) -> None:
+        if not task_id:
+            return
+        try:
+            prompt, model_name = self.viewmodel.task_prompt_and_model(task_id)
+        except Exception as exc:
+            QMessageBox.critical(self, "Request Error", str(exc))
+            return
+
+        dialog = AgentRequestEditDialog(prompt, model_name, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        prompt_text = dialog.prompt_text().strip()
+        model_text = dialog.selected_model().strip()
+        if not prompt_text:
+            QMessageBox.warning(self, "Prompt Required", "Prompt is empty.")
+            return
+        if not model_text:
+            QMessageBox.warning(self, "Model Required", "Model name is empty.")
+            return
+        if dialog.retry_after_save:
+            self.viewmodel.save_task_prompt_model_and_retry(
+                task_id, "", prompt_text, model_text
+            )
+        else:
+            self.viewmodel.save_task_prompt_and_model(
+                task_id, "", prompt_text, model_text
+            )
         self.refresh()
 
     def _remove_selected(self) -> None:
@@ -343,9 +506,19 @@ class AgentRequestStatusDialog(QDialog):
             QMessageBox.warning(self, "OCR Text Required", "OCR text is empty.")
             return
         if dialog.send_after_save:
-            self.viewmodel.save_task_ocr_text_and_retry(task_id, reviewed_text)
+            self.viewmodel.save_task_prompt_model_and_retry(
+                task_id,
+                reviewed_text,
+                dialog.custom_prompt(),
+                dialog.selected_model(),
+            )
         else:
-            self.viewmodel.save_task_ocr_text(task_id, reviewed_text)
+            self.viewmodel.save_task_prompt_and_model(
+                task_id,
+                reviewed_text,
+                dialog.custom_prompt(),
+                dialog.selected_model(),
+            )
         self.refresh()
 
     def _parts_text(self, payload: dict) -> str:
